@@ -27,6 +27,7 @@
 #include <sstream>
 
 #include "defs.h"
+#include "utils.h"
 #include "handling_manager.hpp"
 #include "../Shared/CustomVehicleProtocol.hpp"
 

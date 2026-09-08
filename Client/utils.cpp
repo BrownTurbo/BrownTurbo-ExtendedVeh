@@ -1,5 +1,6 @@
 #include "utils.h"
 #include <plugin_sa.h>
+#include "CryptoUtility.h"
 
 bool SendMsg(int color, const char* msg)
 {
@@ -378,4 +379,14 @@ fs::path GetSampCacheRoot()
         "GTA San Andreas User Files" /
         "SAMP" /
         "cache";
+}
+
+std::string Sha256HexOfBuffer(const unsigned char* data, unsigned int size)
+{
+    std::string hash;
+    if (!CryptoUtility::ComputeSHA256(data, static_cast<std::size_t>(size), hash))
+    {
+        return {};
+    }
+    return hash;
 }

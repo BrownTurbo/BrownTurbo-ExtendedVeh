@@ -49,3 +49,4 @@ void* GtaAddress(uintptr_t gtaAddress);
 bool LooksLikeFunctionEntry(uintptr_t address);
 fs::path GetDocumentsDirectory();
 fs::path GetSampCacheRoot();
+std::string Sha256HexOfBuffer(const unsigned char* data, unsigned int size);

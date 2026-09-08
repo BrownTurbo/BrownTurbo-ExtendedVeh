@@ -41,9 +41,6 @@ struct TransferProgress {
 	std::string lastError;
 };
 
-std::string Sha256HexOfFile(const fs::path& path);
-std::string Sha256HexOfBuffer(const uint8_t* data, size_t length);
-
 class ModelTransferClient {
 private:
 	struct InFlight {

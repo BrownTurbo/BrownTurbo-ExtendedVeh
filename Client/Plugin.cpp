@@ -51,8 +51,8 @@
 
 #include "CollisionLoader.h"
 #include "ImGuiOverlay.h"
-#include "CustomVehicleProtocol.hpp"
-#include "crypto.hpp"
+#include "../Shared/CustomVehicleProtocol.hpp"
+#include "CryptoUtility.h"
 #include "MainThreadQueue.h"
 #include "ModelCache.h"
 
@@ -504,7 +504,7 @@ void InitializeHooks()
 
 			CustomVehAction actionID;
 			bs.Read(actionID);
-			if (actionId == CustomVehAction::CustomVehicleDefine) {
+			if (actionID == CustomVehAction::CustomVehicleDefine) {
 				CustomVeh::Protocol::VehicleDefinition def;
 				if (!_customVehInstance.ReadVehicleDefinition(bs, def)) {
 					SendMsg(0xFF0000, "[CustomVeh] Failed to read vehicle definition from packet");
@@ -512,9 +512,9 @@ void InitializeHooks()
 				}
 				_customVehInstance.HandleCustomVehicleDef(def);
 				return false;
-			}
-			else if (actionId == CustomVehAction::CustomVehicleDestory) {
-				if (!bs->Read(customModelId)) {
+			} else if (actionID == CustomVehAction::CustomVehicleDestroy) {
+				uint32_t customModelId;
+				if (!bs.Read(customModelId)) {
 					SendMsg(0xFF0000, "[CustomVeh] Failed to read vehicle modelId from packet");
 					return false;
 				}

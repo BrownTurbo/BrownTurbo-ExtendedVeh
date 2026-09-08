@@ -1,5 +1,5 @@
 #include "ModelCache.h"
-#include "crypto.hpp"
+#include "CryptoUtility.h"
 
 std::optional<std::filesystem::path>
 ModelCache::TryGet(uint32_t modelId, uint8_t fileKind,
