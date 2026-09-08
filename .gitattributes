@@ -9,8 +9,6 @@
 *.pwn linguist-language=Pawn
 *.inc linguist-language=Pawn
 
-zutils.inc.in linguist-language=Pawn
-
 ###############################################################################
 # Set default behavior for command prompt diff.
 #
