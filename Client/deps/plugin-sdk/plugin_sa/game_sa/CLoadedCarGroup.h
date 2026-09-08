@@ -9,13 +9,8 @@
 
 class PLUGIN_API CLoadedCarGroup {
 public:
-    union {
-        short m_models[23];
-        struct {
-            short m_members[22]; // legacy plugin-sdk view
-            short field_2C;      // legacy alias for m_models[22]
-        };
-    };
+    short m_members[22]; // model ids
+    short field_2C;
 
 	void SortBasedOnUsage();
     int RemoveMember(int modelindex);
@@ -26,7 +21,6 @@ public:
     void Clear();
     void AddMember(int member);
 };
-VALIDATE_OFFSET(CLoadedCarGroup, m_models, 0x0);
 VALIDATE_OFFSET(CLoadedCarGroup, m_members, 0x0);
 VALIDATE_OFFSET(CLoadedCarGroup, field_2C, 0x2C);
 VALIDATE_SIZE(CLoadedCarGroup, 0x2E);

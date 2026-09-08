@@ -176,7 +176,7 @@ bool ExtendedVehCompo::onReceivePacket(IPlayer& peer, int id,
 			if (!bs.Read(action))
 				return false;
 
-			Actions::Process((CHandlingAction)action, bs, peer);
+			Actions::Process((CustomVehAction)action, bs, peer);
 		}
 	}
 	return true;

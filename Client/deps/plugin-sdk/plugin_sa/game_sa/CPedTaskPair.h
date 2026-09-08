@@ -15,23 +15,13 @@ class PLUGIN_API CPedTaskPair {
 public:
     CPed *m_pPed;
     CTask *m_pTask;
-    union {
-        int m_nTaskSlot;
-        int field_8; // legacy plugin-sdk name
-    };
-    int m_nMatchId;
-    bool m_bUsedTask;
-    unsigned char gap11[3];
+    int field_8;
 
     SUPPORTED_10US void Flush();
 };
 VALIDATE_OFFSET(CPedTaskPair, m_pPed, 0x0);
 VALIDATE_OFFSET(CPedTaskPair, m_pTask, 0x4);
-VALIDATE_OFFSET(CPedTaskPair, m_nTaskSlot, 0x8);
 VALIDATE_OFFSET(CPedTaskPair, field_8, 0x8);
-VALIDATE_OFFSET(CPedTaskPair, m_nMatchId, 0xC);
-VALIDATE_OFFSET(CPedTaskPair, m_bUsedTask, 0x10);
-VALIDATE_OFFSET(CPedTaskPair, gap11, 0x11);
-VALIDATE_SIZE(CPedTaskPair, 0x14);
+VALIDATE_SIZE(CPedTaskPair, 0xC);
 
 #include "meta/meta.CPedTaskPair.h"

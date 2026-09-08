@@ -8,6 +8,8 @@
 #include <string>
 #include <vector>
 
+#include "utils.h"
+
 namespace fs = std::filesystem;
 
 class ModelCache {
@@ -24,7 +26,7 @@ public:
 		if (!cfg.cacheEnabled)
 			return;
 
-		fs::path dir = TransferConfig::CacheDirectory();
+		fs::path dir = GetSampCacheRoot();
 		std::error_code ec;
 		if (!fs::exists(dir, ec))
 			return;
@@ -72,7 +74,7 @@ public:
 
 	fs::path PathFor(uint32_t modelId, uint8_t fileKind) const
 	{
-		return TransferConfig::CacheDirectory() / (std::to_string(modelId) + "_" + std::to_string(fileKind) + ".bin");
+		return GetSampCacheRoot() / (std::to_string(modelId) + "_" + std::to_string(fileKind) + ".bin");
 	}
 
 	std::optional<fs::path> TryGet(uint32_t modelId, uint8_t fileKind,

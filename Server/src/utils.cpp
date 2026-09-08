@@ -1,8 +1,5 @@
 #include "utils.h"
 #include "defs.h"
-#include "../../Shared/CustomVehicleProtocol.hpp"
-
-namespace fs = std::filesystem;
 
 std::string Sha256Hex(const uint8_t* data, size_t length)
 {

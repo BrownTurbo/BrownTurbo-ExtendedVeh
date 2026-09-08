@@ -11,6 +11,10 @@
 #include <string>
 #include <vector>
 
+#include "../../Shared/CustomVehicleProtocol.hpp"
+
+namespace fs = std::filesystem;
+
 std::string Sha256Hex(const uint8_t* data, size_t length);
 bool IsPathInsideBase(const std::filesystem::path& baseDir, const std::filesystem::path& candidate);
 bool ComputeFileSha256(const std::string& relativePath, std::string& outHex);

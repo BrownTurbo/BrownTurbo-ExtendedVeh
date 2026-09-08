@@ -29,7 +29,6 @@ public:
 	unsigned int            m_nCurrentMatrix;
 	RwMatrix *              m_apMatrices[8];
 	FxMemoryPool_c          m_pool;
-	bool                    m_bHeatHazeEnabled;
 
 public:
 	FxManager_c();
@@ -69,7 +68,6 @@ VALIDATE_OFFSET(FxManager_c, m_frustum, 0x34);
 VALIDATE_OFFSET(FxManager_c, m_nCurrentMatrix, 0x88);
 VALIDATE_OFFSET(FxManager_c, m_apMatrices, 0x8C);
 VALIDATE_OFFSET(FxManager_c, m_pool, 0xAC);
-VALIDATE_OFFSET(FxManager_c, m_bHeatHazeEnabled, 0xB8);
-VALIDATE_SIZE(FxManager_c, 0xBC);
+VALIDATE_SIZE(FxManager_c, 0xB8);
 
 extern PLUGIN_API FxManager_c &g_fxMan;

@@ -28,7 +28,7 @@
 
 #include "defs.h"
 #include "handling_manager.hpp"
-#include "CustomVehicleProtocol.hpp"
+#include "../Shared/CustomVehicleProtocol.hpp"
 
 ModelTransferClient::ModelTransferClient()
 {
