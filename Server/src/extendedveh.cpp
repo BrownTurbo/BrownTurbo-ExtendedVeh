@@ -134,7 +134,7 @@ void ExtendedVehCompo::onAmxLoad(IPawnScript& script)
 	core_->logLn(LogLevel::Message, "");
 	core_->logLn(LogLevel::Message, " =======================================================================");
 	core_->logLn(LogLevel::Message,
-		"  ExtendedVehicles %d.%d.%d%s by Zorono) loaded!",
+		"  ExtendedVehicles %d.%d.%d%s by Zorono loaded!",
 		EXTVEH_VERSION_MAJOR, EXTVEH_VERSION_MINOR, EXTVEH_VERSION_PATCH,
 		(EXTVEH_PHASE_DEV ? "-dev" : ""));
 	core_->logLn(LogLevel::Message, " =======================================================================");
@@ -212,8 +212,7 @@ ExtendedVehCompo*& ExtendedVehCompo::get()
 
 COMPONENT_ENTRY_POINT()
 {
-	ExtendedVehCompo* comp;
-	return (IComponent*)comp->get();
+	return new ExtendedVehCompo();
 }
 
 void ExtendedVehCompo::onIncomingConnection(IPlayer& player,
