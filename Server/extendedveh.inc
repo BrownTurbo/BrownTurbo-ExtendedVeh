@@ -216,15 +216,15 @@ native GetClientFileStoreStatus(playerid, customModelId, fileKind);
 /*
  * Stock Wrapper Helper for Single-Call Custom Vehicle Creation
  */
-stock bool:DefineCustomVehicle(customModelId, visualBase, audioBase, handlingBase, engineOnSoundId, engineOffSoundId, engineOffSoundId, const dffUrl[], const txdUrl[], const colUrl[])
+stock bool:DefineCustomVehicle(customModelId, visualBase, audioBase, handlingBase, engineOnSoundId, engineOffSoundId, engineOffSoundId)
 {
     if (!BeginCustomVehicleDef(customModelId, visualBase, audioBase, handlingBase, engineOnSoundId, engineOffSoundId))
         return false;
-    if (!SetCustomVehicleDff(customModelId, dffUrl))
+    if (!SetCustomVehicleDff(customModelId))
         return false;
-    if (!SetCustomVehicleTxd(customModelId, txdUrl))
+    if (!SetCustomVehicleTxd(customModelId))
         return false;
-    if (!SetCustomVehicleCol(customModelId, colUrl))
+    if (!SetCustomVehicleCol(customModelId))
         return false;
     return CommitCustomVehicleDef(customModelId);
 }
