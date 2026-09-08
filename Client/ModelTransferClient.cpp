@@ -80,7 +80,7 @@ void ModelTransferClient::ManualRetry(uint32_t modelId, ModelFileKind kind)
 	MainThreadQueue::Instance().Push([modelId, kind]() {
 		RakNet::BitStream bs;
 		bs.Write(static_cast<uint8_t>(PKT_CHANDLING));
-		bs.Write(static_cast<uint8_t>(CHandlingAction::ACTION_REQUEST_FILE_TRANSFER)); // ACTION_REQUEST_FILE_TRANSFER
+		bs.Write(static_cast<uint8_t>(CustomVehAction::AssetRequest)); // ACTION_REQUEST_FILE_TRANSFER
 		bs.Write(modelId);
 		bs.Write(static_cast<uint8_t>(kind));
 		rakhook::send(&bs, HIGH_PRIORITY, RELIABLE_ORDERED, TransferConfig::Instance().RequestChannel);
@@ -111,6 +111,7 @@ void ModelTransferClient::RequestFile(uint32_t modelId, ModelFileKind kind, cons
 			p.statusText = "cached";
 			p.attempts = 0;
 			p.lastError.clear();
+			p.startTime = std::chrono::steady_clock::now();
 			m_active[Key(modelId, kind)].progress = p;
 		}
 		onReady(true, *cached);
@@ -140,7 +141,7 @@ void ModelTransferClient::RequestFile(uint32_t modelId, ModelFileKind kind, cons
 	MainThreadQueue::Instance().Push([modelId, kind]() {
 		RakNet::BitStream bs;
 		bs.Write(static_cast<uint8_t>(PKT_CHANDLING));
-		bs.Write(static_cast<uint8_t>(CHandlingAction::ACTION_REQUEST_FILE_TRANSFER)); // ACTION_REQUEST_FILE_TRANSFER
+		bs.Write(static_cast<uint8_t>(CustomVehAction::AssetRequest)); // ACTION_REQUEST_FILE_TRANSFER
 		bs.Write(modelId);
 		bs.Write(static_cast<uint8_t>(kind));
 		rakhook::send(&bs, HIGH_PRIORITY, RELIABLE_ORDERED, TransferConfig::Instance().RequestChannel);
@@ -170,6 +171,34 @@ void ModelTransferClient::FailImmediately(std::unordered_map<uint64_t, InFlight>
 			onReady(false, {});
 		std::lock_guard<std::mutex> lock(m_mutex);
 		m_active.erase(key);
+	});
+}
+
+void ModelTransferClient::CancelAll(const std::string& reason)
+{
+	std::vector<std::function<void(bool, const fs::path&)>>callbacks;
+	{
+		std::lock_guard lock(m_mutex);
+		callbacks.reserve(m_active.size());
+		for (auto& [key, entry] : m_active) {
+			entry.progress.failed = true;
+
+			entry.progress.statusText = "cancelled";
+
+			entry.progress.lastError = reason;
+
+			if (entry.onReady) {
+				callbacks.push_back(
+					entry.onReady);
+			}
+		}
+		m_active.clear();
+	}
+
+	MainThreadQueue::Instance().Push([callbacks = std::move(callbacks)]() {
+		for (const auto& callback : callbacks) {
+			callback(false, {});
+		}
 	});
 }
 
@@ -250,12 +279,26 @@ void ModelTransferClient::OnTransferChunk(RakNet::BitStream* bs)
 	}
 
 	auto& entry = it->second;
+    if (chunkIndex >= entry.progress.totalChunks)
+    {
+        ScheduleRetry(it, "chunk index out of bounds");
+        return;
+    }
 	const uint32_t offset = static_cast<std::uint64_t>(chunkIndex * 4096u);
-	if (offset + chunkLen > entry.compressedBuffer.size())
+	if (offset >= entry.compressedBuffer.size()) {
+		ScheduleRetry(it, "chunk offset out of bounds");
 		return;
+	}
+	const uint32_t remaining = static_cast<uint32_t>(entry.compressedBuffer.size() - offset);
+	if (chunkLen > remaining) {
+		ScheduleRetry(it, "chunk exceeds compressed buffer");
+		return;
+	}
 
-	if (!bs->Read(reinterpret_cast<char*>(entry.compressedBuffer.data() + offset), chunkLen))
+	if (!bs->Read(reinterpret_cast<char*>(entry.compressedBuffer.data() + offset), chunkLen)) {
+		ScheduleRetry(it, "failed to read chunk payload");
 		return;
+	}
 
 	entry.progress.receivedChunks++;
 	entry.progress.receivedBytes += chunkLen;
@@ -286,6 +329,12 @@ void ModelTransferClient::OnTransferEnd(RakNet::BitStream* bs)
 		auto it = m_active.find(key);
 		if (it == m_active.end())
 			return;
+		auto& entry = it->second;
+
+		if (entry.progress.receivedBytes != entry.progress.compressedSize) {
+			ScheduleRetry(it, "received byte count mismatch");
+			return;
+		}
 
 		compressed = std::move(it->second.compressedBuffer);
 		uncompressedSize = it->second.progress.uncompressedSize;
@@ -305,7 +354,7 @@ void ModelTransferClient::OnTransferEnd(RakNet::BitStream* bs)
 	}
 
 	std::vector<uint8_t> decompressed(uncompressedSize);
-	uLongf destLen = uncompressedSize;
+	uLongf destLen = decompressed.size();
 	bool ok = true;
 	if ((uncompressedSize == 0 && compressed.empty()) || (uncompressedSize > 0 && compressed.empty()))
 		ok = false; // defensive
@@ -321,7 +370,18 @@ void ModelTransferClient::OnTransferEnd(RakNet::BitStream* bs)
 	if (ok) {
 		// store and finish
 		bool stored = ModelCache::Instance().Store(modelId, static_cast<uint8_t>(kindByte), decompressed);
-		fs::path finalPath = stored ? ModelCache::Instance().PathFor(modelId, static_cast<uint8_t>(kindByte)) : fs::path {};
+		fs::path finalPath;
+		if (stored) {
+			finalPath = ModelCache::Instance().PathFor(modelId, static_cast<uint8_t>(kindByte));
+		}
+		else {
+			std::lock_guard lock(m_mutex);
+			auto it = m_active.find(key);
+			if (it != m_active.end()) {
+				ScheduleRetry(it, "failed to store cache file");
+			}
+			return;
+		}
 		MainThreadQueue::Instance().Push([this, key, ok, finalPath, onReady, modelId = static_cast<uint32_t>(key >> 2), kind = static_cast<ModelFileKind>(key & 0x3)] {
 			{
 				std::lock_guard<std::mutex> lock(m_mutex);
@@ -330,7 +390,7 @@ void ModelTransferClient::OnTransferEnd(RakNet::BitStream* bs)
 
 			RakNet::BitStream bs;
 			bs.Write(static_cast<uint8_t>(PKT_CHANDLING));
-			bs.Write(static_cast<uint8_t>(CHandlingAction::ACTION_FILE_TRANSFER_STORED));
+			bs.Write(static_cast<uint8_t>(CustomVehAction::AssetReady));
 			bs.Write(modelId);
 			bs.Write(static_cast<uint8_t>(kind));
 			bs.Write(static_cast<uint8_t>(ok ? 1 : 0));
@@ -356,7 +416,9 @@ void ModelTransferClient::OnTransferCancel(RakNet::BitStream* bs)
 {
 	uint32_t modelId;
 	uint8_t kindByte;
-	if (!bs->Read(modelId) || !bs->Read(kindByte))
+	if (!bs->Read(modelId))
+		return;
+	if (!bs->Read(kindByte))
 		return;
 
 	const uint64_t key = Key(modelId, static_cast<ModelFileKind>(kindByte));
@@ -367,10 +429,16 @@ void ModelTransferClient::OnTransferCancel(RakNet::BitStream* bs)
 		if (it == m_active.end())
 			return;
 
+		onReady = it->second.onReady;
 		// server explicitly canceled - schedule retry if any attempts left
 		// ScheduleRetry(it, "server canceled / file missing");
-		FailImmediately(it, "server: file not found");
+		FailImmediately(it, "server is failing to find file");
 	}
+
+	MainThreadQueue::Instance().Push([onReady]() {
+		if (onReady)
+			onReady(false, {});
+	});
 }
 
 void ModelTransferClient::ScheduleRetry(std::unordered_map<uint64_t, InFlight>::iterator it, const std::string& err)
@@ -448,7 +516,7 @@ void ModelTransferClient::WorkerMain()
 					sendTasks.emplace_back(it->first, [modelId, kind]() {
 						RakNet::BitStream bs;
 						bs.Write(static_cast<uint8_t>(PKT_CHANDLING)); // ID_CHANDLING
-						bs.Write(static_cast<uint8_t>(CHandlingAction::ACTION_REQUEST_FILE_TRANSFER)); // ACTION_REQUEST_FILE_TRANSFER
+						bs.Write(static_cast<uint8_t>(CustomVehAction::AssetRequest)); // ACTION_REQUEST_FILE_TRANSFER
 						bs.Write(modelId);
 						bs.Write(static_cast<uint8_t>(kind));
 						rakhook::send(&bs, HIGH_PRIORITY, RELIABLE_ORDERED, TransferConfig::Instance().RequestChannel);
@@ -469,7 +537,7 @@ void ModelTransferClient::WorkerMain()
 						sendTasks.emplace_back(it->first, [modelId = entry.progress.modelId, kind = entry.progress.kind]() {
 							RakNet::BitStream bs;
 							bs.Write(static_cast<uint8_t>(PKT_CHANDLING)); // ID_CHANDLING
-							bs.Write(static_cast<uint8_t>(CHandlingAction::ACTION_REQUEST_FILE_TRANSFER)); // ACTION_REQUEST_FILE_TRANSFER
+							bs.Write(static_cast<uint8_t>(CustomVehAction::AssetRequest)); // ACTION_REQUEST_FILE_TRANSFER
 							bs.Write(modelId);
 							bs.Write(static_cast<uint8_t>(kind));
 							rakhook::send(&bs, HIGH_PRIORITY, RELIABLE_ORDERED, TransferConfig::Instance().RequestChannel);

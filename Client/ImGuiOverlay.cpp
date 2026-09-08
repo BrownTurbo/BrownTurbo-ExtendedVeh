@@ -231,11 +231,6 @@ void BackgroundInitializationWorker()
 
 void c_plugin::game_loop()
 {
-	static bool configLoaded = false;
-	if (!configLoaded) {
-		configLoaded = true;
-		TransferConfig::Instance().Load();
-	}
 	static bool threadSpawned = false;
 	if (!threadSpawned) {
 		threadSpawned = true;

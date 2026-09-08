@@ -83,9 +83,9 @@ public:
 	void Shutdown();
 	void FailImmediately(std::unordered_map<uint64_t, InFlight>::iterator it, const std::string& err);
 	void ManualRetry(uint32_t modelId, ModelFileKind kind);
+	void CancelAll(const std::string& reason);
 
-private:
-	ModelTransferClient();
+	private : ModelTransferClient();
 	~ModelTransferClient();
 
 	static uint64_t Key(uint32_t modelId, ModelFileKind kind)

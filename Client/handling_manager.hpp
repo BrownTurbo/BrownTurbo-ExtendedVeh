@@ -24,27 +24,37 @@
 
 #include "ModelTransferClient.h"
 
+#include "../Shared/CustomVehicleProtocol.hpp"
+
 // Legacy Enums
-enum CHandlingAction : unsigned char {
-	ACTION_INIT = 10,
-	ACTION_INIT_RESPONSE = 11,
-	ACTION_RESET_MODEL = 15,
-	ACTION_RESET_VEHICLE = 16,
-	ACTION_SET_VEHICLE_HANDLING = 17,
-	ACTION_SET_MODEL_HANDLING = 18,
-	ACTION_SET_PLAYER_HANDLING = 19,
-	ACTION_RESET_PLAYER_HANDLING = 20,
-	ACTION_GET_VEHICLE_HANDLING = 21,
-	ACTION_GET_MODEL_HANDLING = 22,
-	ACTION_GET_PLAYER_HANDLING = 23,
-	ACTION_RESET_ALL = 24,
-	ACTION_REQUEST_FILE_TRANSFER = 30,
-	ACTION_FILE_TRANSFER_BEGIN = 31,
-	ACTION_FILE_TRANSFER_CHUNK = 32,
-	ACTION_FILE_TRANSFER_END = 33,
-	ACTION_FILE_TRANSFER_CANCEL = 34,
-	ACTION_FILE_TRANSFER_STORED = 35
-};
+using CustomVehAction = CustomVeh::Protocol::Action;
+
+inline constexpr CustomVehAction ACTION_INIT = CustomVehAction::Init;
+inline constexpr CustomVehAction ACTION_INIT_RESPONSE = CustomVehAction::InitResponse;
+inline constexpr CustomVehAction ACTION_RESET_MODEL = CustomVehAction::ResetModel;
+inline constexpr CustomVehAction ACTION_RESET_VEHICLE = CustomVehAction::ResetVehicle;
+inline constexpr CustomVehAction ACTION_SET_VEHICLE_HANDLING = CustomVehAction::SetVehicleHandling;
+inline constexpr CustomVehAction ACTION_SET_MODEL_HANDLING = CustomVehAction::SetModelHandling;
+inline constexpr CustomVehAction ACTION_SET_PLAYER_HANDLING = CustomVehAction::SetPlayerHandling;
+inline constexpr CustomVehAction ACTION_RESET_PLAYER_HANDLING = CustomVehAction::ResetPlayerHandling;
+inline constexpr CustomVehAction ACTION_GET_VEHICLE_HANDLING = CustomVehAction::GetVehicleHandling;
+inline constexpr CustomVehAction ACTION_GET_MODEL_HANDLING = CustomVehAction::GetModelHandling;
+inline constexpr CustomVehAction ACTION_GET_PLAYER_HANDLING = CustomVehAction::GetPlayerHandling;
+inline constexpr CustomVehAction ACTION_RESET_ALL = CustomVehAction::ResetAll;
+inline constexpr CustomVehAction ACTION_CUSTOM_VEHICLE_DEFINE = CustomVehAction::CustomVehicleDefine;
+inline constexpr CustomVehAction ACTION_CUSTOM_VEHICLE_BIND = CustomVehAction::CustomVehicleBind;
+inline constexpr CustomVehAction ACTION_CUSTOM_VEHICLE_UNBIND = CustomVehAction::CustomVehicleUnbind;
+inline constexpr CustomVehAction ACTION_CUSTOM_VEHICLE_DESTROY = CustomVehAction::CustomVehicleDestroy;
+inline constexpr CustomVehAction ACTION_ASSET_MANIFEST = CustomVehAction::AssetManifest;
+inline constexpr CustomVehAction ACTION_ASSET_REQUEST = CustomVehAction::AssetRequest;
+inline constexpr CustomVehAction ACTION_ASSET_RESUME = CustomVehAction::AssetResume;
+inline constexpr CustomVehAction ACTION_ASSET_BEGIN = CustomVehAction::AssetBegin;
+inline constexpr CustomVehAction ACTION_ASSET_CHUNK = CustomVehAction::AssetChunk;
+inline constexpr CustomVehAction ACTION_ASSET_END = CustomVehAction::AssetEnd;
+inline constexpr CustomVehAction ACTION_ASSET_VERIFIED = CustomVehAction::AssetVerified;
+inline constexpr CustomVehAction ACTION_ASSET_CANCEL = CustomVehAction::AssetCancel;
+inline constexpr CustomVehAction ACTION_ASSET_REJECTED = CustomVehAction::AssetRejected;
+inline constexpr CustomVehAction ACTION_ASSET_READY = CustomVehAction::AssetReady;
 
 enum CHandlingAttrib : unsigned char {
 	HANDL_UIDENTIFIER = 1,
@@ -139,7 +149,7 @@ public:
 	static void ResetVehicleHandling(CVehicle* pVehicle);
 
 	// Network packet processors
-	static bool ProcessAction(CHandlingAction action, RakNet::BitStream* bs);
+	static bool ProcessAction(CustomVehAction action, RakNet::BitStream* bs);
 	static void ProcessVehicleMods(uint16_t sampVehicleId, const std::vector<HandlingAttribEntry>& entries);
 	static void ProcessModelMods(uint16_t modelId, const std::vector<HandlingAttribEntry>& entries);
 	static void ProcessPlayerMods(uint16_t playerId, const std::vector<HandlingAttribEntry>& entries);
@@ -201,5 +211,5 @@ private:
 public:
 	static void ProcessPendingCommands();
 
-	static void SendHandlingPacket(CHandlingAction action, RakNet::BitStream* bs);
+	static void SendHandlingPacket(CustomVehAction action, RakNet::BitStream* bs);
 };

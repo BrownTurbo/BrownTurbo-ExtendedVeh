@@ -189,5 +189,32 @@ struct AssetVerified {
 	std::string sha256;
 };
 
+struct AssetCancel
+{
+	std::uint16_t protocol;
+	std::uint32_t transferId;
+	std::uint32_t customModelId;
+	AssetType type;
+	RejectReason reason;
+};
+
+struct AssetRejected
+{
+	std::uint16_t protocol;
+	std::uint32_t transferId;
+	std::uint32_t customModelId;
+	AssetType type;
+	RejectReason reason;
+	char message[128];
+};
+
+struct AssetReady
+{
+	std::uint16_t protocol;
+	std::uint32_t transferId;
+	std::uint32_t customModelId;
+	AssetType type;
+};
+
 #pragma pack(pop)
 }

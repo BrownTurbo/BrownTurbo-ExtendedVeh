@@ -32,6 +32,8 @@ constexpr uint32_t EXTENDEDVEH_COMPAT_VERSION = 0x1001D;
 constexpr uint16_t RPC_WORLD_VEHICLE_ADD = 164;
 constexpr uint16_t RPC_CUSTOM_VEHICLE_DEF = 250;
 constexpr uint16_t RPC_DESTROY_CUSTOM_VEHICLE_MODEL = 251;
+constexpr uint16_t RPC_WorldPlayerAdd = 137;
+constexpr uint16_t RPC_WorldPlayerRemove = 138;
 
 constexpr uint32_t BASE_MODEL_START = 400;
 constexpr uint32_t BASE_MODEL_END = 611;

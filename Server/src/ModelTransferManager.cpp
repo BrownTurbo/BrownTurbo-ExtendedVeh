@@ -161,7 +161,7 @@ void OnRequestFile(IPlayer& player, uint32_t modelId, ModelFileKind kind)
 	const CachedFile* cached = GetOrLoadCache(modelId, kind);
 	if (!cached)
 	{
-		CHandlingActionPacket cancel(ACTION_FILE_TRANSFER_CANCEL);
+		CHandlingActionPacket cancel(ACTION_ASSET_CANCEL);
 		cancel.data.Write(modelId);
 		cancel.data.Write(static_cast<uint8_t>(kind));
 		player.sendPacket(
@@ -180,7 +180,7 @@ void OnRequestFile(IPlayer& player, uint32_t modelId, ModelFileKind kind)
 
 	const uint32_t totalChunks = (static_cast<uint32_t>(cached->compressed.size()) + kFileChunkSize - 1) / kFileChunkSize;
 
-	CHandlingActionPacket begin(ACTION_FILE_TRANSFER_BEGIN);
+	CHandlingActionPacket begin(ACTION_ASSET_BEGIN);
 	begin.data.Write(modelId);
 	begin.data.Write(static_cast<uint8_t>(kind));
 	begin.data.Write(static_cast<uint32_t>(cached->compressed.size()));
@@ -242,7 +242,11 @@ void ProcessTick()
 	if (!core)
 		return;
 
-	const size_t count = g_activeTransfers.size();
+	size_t count = 0;
+	{
+		std::lock_guard<std::mutex> lock(g_activeMutex);
+		count = g_activeTransfers.size();
+	}
 	for (size_t i = 0; i < count; ++i)
 	{
 		ActiveTransfer transfer = g_activeTransfers.front();
@@ -266,17 +270,13 @@ void ProcessTick()
 			const uint32_t remaining = static_cast<uint32_t>(cached->compressed.size()) - offset;
 			const uint16_t chunkLen = static_cast<uint16_t>(std::min<uint32_t>(remaining, kFileChunkSize));
 
-			CHandlingActionPacket chunkPkt(ACTION_FILE_TRANSFER_CHUNK);
+			CHandlingActionPacket chunkPkt(ACTION_ASSET_CHUNK);
 			chunkPkt.data.Write(transfer.modelId);
 			chunkPkt.data.Write(static_cast<uint8_t>(transfer.kind));
 			chunkPkt.data.Write(transfer.nextChunkIndex);
 			chunkPkt.data.Write(chunkLen);
-			chunkPkt.data.Write(
-				reinterpret_cast<const char*>(cached->compressed.data() + offset),
-				chunkLen);
-			player->sendPacket(Span<uint8_t>(chunkPkt.data.GetData(),
-								   chunkPkt.data.GetNumberOfBytesUsed()),
-				kFileTransferChannel, true);
+			chunkPkt.data.Write(reinterpret_cast<const char*>(cached->compressed.data() + offset), chunkLen);
+			player->sendPacket(Span<uint8_t>(chunkPkt.data.GetData(), chunkPkt.data.GetNumberOfBytesUsed()), kFileTransferChannel, true);
 
 			++transfer.nextChunkIndex;
 			++sentThisTick;
@@ -284,7 +284,7 @@ void ProcessTick()
 
 		if (transfer.nextChunkIndex >= transfer.totalChunks)
 		{
-			CHandlingActionPacket end(ACTION_FILE_TRANSFER_END);
+			CHandlingActionPacket end(ACTION_ASSET_END);
 			end.data.Write(transfer.modelId);
 			end.data.Write(static_cast<uint8_t>(transfer.kind));
 			player->sendPacket(
@@ -294,6 +294,7 @@ void ProcessTick()
 		}
 		else
 		{
+			std::lock_guard<std::mutex> lock(g_activeMutex);
 			g_activeTransfers.push_back(transfer);
 		}
 	}

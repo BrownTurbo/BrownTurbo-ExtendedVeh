@@ -9,7 +9,6 @@
 #include "utils.h"
 
 #include "CustomVehicleBindingManager.h"
-#include "CustomVehicleProtocol.hpp"
 #include "streamingextender.hpp"
 #include <cstring>
 #include <deque>
@@ -814,7 +813,7 @@ void HandlingManager::OnVehicleDestructor(CVehicle* pVehicle)
 	}
 }
 
-void HandlingManager::SendHandlingPacket(CHandlingAction action, RakNet::BitStream* bs)
+void HandlingManager::SendHandlingPacket(CustomVehAction action, RakNet::BitStream* bs)
 {
 	RakNet::BitStream packet;
 	packet.Write((uint8_t)PKT_CHANDLING);
@@ -825,7 +824,7 @@ void HandlingManager::SendHandlingPacket(CHandlingAction action, RakNet::BitStre
 	rakhook::send(&packet, HIGH_PRIORITY, RELIABLE_ORDERED, 0);
 }
 
-bool HandlingManager::ProcessAction(CHandlingAction action, RakNet::BitStream* bs)
+bool HandlingManager::ProcessAction(CustomVehAction action, RakNet::BitStream* bs)
 {
 	if (action != ACTION_RESET_ALL && bs == nullptr)
 		return false;
@@ -996,23 +995,23 @@ bool HandlingManager::ProcessAction(CHandlingAction action, RakNet::BitStream* b
 		}
 		return false;
 	}
-	case ACTION_FILE_TRANSFER_BEGIN: {
+	case ACTION_ASSET_BEGIN: {
 		ModelTransferClient::Instance().OnTransferBegin(bs);
 		return false;
 	}
-	case ACTION_FILE_TRANSFER_CHUNK: {
+	case ACTION_ASSET_CHUNK: {
 		ModelTransferClient::Instance().OnTransferChunk(bs);
 		return false;
 	}
-	case ACTION_FILE_TRANSFER_END: {
+	case ACTION_ASSET_END: {
 		ModelTransferClient::Instance().OnTransferEnd(bs);
 		return false;
 	}
-	case ACTION_FILE_TRANSFER_CANCEL: {
+	case ACTION_ASSET_CANCEL: {
 		ModelTransferClient::Instance().OnTransferCancel(bs);
 		return false;
 	}
-	case static_cast<CHandlingAction>(CustomVeh::Protocol::Action::CustomVehicleBind): {
+	case static_cast<CustomVehAction>(CustomVeh::Protocol::Action::CustomVehicleBind): {
 		CustomVeh::Protocol::VehicleBinding binding {};
 		if (bs->Read(reinterpret_cast<char*>(&binding), sizeof(binding))) {
 			CustomVehicleBindingManager::Instance().Bind(
@@ -1020,7 +1019,7 @@ bool HandlingManager::ProcessAction(CHandlingAction action, RakNet::BitStream* b
 		}
 		return false;
 	}
-	case static_cast<CHandlingAction>(CustomVeh::Protocol::Action::CustomVehicleUnbind): {
+	case static_cast<CustomVehAction>(CustomVeh::Protocol::Action::CustomVehicleUnbind): {
 		CustomVeh::Protocol::VehicleUnbinding unbinding {};
 		if (bs->Read(reinterpret_cast<char*>(&unbinding), sizeof(unbinding))) {
 			CustomVehicleBindingManager::Instance().Unbind(unbinding.sampVehicleId);

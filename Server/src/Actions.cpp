@@ -11,7 +11,7 @@ namespace HandlingMgr
 void __WriteHandlingEntryToBitStream(NetworkBitStream* bs, const struct stHandlingEntry entry);
 }
 
-bool Actions::Process(CHandlingAction id, NetworkBitStream& bs, IPlayer& player)
+bool Actions::Process(CustomVehAction id, NetworkBitStream& bs, IPlayer& player)
 {
 	switch (id)
 	{
@@ -21,7 +21,7 @@ bool Actions::Process(CHandlingAction id, NetworkBitStream& bs, IPlayer& player)
 		if (!bs.Read(compat_ver))
 			return false;
 
-		CHandlingActionPacket pkt(ACTION_INIT_RESPONSE);
+		CustomVehActionPacket pkt(ACTION_INIT_RESPONSE);
 		pkt.data.Write((uint32_t)EXTVEH_COMPAT_VERSION);
 
 		int playerid = player.getID();
@@ -103,7 +103,7 @@ bool Actions::Process(CHandlingAction id, NetworkBitStream& bs, IPlayer& player)
 		{
 			return false;
 		}
-		struct CHandlingActionPacket response(ACTION_SET_VEHICLE_HANDLING);
+		struct CustomVehActionPacket response(ACTION_SET_VEHICLE_HANDLING);
 		response.data.Write(vehicleId);
 		HandlingMgr::__WriteHandlingEntryToBitStream(&response.data, it->second);
 		player.sendPacket(Span<uint8_t>(response.data.GetData(), response.data.GetNumberOfBytesUsed()), 0, true);
@@ -126,7 +126,7 @@ bool Actions::Process(CHandlingAction id, NetworkBitStream& bs, IPlayer& player)
 			return false;
 		}
 
-		struct CHandlingActionPacket response(ACTION_SET_MODEL_HANDLING);
+		struct CustomVehActionPacket response(ACTION_SET_MODEL_HANDLING);
 		response.data.Write(modelId);
 		HandlingMgr::__WriteHandlingEntryToBitStream(&response.data, *entry);
 		player.sendPacket(Span<uint8_t>(response.data.GetData(), response.data.GetNumberOfBytesUsed()), 0, true);
@@ -142,7 +142,7 @@ bool Actions::Process(CHandlingAction id, NetworkBitStream& bs, IPlayer& player)
 		{
 			return false;
 		}
-		struct CHandlingActionPacket response(ACTION_SET_PLAYER_HANDLING);
+		struct CustomVehActionPacket response(ACTION_SET_PLAYER_HANDLING);
 		response.data.Write(playerId);
 		HandlingMgr::__WriteHandlingEntryToBitStream(&response.data, it->second);
 		player.sendPacket(Span<uint8_t>(response.data.GetData(), response.data.GetNumberOfBytesUsed()), 0, true);
@@ -156,7 +156,7 @@ bool Actions::Process(CHandlingAction id, NetworkBitStream& bs, IPlayer& player)
 		HandlingMgr::ResetAll(playerId);
 		return false;
 	}
-	case ACTION_REQUEST_FILE_TRANSFER:
+	case ACTION_ASSET_REQUEST:
 	{
 		uint32_t modelId;
 		uint8_t kindByte;
@@ -165,7 +165,7 @@ bool Actions::Process(CHandlingAction id, NetworkBitStream& bs, IPlayer& player)
 		ModelTransferMgr::OnRequestFile(player, modelId, static_cast<ModelFileKind>(kindByte));
 		return true;
 	}
-	case ACTION_FILE_TRANSFER_CANCEL:
+	case ACTION_ASSET_CANCEL:
 	{
 		uint32_t modelId;
 		uint8_t kindByte;
@@ -174,7 +174,7 @@ bool Actions::Process(CHandlingAction id, NetworkBitStream& bs, IPlayer& player)
 		ModelTransferMgr::CancelTransfer(player, modelId, static_cast<ModelFileKind>(kindByte));
 		return true;
 	}
-	case ACTION_FILE_TRANSFER_STORED:
+	case ACTION_ASSET_READY:
 	{
 		uint32_t modelId;
 		uint8_t kindByte;

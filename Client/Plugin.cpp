@@ -53,6 +53,8 @@
 #include "ImGuiOverlay.h"
 #include "CustomVehicleProtocol.hpp"
 #include "crypto.hpp"
+#include "MainThreadQueue.h"
+#include "ModelCache.h"
 
 namespace fs = std::filesystem;
 using namespace plugin;
@@ -334,15 +336,20 @@ public:
 	{
 		Events::initRwEvent.Add([this]() {
 			if (!m_runtimeInitialized) {
-				fs::create_directories("models");
+				fs::create_directories(GetSampCacheRoot());
 				// AudioExtender::InstallHooks();
+				TransferConfig::Instance().Load();
+				ModelCache::Instance().Sweep();
 				m_runtimeInitialized = true;
 			}
 		});
 
 		Events::shutdownRwEvent.Add([this]() {
+			ModelTransferClient::Instance().CancelAll("client shutdown");
+			ModelTransferClient::Instance().Shutdown();
 			// AudioExtender::RestoreHooks();
 			StreamingExtender::ClearAllCustomModels();
+			m_runtimeInitialized = false;
 		});
 
 		StreamingExtender::SetDestructionCallback([](uint32_t modelId) {
@@ -433,6 +440,22 @@ public:
 		}
 	}
 
+	void onPlayerStreamIn(uint16_t playerId)
+	{
+		MainThreadQueue::Instance().Push([playerId]() {
+			//
+		});
+	}
+
+	void onPlayerStreamOut(uint16_t playerId)
+	{
+		MainThreadQueue::Instance().Push([playerId]() {
+			_customVehInstance.RequestClearAllCustomModels();
+			HandlingManager::ProcessAction(ACTION_RESET_ALL, nullptr);
+			ModelTransferClient::Instance().CancelAll("server connection lost");
+		});
+	}
+
 	~CustomVehiclesASI() = default;
 } _customVehInstance;
 
@@ -456,19 +479,19 @@ void InitializeHooks()
 	}
 
 	rakhook::on_receive_rpc += [](unsigned char& id, RakNet::BitStream* bs) -> bool {
-		if (id == RPC_CUSTOM_VEHICLE_DEF) {
-			CustomVeh::Protocol::VehicleDefinition def;
-			if (!_customVehInstance.ReadVehicleDefinition(*bs, def))
-				return false;
-			_customVehInstance.HandleCustomVehicleDef(def);
-			return false;
-		} else if (id == RPC_DESTROY_CUSTOM_VEHICLE_MODEL) {
-			uint32_t customModelId;
-
-			if (bs->Read(customModelId)) {
-				_customVehInstance.PushDestructionCommand(customModelId);
-			}
-			return false;
+		if (id == RPC_WorldPlayerAdd) {
+			size_t originalOffset = bs->GetReadOffset();
+            uint16_t playerId = 0;
+            bs->Read(playerId);
+            bs->SetReadOffset(originalOffset);
+            _customVehInstance.onPlayerStreamIn(playerId);
+        }
+        else if (id == RPC_WorldPlayerRemove) {
+			size_t originalOffset = bs->GetReadOffset();
+            uint16_t playerId = 0;
+            bs->Read(playerId);
+			bs->SetReadOffset(originalOffset);
+			_customVehInstance.onPlayerStreamOut(playerId);
 		}
 		return true;
 	};
@@ -479,8 +502,25 @@ void InitializeHooks()
 			RakNet::BitStream bs(packet->data, packet->length, false);
 			bs.IgnoreBits(8);
 
-			CHandlingAction actionID;
+			CustomVehAction actionID;
 			bs.Read(actionID);
+			if (actionId == CustomVehAction::CustomVehicleDefine) {
+				CustomVeh::Protocol::VehicleDefinition def;
+				if (!_customVehInstance.ReadVehicleDefinition(bs, def)) {
+					SendMsg(0xFF0000, "[CustomVeh] Failed to read vehicle definition from packet");
+					return false;
+				}
+				_customVehInstance.HandleCustomVehicleDef(def);
+				return false;
+			}
+			else if (actionId == CustomVehAction::CustomVehicleDestory) {
+				if (!bs->Read(customModelId)) {
+					SendMsg(0xFF0000, "[CustomVeh] Failed to read vehicle modelId from packet");
+					return false;
+				}
+				_customVehInstance.PushDestructionCommand(customModelId);
+				return false;
+			}
 			return HandlingManager::ProcessAction(actionID, &bs);
 		} else if (packetId == ID_DISCONNECTION_NOTIFICATION || packetId == ID_CONNECTION_LOST || packetId == ID_CONNECTION_BANNED) {
 			_customVehInstance.RequestClearAllCustomModels();
@@ -509,6 +549,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD dwReason, LPVOID lpReserved)
 		};
 		static CVehicle* s_prevLocalVehicle = nullptr;
 		Events::gameProcessEvent += []() {
+			MainThreadQueue::Instance().DrainOnMainThread();
 			Plugn->game_loop();
 			_customVehInstance.ProcessPendingDefinitions();
 			_customVehInstance.ProcessCompletedDownloads();

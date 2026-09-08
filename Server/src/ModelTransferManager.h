@@ -28,11 +28,6 @@ void ProcessTick();
 // ever hot-swap a model's files on disk without restarting the server.
 void InvalidateCache(uint32_t modelId, ModelFileKind kind);
 
-// Compute SHA-256 (hex) of a file under models directory. relativePath is relative to the models directory and
-// is resolved under the server models directory (no path traversal allowed).
-// Returns true on success and writes the 64-hex string into outHex.
-bool ComputeFileSha256(const std::string& relativePath, std::string& outHex);
-
 // Called when a CLIENT reports that it successfully (or unsuccessfully)
 void OnClientReportFileStored(IPlayer& player, uint32_t modelId, ModelFileKind kind, bool success);
 
