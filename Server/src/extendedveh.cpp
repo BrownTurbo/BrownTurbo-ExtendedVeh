@@ -11,19 +11,7 @@
 #include "Natives.h"
 #include "PacketEnum.h"
 
-#include <pawn-natives/NativeFunc.hpp>
-namespace NativeHook
-{
-std::unordered_map<amx_native_fn_t, std::function<cell(AMX*, cell*, amx_native_fn_t)>> NativeHookManager::g_hookMap;
-}
-PawnLookup* getAmxLookups()
-{
-	static PawnLookup lookups;
-	return &lookups;
-}
 #include <pawn-natives/NativesMain.hpp>
-
-using namespace NativeHook;
 
 ICore* core_ {};
 IPawnComponent* pawn_component_ {};
@@ -33,8 +21,7 @@ StringView ExtendedVehCompo::componentName() const { return "ExtendedVeh"; }
 
 SemanticVersion ExtendedVehCompo::componentVersion() const
 {
-	return SemanticVersion(EXTVEH_VERSION_MAJOR, EXTVEH_VERSION_MINOR,
-		EXTVEH_VERSION_PATCH, 0);
+	return SemanticVersion(EXTVEH_VERSION_MAJOR, EXTVEH_VERSION_MINOR, EXTVEH_VERSION_PATCH, 0);
 }
 
 void ExtendedVehCompo::onLoad(ICore* c)
@@ -129,7 +116,11 @@ void ExtendedVehCompo::onAmxLoad(IPawnScript& script)
 	NativeHookManager::Instance().LoadAMX(script.GetAMX());
 	RegisterNativeHooks();
 
-	pawn_natives::AmxLoad(script.GetAMX());
+	AMX* amx = static_cast<AMX*>(script.GetAMX());
+	if (amx != nullptr)
+	{
+		pawn_natives::AmxLoad(amx);
+	}
 
 	core_->logLn(LogLevel::Message, "");
 	core_->logLn(LogLevel::Message, " =======================================================================");

@@ -3,11 +3,12 @@
 
 #include <Impl/network_impl.hpp>
 #include <Impl/pool_impl.hpp>
+#include <pawn-natives/NativeFunc.hpp>
+#define PAWN_NATIVES_HAS_FUNC
 #include <sdk.hpp>
 #include <Server/Components/Pawn/pawn.hpp>
 #include <Server/Components/Vehicles/vehicle_components.hpp>
 #include <Server/Components/Vehicles/vehicles.hpp>
-
 #include <RakNet/bitstream.hpp>
 
 #include <algorithm>

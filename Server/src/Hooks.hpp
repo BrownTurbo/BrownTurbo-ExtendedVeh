@@ -45,6 +45,8 @@ struct KeyHash
 	}
 };
 
+static std::unordered_map<amx_native_fn_t, std::function<cell(AMX*, cell*, amx_native_fn_t)>> g_hookMap;
+
 class NativeHookManager
 {
 public:
@@ -187,8 +189,6 @@ private:
 		}
 		return -1;
 	}
-
-	static std::unordered_map<amx_native_fn_t, std::function<cell(AMX*, cell*, amx_native_fn_t)>> g_hookMap;
 
 	static cell HookTrampoline(AMX* amx, cell* params)
 	{
