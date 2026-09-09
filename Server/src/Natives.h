@@ -89,6 +89,11 @@ inline cell OnDestroyVehicleHook(AMX* amx, cell* params, amx_native_fn_t orig)
 			core_->logLn(LogLevel::Debug, "[ExtendedVeh] Hooked DestroyVehicle");
 		}
 	}
+	const int vehicleid = static_cast<int>(params[1]);
+	if (vehicleid != INVALID_VEHICLE_ID)
+	{
+		HandlingMgr::OnDestroyVehicle(vehicleid);
+	}
 	return orig(amx, params);
 }
 }

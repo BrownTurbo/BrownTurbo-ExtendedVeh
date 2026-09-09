@@ -12,6 +12,7 @@
 #include <Server/Components/Vehicles/vehicles.hpp>
 #include <array>
 #include <string>
+#include <array>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -52,7 +53,8 @@ stHandlingEntry* GetModelHandlingEntry(uint32_t modelid);
 void ProcessTick();
 
 void InitializeModelHandlings();
-void OnCreateVehicle(int vehicleid); // needs to be called after pawn's CreateVehicle is called in order to reset the data
+void OnCreateVehicle(int vehicleid);
+void OnDestroyVehicle(int vehicleid);
 void OnPlayerConnect(IPlayer& player); // call this from OnPlayerConnect (or rather from ACTION_INIT handler) so model handling modifications are sent to the player
 void OnPlayerDisconnect(IPlayer& player, PeerDisconnectReason reason);
 void OnVehicleStreamIn(IVehicle& vehicle, IPlayer& player); // call from OnVehicleStreamIn so handling modifications for this individual vehicle are sent to the player

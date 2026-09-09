@@ -27,6 +27,8 @@ std::unordered_map<uint32_t, CustomVeh::Protocol::VehicleDefinition> stagedCusto
 std::unordered_set<uint16_t> usOutgoingVehicleMods;
 std::unordered_set<uint32_t> usOutgoingModelMods;
 
+std::unordered_map<int, IVehicle*> vehiclesIdMap;
+
 stHandlingEntry* GetModelHandlingEntry(uint32_t modelid)
 {
 	if (CVehicleMgr::IsBaseVehicleModel(modelid))
@@ -318,8 +320,19 @@ void OnCreateVehicle(int vehicleid)
 	IVehicle* pVeh = compo->GetVehicleByID(vehicleid);
 	if (pVeh)
 	{
+		vehiclesIdMap[vehicleid] = pVeh;
 		ResetVehicleHandling(*pVeh, false);
 	}
+}
+
+void OnDestroyVehicle(int vehicleid)
+{
+	IVehicle* pVeh = vehiclesIdMap[vehicleid];
+	if (pVeh)
+	{
+		ResetVehicleHandling(*pVeh, false);
+	}
+	vehiclesIdMap.erase(vehicleid);
 }
 
 void OnPlayerConnect(IPlayer& player)
