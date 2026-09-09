@@ -194,7 +194,7 @@ private:
 			return -1;
 
 		int num_natives = 0;
-		if (amx_NumNatives(amx, &num_natives) != AMX_ERR_NONE)
+		if (amx_NumNatives(amx, &num_natives) == AMX_ERR_NONE)
 			return -1;
 		char native_name[64];
 		for (int idx = 0; idx < num_natives; idx++)
