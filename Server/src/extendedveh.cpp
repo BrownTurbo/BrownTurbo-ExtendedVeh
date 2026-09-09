@@ -177,15 +177,6 @@ void ExtendedVehCompo::onFree(IComponent* component)
 		vehicles_ = nullptr;
 	else if (component == this)
 		core_->getEventDispatcher().removeEventHandler(this);
-
-	core_->logLn(LogLevel::Message, "");
-	core_->logLn(LogLevel::Message, " =======================================================================");
-	core_->logLn(LogLevel::Message,
-		"  ExtendedVehicles %d.%d.%d%s by Zorono) unloaded!",
-		EXTVEH_VERSION_MAJOR, EXTVEH_VERSION_MINOR, EXTVEH_VERSION_PATCH,
-		(EXTVEH_PHASE_DEV ? "-dev" : ""));
-	core_->logLn(LogLevel::Message, " =======================================================================");
-	core_->logLn(LogLevel::Message, "");
 }
 
 void ExtendedVehCompo::reset() { }
