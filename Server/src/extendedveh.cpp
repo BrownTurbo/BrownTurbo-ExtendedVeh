@@ -83,6 +83,10 @@ void ExtendedVehCompo::onInit(IComponentList* components)
 	}
 
 	core_->getEventDispatcher().addEventHandler(this);
+
+	setAmxFunctions(pawn_component_->getAmxFunctions());
+	setAmxLookups(components);
+
 	if (pawn_component_)
 	{
 		pawn_component_->getEventDispatcher().addEventHandler(this);
