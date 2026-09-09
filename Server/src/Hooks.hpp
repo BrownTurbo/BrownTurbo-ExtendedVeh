@@ -192,11 +192,21 @@ private:
 	{
 		if (!amx)
 			return -1;
-		int index = -1;
-		const signed int result = amx_FindNative(amx, name.c_str(), &index);
-		if (result != AMX_ERR_NONE)
+
+		int num_natives = 0;
+		if (amx_NumNatives(amx, &num_natives) != AMX_ERR_NONE)
 			return -1;
-		return index;
+		char native_name[64];
+		for (int idx = 0; idx < num_natives; idx++)
+		{
+			native_name[0] = '\0';
+			if (amx_GetNative(amx, idx, native_name) != AMX_ERR_NONE) {
+				if(strcmp(native_name, name.c_str()) == 0) {
+					return idx;
+				}
+			}
+		}
+		return -1;
 	}
 
 	static cell HookTrampoline(AMX* amx, cell* params)
