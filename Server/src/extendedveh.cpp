@@ -32,6 +32,18 @@ void ExtendedVehCompo::onLoad(ICore* c)
 	get() = this;
 
 	core_->getPlayers().getPlayerConnectDispatcher().addEventHandler(this);
+
+	HandlingDefault::Initialize();
+	HandlingMgr::InitializeModelHandlings();
+
+	core_->logLn(LogLevel::Message, "");
+	core_->logLn(LogLevel::Message, " =======================================================================");
+	core_->logLn(LogLevel::Message,
+		"  ExtendedVehicles %d.%d.%d%s by Zorono loaded!",
+		EXTVEH_VERSION_MAJOR, EXTVEH_VERSION_MINOR, EXTVEH_VERSION_PATCH,
+		(EXTVEH_PHASE_DEV ? "-dev" : ""));
+	core_->logLn(LogLevel::Message, " =======================================================================");
+	core_->logLn(LogLevel::Message, "");
 }
 
 IVehicle* ExtendedVehCompo::GetVehicleByID(int vehicleid)
@@ -115,8 +127,6 @@ void ExtendedVehCompo::onInit(IComponentList* components)
 
 void ExtendedVehCompo::onAmxLoad(IPawnScript& script)
 {
-	HandlingDefault::Initialize();
-	HandlingMgr::InitializeModelHandlings();
 	NativeHookManager::Instance().LoadAMX(script.GetAMX());
 	RegisterNativeHooks();
 
@@ -125,29 +135,11 @@ void ExtendedVehCompo::onAmxLoad(IPawnScript& script)
 	{
 		pawn_natives::AmxLoad(amx);
 	}
-
-	core_->logLn(LogLevel::Message, "");
-	core_->logLn(LogLevel::Message, " =======================================================================");
-	core_->logLn(LogLevel::Message,
-		"  ExtendedVehicles %d.%d.%d%s by Zorono loaded!",
-		EXTVEH_VERSION_MAJOR, EXTVEH_VERSION_MINOR, EXTVEH_VERSION_PATCH,
-		(EXTVEH_PHASE_DEV ? "-dev" : ""));
-	core_->logLn(LogLevel::Message, " =======================================================================");
-	core_->logLn(LogLevel::Message, "");
 };
 
 void ExtendedVehCompo::onAmxUnload(IPawnScript& script)
 {
 	NativeHookManager::Instance().UnloadAMX(script.GetAMX());
-
-	core_->logLn(LogLevel::Message, "");
-	core_->logLn(LogLevel::Message, " =======================================================================");
-	core_->logLn(LogLevel::Message,
-		"  ExtendedVehicles %d.%d.%d%s by Zorono) unloaded!",
-		EXTVEH_VERSION_MAJOR, EXTVEH_VERSION_MINOR, EXTVEH_VERSION_PATCH,
-		(EXTVEH_PHASE_DEV ? "-dev" : ""));
-	core_->logLn(LogLevel::Message, " =======================================================================");
-	core_->logLn(LogLevel::Message, "");
 };
 
 void ExtendedVehCompo::onTick(Microseconds elapsed, TimePoint now)
@@ -185,6 +177,15 @@ void ExtendedVehCompo::onFree(IComponent* component)
 		vehicles_ = nullptr;
 	else if (component == this)
 		core_->getEventDispatcher().removeEventHandler(this);
+
+	core_->logLn(LogLevel::Message, "");
+	core_->logLn(LogLevel::Message, " =======================================================================");
+	core_->logLn(LogLevel::Message,
+		"  ExtendedVehicles %d.%d.%d%s by Zorono) unloaded!",
+		EXTVEH_VERSION_MAJOR, EXTVEH_VERSION_MINOR, EXTVEH_VERSION_PATCH,
+		(EXTVEH_PHASE_DEV ? "-dev" : ""));
+	core_->logLn(LogLevel::Message, " =======================================================================");
+	core_->logLn(LogLevel::Message, "");
 }
 
 void ExtendedVehCompo::reset() { }
