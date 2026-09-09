@@ -200,7 +200,7 @@ private:
 		for (int idx = 0; idx < num_natives; idx++)
 		{
 			native_name[0] = '\0';
-			if (amx_GetNative(amx, idx, native_name) != AMX_ERR_NONE) {
+			if (amx_GetNative(amx, idx, native_name) == AMX_ERR_NONE) {
 				if(strcmp(native_name, name.c_str()) == 0) {
 					return idx;
 				}
