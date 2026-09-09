@@ -21,7 +21,7 @@ using namespace NativeHook;
 
 namespace FuncHook
 {
-inline cell OnCreateVehicleHook(AMX* amx, cell* params, NativeHook::amx_native_fn_t orig)
+inline cell OnCreateVehicleHook(AMX* amx, cell* params, amx_native_fn_t orig)
 {
 	ExtendedVehCompo* compo = ExtendedVehCompo::get();
 	if (compo)
@@ -40,7 +40,7 @@ inline cell OnCreateVehicleHook(AMX* amx, cell* params, NativeHook::amx_native_f
 	return static_cast<cell>(vehicleid);
 }
 
-inline cell OnAddStaticVehicleHook(AMX* amx, cell* params, NativeHook::amx_native_fn_t orig)
+inline cell OnAddStaticVehicleHook(AMX* amx, cell* params, amx_native_fn_t orig)
 {
 	ExtendedVehCompo* compo = ExtendedVehCompo::get();
 	if (compo)
@@ -59,7 +59,7 @@ inline cell OnAddStaticVehicleHook(AMX* amx, cell* params, NativeHook::amx_nativ
 	return static_cast<cell>(vehicleid);
 }
 
-inline cell OnAddStaticVehicleExHook(AMX* amx, cell* params, NativeHook::amx_native_fn_t orig)
+inline cell OnAddStaticVehicleExHook(AMX* amx, cell* params, amx_native_fn_t orig)
 {
 	ExtendedVehCompo* compo = ExtendedVehCompo::get();
 	if (compo)
@@ -78,7 +78,7 @@ inline cell OnAddStaticVehicleExHook(AMX* amx, cell* params, NativeHook::amx_nat
 	return static_cast<cell>(vehicleid);
 }
 
-inline cell OnDestroyVehicleHook(AMX* amx, cell* params, NativeHook::amx_native_fn_t orig)
+inline cell OnDestroyVehicleHook(AMX* amx, cell* params, amx_native_fn_t orig)
 {
 	ExtendedVehCompo* compo = ExtendedVehCompo::get();
 	if (compo)
