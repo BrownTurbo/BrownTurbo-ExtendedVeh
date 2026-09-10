@@ -25,7 +25,7 @@ struct RPC_WorldVehicleAdd_Data {
 #pragma pack(pop)
 
 //
-constexpr uint16_t PKT_CHANDLING = 251;
+constexpr uint16_t PKT_EXTVEH = 251;
 constexpr uint32_t EXTENDEDVEH_COMPAT_VERSION = 0x1001D;
 //
 

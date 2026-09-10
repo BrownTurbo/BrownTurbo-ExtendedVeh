@@ -80,7 +80,7 @@ void ModelTransferClient::ManualRetry(uint32_t modelId, ModelFileKind kind)
 	// Send immediate request on the main thread to avoid any RakNet threading issues.
 	MainThreadQueue::Instance().Push([modelId, kind]() {
 		RakNet::BitStream bs;
-		bs.Write(static_cast<uint8_t>(PKT_CHANDLING));
+		bs.Write(static_cast<uint8_t>(PKT_EXTVEH));
 		bs.Write(static_cast<uint8_t>(CustomVehAction::AssetRequest)); // ACTION_REQUEST_FILE_TRANSFER
 		bs.Write(modelId);
 		bs.Write(static_cast<uint8_t>(kind));
@@ -137,11 +137,11 @@ void ModelTransferClient::RequestFile(uint32_t modelId, ModelFileKind kind, cons
 		m_active[Key(modelId, kind)] = std::move(entry);
 	}
 
-	// Build RakNet packet: ID_CHANDLING (251) + ACTION_REQUEST_FILE_TRANSFER (30) + modelId + kind
+	// Build RakNet packet: PKT_EXTVEH (251) + ACTION_REQUEST_FILE_TRANSFER (30) + modelId + kind
 	// We enqueue the send on main thread to be safe: main-thread send avoids any RakNet thread-safety issues.
 	MainThreadQueue::Instance().Push([modelId, kind]() {
 		RakNet::BitStream bs;
-		bs.Write(static_cast<uint8_t>(PKT_CHANDLING));
+		bs.Write(static_cast<uint8_t>(PKT_EXTVEH));
 		bs.Write(static_cast<uint8_t>(CustomVehAction::AssetRequest)); // ACTION_REQUEST_FILE_TRANSFER
 		bs.Write(modelId);
 		bs.Write(static_cast<uint8_t>(kind));
@@ -390,7 +390,7 @@ void ModelTransferClient::OnTransferEnd(RakNet::BitStream* bs)
 			}
 
 			RakNet::BitStream bs;
-			bs.Write(static_cast<uint8_t>(PKT_CHANDLING));
+			bs.Write(static_cast<uint8_t>(PKT_EXTVEH));
 			bs.Write(static_cast<uint8_t>(CustomVehAction::AssetReady));
 			bs.Write(modelId);
 			bs.Write(static_cast<uint8_t>(kind));
@@ -516,7 +516,7 @@ void ModelTransferClient::WorkerMain()
 					ModelFileKind kind = entry.progress.kind;
 					sendTasks.emplace_back(it->first, [modelId, kind]() {
 						RakNet::BitStream bs;
-						bs.Write(static_cast<uint8_t>(PKT_CHANDLING)); // ID_CHANDLING
+						bs.Write(static_cast<uint8_t>(PKT_EXTVEH)); // PKT_EXTVEH
 						bs.Write(static_cast<uint8_t>(CustomVehAction::AssetRequest)); // ACTION_REQUEST_FILE_TRANSFER
 						bs.Write(modelId);
 						bs.Write(static_cast<uint8_t>(kind));
@@ -537,7 +537,7 @@ void ModelTransferClient::WorkerMain()
 						// schedule retry now (no error string available because we timed out)
 						sendTasks.emplace_back(it->first, [modelId = entry.progress.modelId, kind = entry.progress.kind]() {
 							RakNet::BitStream bs;
-							bs.Write(static_cast<uint8_t>(PKT_CHANDLING)); // ID_CHANDLING
+							bs.Write(static_cast<uint8_t>(PKT_EXTVEH)); // PKT_EXTVEH
 							bs.Write(static_cast<uint8_t>(CustomVehAction::AssetRequest)); // ACTION_REQUEST_FILE_TRANSFER
 							bs.Write(modelId);
 							bs.Write(static_cast<uint8_t>(kind));

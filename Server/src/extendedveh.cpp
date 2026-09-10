@@ -151,7 +151,7 @@ void ExtendedVehCompo::onTick(Microseconds elapsed, TimePoint now)
 bool ExtendedVehCompo::onReceivePacket(IPlayer& peer, int id,
 	NetworkBitStream& bs)
 {
-	if (id == (uint8_t)CHandlingPacketID::PKT_CHANDLING)
+	if (id == (uint8_t)ExtendedVehPacketID::PKT_EXTVEH)
 	{
 		core_->logLn(LogLevel::Debug,
 			"[ExtendedVeh] Received custom packet ID %d from player "

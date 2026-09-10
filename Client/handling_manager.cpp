@@ -816,7 +816,7 @@ void HandlingManager::OnVehicleDestructor(CVehicle* pVehicle)
 void HandlingManager::SendHandlingPacket(CustomVehAction action, RakNet::BitStream* bs)
 {
 	RakNet::BitStream packet;
-	packet.Write((uint8_t)PKT_CHANDLING);
+	packet.Write((uint8_t)PKT_EXTVEH);
 	packet.Write((uint8_t)action);
 	if (bs) {
 		packet.Write(reinterpret_cast<const char*>(bs->GetData()), bs->GetNumberOfBytesUsed());
@@ -838,9 +838,9 @@ bool HandlingManager::ProcessAction(CustomVehAction action, RakNet::BitStream* b
 
 		if (allowed && compat_ver == EXTENDEDVEH_COMPAT_VERSION) {
 			m_isServerAuthorized = true;
-			SendMsg(-1, "{00FF00}[ModernCHandling]{FFFFFF} Server authorized handling modifications.");
+			SendMsg(-1, "{00FF00}[ExtendedVeh]{FFFFFF} Server authorized handling modifications.");
 		} else {
-			SendMsg(-1, "{FF0000}[ModernCHandling] Version mismatch with server.");
+			SendMsg(-1, "{FF0000}[ExtendedVeh] Version mismatch with server.");
 		}
 		return false;
 	}

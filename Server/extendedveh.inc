@@ -1,17 +1,15 @@
 /*
- * SA:MP CHandling Server plugin
- * Server-controlled vehicle handling values & per-vehicle handlings
+ * SA:MP ExtendedVeh Server plugin
+ * Author: .silent & Zorono
  *
- * Author: .silent
- *
- * http://github.com/dotSILENT/chandling-svr
+ * http://github.com/BrownTurbo/BrownTurbo-ExtendedVeh
  *
 */
 
-#if defined _chandlingsvr_included
+#if defined _extveh_included
 #endinput
 #endif
-#define _chandlingsvr_included
+#define _extveh_included
 
 /*
  * Vehicle Model & ID Limits
@@ -172,7 +170,7 @@ enum CHandlingAttribType
  * CHandling Native Declarations
  */
 native CHandlingAttribType:GetHandlingAttribType(CHandlingAttrib:attribute);
-native bool:IsPlayerUsingCHandling(playerid);
+native bool:IsPlayerUsingExtendedVeh(playerid);
 
 // Model Handling Natives
 native bool:ResetModelHandling(customModelId);

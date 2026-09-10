@@ -338,7 +338,7 @@ void OnDestroyVehicle(int vehicleid)
 void OnPlayerConnect(IPlayer& player)
 {
 	int playerid = player.getID();
-	if (!gPlayers[playerid].hasCHandling())
+	if (!gPlayers[playerid].hasExtendedVeh())
 		return;
 
 	for (uint16_t model = 0; model < CVehicleMgr::BASE_MAX_VEHICLE_MODELS; model++)
@@ -386,7 +386,7 @@ void OnVehicleStreamIn(IVehicle& vehicle, IPlayer& player)
 	}
 
 	auto it = vehicleHandlings.find(vehicleid);
-	if (it == vehicleHandlings.end() || it->second.handlingModMap.empty() || !gPlayers[forplayerid].hasCHandling())
+	if (it == vehicleHandlings.end() || it->second.handlingModMap.empty() || !gPlayers[forplayerid].hasExtendedVeh())
 		return;
 
 	struct CustomVehActionPacket p(ACTION_SET_VEHICLE_HANDLING);

@@ -16,7 +16,7 @@ namespace
 
 		explicit ScvActionPacket(CustomVeh::Protocol::Action action)
 		{
-			data.Write(static_cast<uint8_t>(CHandlingPacketID::PKT_CHANDLING));
+			data.Write(static_cast<uint8_t>(ExtendedVehPacketID::PKT_EXTVEH));
 			data.Write(static_cast<uint8_t>(action));
 		}
 	};

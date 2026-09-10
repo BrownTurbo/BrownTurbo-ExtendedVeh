@@ -68,7 +68,7 @@ public:
 	void RequestFile(uint32_t modelId, ModelFileKind kind, const std::string& expectedSha256Hex,
 		std::function<void(bool success, const fs::path& localPath)> onReady);
 
-	// Call these on the client's ID_CHANDLING dispatcher when corresponding actions arrive
+	// Call these on the client's PKT_EXTVEH dispatcher when corresponding actions arrive
 	void OnTransferBegin(RakNet::BitStream* bs);
 	void OnTransferChunk(RakNet::BitStream* bs);
 	void OnTransferEnd(RakNet::BitStream* bs);

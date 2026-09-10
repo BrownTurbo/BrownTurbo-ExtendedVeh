@@ -28,7 +28,7 @@ bool Actions::Process(CustomVehAction id, NetworkBitStream& bs, IPlayer& player)
 		if (compat_ver >= EXTVEH_COMPAT_VERSION)
 		{
 			pkt.data.Write(true);
-			gPlayers[playerid].setHasCHandling();
+			gPlayers[playerid].sethasExtendedVeh();
 			ExtendedVehCompo* compo = ExtendedVehCompo::get();
 			ICore* core_ = compo->getCore();
 			if (core_)

@@ -4,5 +4,5 @@ std::unordered_map<int, CPlayer> gPlayers;
 
 void CPlayer::Reset()
 {
-	this->_hasCHandling = false;
+	this->_hasExtendedVeh = false;
 }

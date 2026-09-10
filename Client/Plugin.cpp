@@ -498,7 +498,7 @@ void InitializeHooks()
 
 	rakhook::on_receive_packet += [](auto* packet) -> bool {
 		uint8_t packetId = packet->data[0];
-		if (packetId == PKT_CHANDLING) {
+		if (packetId == PKT_EXTVEH) {
 			RakNet::BitStream bs(packet->data, packet->length, false);
 			bs.IgnoreBits(8);
 

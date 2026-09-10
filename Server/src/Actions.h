@@ -44,7 +44,7 @@ struct CustomVehActionPacket
 
 	CustomVehActionPacket(CustomVehAction actionID)
 	{
-		data.Write((uint8_t)CHandlingPacketID::PKT_CHANDLING);
+		data.Write((uint8_t)ExtendedVehPacketID::PKT_EXTVEH);
 		data.Write((uint8_t)actionID);
 	}
 };

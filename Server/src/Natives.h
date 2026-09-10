@@ -117,8 +117,8 @@ SCRIPT_API(GetHandlingAttribType, cell(int attr))
 	return static_cast<cell>(type);
 }
 
-// native IsPlayerUsingCHandling(playerid);
-SCRIPT_API(IsPlayerUsingCHandling, bool(IPlayer& player))
+// native IsPlayerUsingExtendedVeh(playerid);
+SCRIPT_API(IsPlayerUsingExtendedVeh, bool(IPlayer& player))
 {
 	ExtendedVehCompo* compo = ExtendedVehCompo::get();
 	if (!compo)
@@ -133,7 +133,7 @@ SCRIPT_API(IsPlayerUsingCHandling, bool(IPlayer& player))
 		IPlayer* player_ = *it;
 		if (player_->getID() == playerid)
 		{
-			return gPlayers[playerid].hasCHandling();
+			return gPlayers[playerid].hasExtendedVeh();
 		}
 	}
 	return false;

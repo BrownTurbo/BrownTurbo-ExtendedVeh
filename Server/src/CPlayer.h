@@ -9,12 +9,12 @@
 class CPlayer
 {
 private:
-	bool _hasCHandling = false;
+	bool _hasExtendedVeh = false;
 
 public:
-	bool hasCHandling() { return this->_hasCHandling; };
+	bool hasExtendedVeh() { return this->_hasExtendedVeh; };
 
-	void setHasCHandling() { this->_hasCHandling = true; };
+	void sethasExtendedVeh() { this->_hasExtendedVeh = true; };
 
 	void Reset();
 };
