@@ -1,6 +1,6 @@
 #include "Actions.h"
 #include "CHandlingStore.hpp"
-#include "CPlayer.h"
+#include "PlayerAttrs.h"
 #include "CVehicleManager.hpp"
 #include "HandlingManager.h"
 #include "ModelTransferManager.h"

@@ -4,7 +4,7 @@
 #include <cstring>
 #include <sdk.hpp>
 
-#include "CPlayer.h"
+#include "PlayerAttrs.h"
 #include "CVehicleManager.hpp"
 #include "HandlingEnum.h"
 #include "HandlingManager.h"

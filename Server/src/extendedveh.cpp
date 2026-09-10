@@ -1,7 +1,7 @@
 #include "extendedveh.h"
 
 #include "Actions.h"
-#include "CPlayer.h"
+#include "PlayerAttrs.h"
 #include "CustomVehicleBindingRegistry.h"
 #include "CustomVehicleTransport.h"
 #include "HandlingDefault.h"
@@ -10,6 +10,7 @@
 #include "ModelTransferManager.h"
 #include "Natives.h"
 #include "PacketEnum.h"
+#include "defs.h"
 
 #include <pawn-natives/NativesMain.hpp>
 

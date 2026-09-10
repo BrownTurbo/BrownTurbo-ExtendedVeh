@@ -1,6 +1,6 @@
 #include "HandlingManager.h"
 #include "Actions.h"
-#include "CPlayer.h"
+#include "PlayerAttrs.h"
 #include "CVehicleManager.hpp"
 #include "HandlingDefault.h"
 #include "PacketEnum.h"
@@ -12,6 +12,7 @@
 #include <unordered_set>
 #include <utility>
 #include "utils.h"
+#include "defs.h"
 
 namespace HandlingMgr
 {
