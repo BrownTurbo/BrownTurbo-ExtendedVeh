@@ -738,10 +738,7 @@ bool CollisionAssetRepository::DiscoverModelId(
 	}
 }
 
-std::filesystem::path
-CollisionAssetRepository::GetCollisionPath(
-	CustomModelId customModelId)
-	const
+std::filesystem::path CollisionAssetRepository::GetCollisionPath(CustomModelId customModelId) const
 {
 	return root_ / std::to_string(customModelId) / "model.col";
 }

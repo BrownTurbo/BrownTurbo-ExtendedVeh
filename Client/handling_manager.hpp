@@ -143,7 +143,6 @@ public:
 	static std::recursive_mutex m_handlingMutex;
 
 	// Direct CVehicle* functions (public, but must be called with lock if they modify)
-	static bool IsValidVehicle(CVehicle* pVehicle);
 	static void ModifyMass(CVehicle* pVehicle, float mass);
 	static void ModifyTransmission(CVehicle* pVehicle, float maxSpeed, float acceleration, int gears);
 	static void ResetVehicleHandling(CVehicle* pVehicle);

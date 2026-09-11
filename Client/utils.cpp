@@ -246,7 +246,7 @@ VehiclePoolVariant GetVehiclesPool()
 
 bool IsVehicleStreamedForLocalPlayer(CVehicle* gtaVeh)
 {
-	if (!gtaVeh)
+	if (!IsVehiclePointerValid(gtaVeh))
 		return false;
 
 	auto* localPed = FindPlayerPed();

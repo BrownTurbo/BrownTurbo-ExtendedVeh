@@ -117,14 +117,16 @@ public:
 
 	static CAEVehicleAudioEntity* GetVehicleAudioEntity(CVehicle* vehicle)
 	{
-		if (!vehicle)
+		if (!IsVehiclePointerValid(vehicle))
 			return nullptr;
 
 		return &vehicle->m_vehicleAudio;
 	}
 
-	static CustomVehicleAudioState* GetOrCreateAudioState(CVehicle& vehicle)
+	static std::optional<CustomVehicleAudioState*> GetOrCreateAudioState(CVehicle& vehicle)
 	{
+		if (!IsVehiclePointerValid(&vehicle))
+			return std::nullopt;
 		std::lock_guard<std::mutex> lock(s_audioMutex);
 		const auto vehicleRef = static_cast<uint16_t>(CPools::GetVehicleRef(&vehicle));
 		auto [it, inserted] = s_vehicleAudio.try_emplace(vehicleRef);
@@ -132,15 +134,17 @@ public:
 			it->second.vehicleId = vehicleRef;
 			it->second.engine.vehicleId = vehicleRef;
 		}
-		return &it->second;
+		return std::optional<CustomVehicleAudioState*>(&it->second);
 	}
 
-	static AudioExtender::CustomVehicleAudioState* GetAudioState(CVehicle& vehicle)
+	static std::optional<AudioExtender::CustomVehicleAudioState*> GetAudioState(CVehicle& vehicle)
 	{
+		if (!IsVehiclePointerValid(&vehicle))
+			return std::nullopt;
 		std::lock_guard<std::mutex> lock(s_audioMutex);
 		const auto vehicleRef = static_cast<uint16_t>(CPools::GetVehicleRef(&vehicle));
 		const auto it = s_vehicleAudio.find(vehicleRef);
-		return (it != s_vehicleAudio.end()) ? &it->second : nullptr;
+		return std::optional<AudioExtender::CustomVehicleAudioState*>((it != s_vehicleAudio.end()) ? &it->second : nullptr);
 	}
 
 	static void RemoveVehicleAudioState(uint16_t vehicleRef)
@@ -154,6 +158,8 @@ public:
 		const CustomVehicleAudioDefinition&
 			definition)
 	{
+		if (!IsVehiclePointerValid(&vehicle))
+			return;
 		auto& audio = vehicle.m_vehicleAudio;
 
 		if (definition.accelerateSoundBankId >= 0) {
@@ -172,6 +178,8 @@ public:
 
 	static bool InitialiseCustomVehicleAudio(CustomVehicleAudioRuntime& state, CVehicle& vehicle)
 	{
+		if (!IsVehiclePointerValid(&vehicle))
+			return false;
 		const auto modelId = static_cast<std::uint32_t>(vehicle.m_nModelIndex);
 		const auto definition = GetVehicleAudio(modelId);
 		if (!definition) {

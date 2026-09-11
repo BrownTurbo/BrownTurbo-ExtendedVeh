@@ -162,7 +162,7 @@ tHandlingData* HandlingManager::ResolveFallbackHandling(uint16_t vehicleId, int 
 
 tHandlingData* HandlingManager::ResolveFallbackHandling(CVehicle* pVehicle, uint16_t vehicleId, int modelId)
 {
-	if (pVehicle) {
+	if (IsVehiclePointerValid(pVehicle)) {
 		auto customIt = m_customHandlings.find(pVehicle);
 		if (customIt != m_customHandlings.end()) {
 			return customIt->second.get();
@@ -173,7 +173,7 @@ tHandlingData* HandlingManager::ResolveFallbackHandling(CVehicle* pVehicle, uint
 
 uint16_t HandlingManager::GetVehicleSAMPId(CVehicle* pVehicle)
 {
-	if (!pVehicle)
+	if (!IsVehiclePointerValid(pVehicle))
 		return 0xFFFF;
 
 	{
@@ -212,7 +212,7 @@ uint16_t HandlingManager::GetVehicleSAMPId(CVehicle* pVehicle)
 
 void HandlingManager::CacheVehicleSAMPId(CVehicle* vehicle, uint16_t sampId)
 {
-	if (!vehicle)
+	if (!IsVehiclePointerValid(vehicle))
 		return;
 	std::lock_guard<std::mutex> lock(m_cacheMutex);
 	auto [it, inserted] = m_vehicleToSAMPIdCache.emplace(vehicle, sampId);
@@ -223,7 +223,7 @@ void HandlingManager::CacheVehicleSAMPId(CVehicle* vehicle, uint16_t sampId)
 
 void HandlingManager::RemoveVehicleFromCache(CVehicle* vehicle)
 {
-	if (!vehicle)
+	if (!IsVehiclePointerValid(vehicle))
 		return;
 	std::lock_guard<std::mutex> lock(m_cacheMutex);
 	auto it = m_vehicleToSAMPIdCache.find(vehicle);
@@ -408,14 +408,9 @@ void* HandlingManager::ResolveAttributePointer(tHandlingData* handling, uint8_t 
 	}
 }
 
-bool HandlingManager::IsValidVehicle(CVehicle* pVehicle)
-{
-	return pVehicle != nullptr && pVehicle->m_pHandlingData != nullptr;
-}
-
 void HandlingManager::IsolateVehicleHandling(CVehicle* pVehicle)
 {
-	if (!IsValidVehicle(pVehicle))
+	if (!IsVehiclePointerValid(pVehicle) && pVehicle->m_pHandlingData != nullptr)
 		return;
 
 	if (m_customHandlings.find(pVehicle) == m_customHandlings.end()) {
@@ -430,7 +425,7 @@ void HandlingManager::IsolateVehicleHandling(CVehicle* pVehicle)
 
 void HandlingManager::ModifyMass(CVehicle* pVehicle, float mass)
 {
-	if (!IsValidVehicle(pVehicle))
+	if (!IsVehiclePointerValid(pVehicle) && pVehicle->m_pHandlingData != nullptr)
 		return;
 	std::lock_guard<std::recursive_mutex> lock(m_handlingMutex);
 	IsolateVehicleHandling(pVehicle);
@@ -443,7 +438,7 @@ void HandlingManager::ModifyMass(CVehicle* pVehicle, float mass)
 
 void HandlingManager::ModifyTransmission(CVehicle* pVehicle, float maxSpeed, float acceleration, int gears)
 {
-	if (!IsValidVehicle(pVehicle))
+	if (!IsVehiclePointerValid(pVehicle) && pVehicle->m_pHandlingData != nullptr)
 		return;
 	std::lock_guard<std::recursive_mutex> lock(m_handlingMutex);
 	IsolateVehicleHandling(pVehicle);
@@ -457,7 +452,7 @@ void HandlingManager::ModifyTransmission(CVehicle* pVehicle, float maxSpeed, flo
 
 void HandlingManager::ResetVehicleHandling(CVehicle* pVehicle)
 {
-	if (pVehicle == nullptr)
+	if (!IsVehiclePointerValid(pVehicle))
 		return;
 	std::lock_guard<std::recursive_mutex> lock(m_handlingMutex);
 
@@ -490,7 +485,7 @@ void HandlingManager::ApplyModelToVehicles(uint16_t modelId, tHandlingData* hand
 					if (!sampVeh || !sampVeh->m_pGameVehicle)
 						continue;
 					CVehicle* gtaVeh = sampVeh->m_pGameVehicle;
-					if (gtaVeh->m_nModelIndex != modelId)
+					if (!IsVehiclePointerValid(gtaVeh) || gtaVeh->m_nModelIndex != modelId)
 						continue;
 
 					if (m_vehicleHandlings.find(id) == m_vehicleHandlings.end() && m_playerAppliedHandlings.find(id) == m_playerAppliedHandlings.end() && m_customHandlings.find(gtaVeh) == m_customHandlings.end()) {
@@ -527,7 +522,7 @@ void HandlingManager::RevertModelToOriginal(uint16_t modelId)
 					if (!sampVeh || !sampVeh->m_pGameVehicle)
 						continue;
 					CVehicle* gtaVeh = sampVeh->m_pGameVehicle;
-					if (gtaVeh->m_nModelIndex != modelId)
+					if (!IsVehiclePointerValid(gtaVeh) || gtaVeh->m_nModelIndex != modelId)
 						continue;
 
 					if (m_vehicleHandlings.find(id) == m_vehicleHandlings.end() && m_playerAppliedHandlings.find(id) == m_playerAppliedHandlings.end() && m_customHandlings.find(gtaVeh) == m_customHandlings.end()) {
@@ -544,7 +539,7 @@ void HandlingManager::RevertModelToOriginal(uint16_t modelId)
 
 void HandlingManager::ApplyPlayerHandling(uint16_t playerId, CVehicle* pVehicle)
 {
-	if (!pVehicle || !pVehicle->m_pHandlingData)
+	if (!IsVehiclePointerValid(pVehicle) || !pVehicle->m_pHandlingData)
 		return;
 	std::lock_guard<std::recursive_mutex> lock(m_handlingMutex);
 
@@ -576,7 +571,7 @@ void HandlingManager::ApplyPlayerHandling(uint16_t playerId, CVehicle* pVehicle)
 
 void HandlingManager::RemovePlayerHandling(uint16_t playerId, CVehicle* pVehicle)
 {
-	if (!pVehicle)
+	if (!IsVehiclePointerValid(pVehicle))
 		return;
 	std::lock_guard<std::recursive_mutex> lock(m_handlingMutex);
 
@@ -646,7 +641,7 @@ void HandlingManager::ResetPlayerHandling(uint16_t playerId)
 		if (mapIt->second.playerId == playerId) {
 			uint16_t vehicleId = mapIt->first;
 			CVehicle* gtaVehicle = GetGameVehicleFromPool(vehicleId);
-			if (gtaVehicle) {
+			if (IsVehiclePointerValid(gtaVehicle)) {
 				int modelId = gtaVehicle->m_nModelIndex;
 				auto* modelInfo = reinterpret_cast<CVehicleModelInfo*>(GetEngineModelInfo(modelId));
 				if (modelInfo) {
@@ -673,7 +668,7 @@ void HandlingManager::ProcessVehicleMods(uint16_t sampVehicleId, const std::vect
 	std::lock_guard<std::recursive_mutex> lock(m_handlingMutex);
 
 	CVehicle* gtaVehicle = GetGameVehicleFromPool(sampVehicleId);
-	if (!gtaVehicle || !gtaVehicle->m_pHandlingData)
+	if (!IsVehiclePointerValid(gtaVehicle) || !gtaVehicle->m_pHandlingData)
 		return;
 
 	auto customIt = m_customHandlings.find(gtaVehicle);
@@ -709,7 +704,7 @@ void HandlingManager::ResetVehicle(uint16_t sampVehicleId)
 		return;
 
 	CVehicle* gtaVehicle = GetGameVehicleFromPool(sampVehicleId);
-	if (gtaVehicle) {
+	if (IsVehiclePointerValid(gtaVehicle)) {
 		int modelId = gtaVehicle->m_nModelIndex;
 
 		tHandlingData* fallback = ResolveFallbackHandling(gtaVehicle, sampVehicleId, modelId);
@@ -758,6 +753,8 @@ void HandlingManager::ResetModel(uint16_t modelId)
 
 void HandlingManager::OnVehicleDestructor(CVehicle* pVehicle)
 {
+	if (!IsVehiclePointerValid(pVehicle))
+		return;
 	std::lock_guard<std::recursive_mutex> lock(m_handlingMutex);
 
 	uint16_t vehicleId = GetVehicleSAMPId(pVehicle);
@@ -916,7 +913,7 @@ bool HandlingManager::ProcessAction(CustomVehAction action, RakNet::BitStream* b
 			data = it->second.get();
 		} else {
 			CVehicle* gtaVeh = GetGameVehicleFromPool(vehicleId);
-			if (gtaVeh) {
+			if (IsVehiclePointerValid(gtaVeh)) {
 				int modelId = gtaVeh->m_nModelIndex;
 				data = ResolveFallbackHandling(gtaVeh, vehicleId, modelId);
 			}
