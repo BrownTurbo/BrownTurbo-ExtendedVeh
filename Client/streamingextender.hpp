@@ -44,7 +44,7 @@ public:
 		memcpy(newModel, vBaseInfo, sizeof(CVehicleModelInfo));
 		newModel->m_pRwClump = nullptr;
 		newModel->m_pRwObject = nullptr;
-		newModel->SetOwnsColModel(0);
+		newModel->SetIsLod(0);
 
 		CBaseModelInfo* handlingBase = CModelInfo::GetModelInfo(def.handlingBaseModel);
 		if (handlingBase) {

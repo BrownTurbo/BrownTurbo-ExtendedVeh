@@ -126,17 +126,10 @@ SCRIPT_API(IsPlayerUsingExtendedVeh, bool(IPlayer& player))
 	ICore* core_ = compo->getCore();
 	if (!core_)
 		return false;
-	const auto& players_ = core_->getPlayers().players();
 	int playerid = player.getID();
-	for (auto it = players_.begin(); it != players_.end(); ++it)
-	{
-		IPlayer* player_ = *it;
-		if (player_->getID() == playerid)
-		{
-			return gPlayers[playerid].hasExtendedVeh();
-		}
-	}
-	return false;
+	if (core_->getPlayers().get(playerid) != nullptr)
+		return false;
+	return gPlayers[playerid].hasExtendedVeh();
 }
 
 // native ResetModelHandling(modelid);
@@ -295,17 +288,10 @@ SCRIPT_API(SetPlayerHandlingFloat, bool(IPlayer& player, CHandlingAttrib attrib,
 	ICore* core_ = compo->getCore();
 	if (!core_)
 		return false;
-	const auto& players_ = core_->getPlayers().players();
 	int playerid = player.getID();
-	for (auto it = players_.begin(); it != players_.end(); ++it)
-	{
-		IPlayer* player_ = *it;
-		if (player_->getID() == playerid)
-		{
-			return HandlingMgr::SetPlayerHandling(static_cast<uint16_t>(playerid), attrib, value);
-		}
-	}
-	return false;
+	if (core_->getPlayers().get(playerid) != nullptr)
+		return false;
+	return HandlingMgr::SetPlayerHandling(static_cast<uint16_t>(playerid), attrib, value);
 }
 
 // native ResetAllHandlingForPlayer(playerid);
@@ -317,17 +303,10 @@ SCRIPT_API(ResetAllHandlingForPlayer, bool(IPlayer& player))
 	ICore* core_ = compo->getCore();
 	if (!core_)
 		return false;
-	const auto& players_ = core_->getPlayers().players();
 	int playerid = player.getID();
-	for (auto it = players_.begin(); it != players_.end(); ++it)
-	{
-		IPlayer* player_ = *it;
-		if (player_->getID() == playerid)
-		{
-			return HandlingMgr::ResetAll(static_cast<uint16_t>(playerid));
-		}
-	}
-	return false;
+	if (core_->getPlayers().get(playerid) != nullptr)
+		return false;
+	return HandlingMgr::ResetAll(static_cast<uint16_t>(playerid));
 }
 
 // native SetPlayerHandlingInt(playerid, attrib, value);
@@ -339,19 +318,12 @@ SCRIPT_API(SetPlayerHandlingInt, bool(IPlayer& player, CHandlingAttrib attrib, i
 	ICore* core_ = compo->getCore();
 	if (!core_)
 		return false;
-	const auto& players_ = core_->getPlayers().players();
 	int playerid = player.getID();
-	for (auto it = players_.begin(); it != players_.end(); ++it)
-	{
-		IPlayer* player_ = *it;
-		if (player_->getID() == playerid)
-		{
-			if (GetHandlingAttributeType(attrib) == TYPE_BYTE)
-				return HandlingMgr::SetPlayerHandling(static_cast<uint16_t>(playerid), attrib, (uint8_t)value);
-			return HandlingMgr::SetPlayerHandling(static_cast<uint16_t>(playerid), attrib, (unsigned int)value);
-		}
-	}
-	return false;
+	if (core_->getPlayers().get(playerid) != nullptr)
+		return false;
+	if (GetHandlingAttributeType(attrib) == TYPE_BYTE)
+		return HandlingMgr::SetPlayerHandling(static_cast<uint16_t>(playerid), attrib, (uint8_t)value);
+	return HandlingMgr::SetPlayerHandling(static_cast<uint16_t>(playerid), attrib, (unsigned int)value);
 }
 
 // native GetPlayerHandlingFloat(playerid, attrib, &Float:value);
@@ -364,17 +336,10 @@ SCRIPT_API(GetPlayerHandlingFloat, bool(IPlayer& player, CHandlingAttrib attrib,
 	ICore* core_ = compo->getCore();
 	if (!core_)
 		return false;
-	const auto& players_ = core_->getPlayers().players();
 	int playerid = player.getID();
-	for (auto it = players_.begin(); it != players_.end(); ++it)
-	{
-		IPlayer* player_ = *it;
-		if (player_->getID() == playerid)
-		{
-			return HandlingMgr::GetPlayerHandling(static_cast<uint16_t>(playerid), attrib, value);
-		}
-	}
-	return false;
+	if (core_->getPlayers().get(playerid) != nullptr)
+		return false;
+	return HandlingMgr::GetPlayerHandling(static_cast<uint16_t>(playerid), attrib, value);
 }
 
 // native GetPlayerHandlingInt(playerid, attrib, &value);
@@ -387,29 +352,21 @@ SCRIPT_API(GetPlayerHandlingInt, bool(IPlayer& player, CHandlingAttrib attrib, u
 	ICore* core_ = compo->getCore();
 	if (!core_)
 		return false;
-	const auto& players_ = core_->getPlayers().players();
 	int playerid = player.getID();
-	for (auto it = players_.begin(); it != players_.end(); ++it)
+	if (core_->getPlayers().get(playerid) != nullptr)
+		return false;
+	bool ret = false;
+	if (GetHandlingAttributeType(attrib) == TYPE_BYTE)
 	{
-		IPlayer* player_ = *it;
-		if (player_->getID() == playerid)
-		{
-			bool ret = false;
-
-			if (GetHandlingAttributeType(attrib) == TYPE_BYTE)
-			{
-				uint8_t byteVal = 0;
-				ret = HandlingMgr::GetPlayerHandling(static_cast<uint16_t>(playerid), attrib, byteVal);
-				value = byteVal;
-			}
-			else
-			{
-				ret = HandlingMgr::GetPlayerHandling(static_cast<uint16_t>(playerid), attrib, value);
-			}
-			return ret;
-		}
+		uint8_t byteVal = 0;
+		ret = HandlingMgr::GetPlayerHandling(static_cast<uint16_t>(playerid), attrib, byteVal);
+		value = byteVal;
 	}
-	return false;
+	else
+	{
+		ret = HandlingMgr::GetPlayerHandling(static_cast<uint16_t>(playerid), attrib, value);
+	}
+	return ret;
 }
 
 // native ResetPlayerHandling(playerid);
@@ -421,17 +378,10 @@ SCRIPT_API(ResetPlayerHandling, bool(IPlayer& player))
 	ICore* core_ = compo->getCore();
 	if (!core_)
 		return false;
-	const auto& players_ = core_->getPlayers().players();
 	int playerid = player.getID();
-	for (auto it = players_.begin(); it != players_.end(); ++it)
-	{
-		IPlayer* player_ = *it;
-		if (player_->getID() == playerid)
-		{
-			return HandlingMgr::ResetPlayerHandling(static_cast<uint16_t>(playerid));
-		}
-	}
-	return false;
+	if (core_->getPlayers().get(playerid) != nullptr)
+		return false;
+	return HandlingMgr::ResetPlayerHandling(static_cast<uint16_t>(playerid));
 }
 
 // native BeginCustomVehicleDef(customModelId, visualBase, audioBase, handlingBase, engineOnSoundId, engineOffSoundId);
@@ -489,17 +439,10 @@ SCRIPT_API(ResetAllHandling, bool(IPlayer& player))
 	ICore* core_ = compo->getCore();
 	if (!core_)
 		return false;
-	const auto& players_ = core_->getPlayers().players();
 	int playerid = player.getID();
-	for (auto it = players_.begin(); it != players_.end(); ++it)
-	{
-		IPlayer* player_ = *it;
-		if (player_->getID() == playerid)
-		{
-			return HandlingMgr::ResetAll(static_cast<uint16_t>(playerid));
-		}
-	}
-	return false;
+	if (core_->getPlayers().get(playerid) != nullptr)
+		return false;
+	return HandlingMgr::ResetAll(static_cast<uint16_t>(playerid));
 }
 
 // native IsCustomVehicleModel(modelid);
@@ -570,15 +513,8 @@ SCRIPT_API(GetClientFileStoreStatus, int(IPlayer& player, int modelId, int kind)
 	ICore* core_ = compo->getCore();
 	if (!core_)
 		return 0;
-	const auto& players_ = core_->getPlayers().players();
 	int playerid = player.getID();
-	for (auto it = players_.begin(); it != players_.end(); ++it)
-	{
-		IPlayer* player_ = *it;
-		if (player_->getID() == playerid)
-		{
-			return ModelTransferMgr::GetClientFileStoreStatus(playerid, static_cast<uint32_t>(modelId), static_cast<ModelFileKind>(kind));
-		}
-	}
-	return 0;
+	if (core_->getPlayers().get(playerid) != nullptr)
+		return 0;
+	return ModelTransferMgr::GetClientFileStoreStatus(playerid, static_cast<uint32_t>(modelId), static_cast<ModelFileKind>(kind));
 }

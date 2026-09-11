@@ -31,7 +31,7 @@ inline void SetCollisionOwnership(CBaseModelInfo* modelInfo, bool owns)
 	if (!modelInfo)
 		return;
 
-	modelInfo->SetOwnsColModel(owns ? 1 : 0);
+	modelInfo->SetIsLod(int(owns));
 }
 }
 
@@ -90,10 +90,7 @@ void CollisionLoader::Shutdown()
 					handle.previousCollision,
 					false);
 
-				modelInfo->SetOwnsColModel(
-					handle.previousOwned
-						? 1
-						: 0);
+				modelInfo->SetIsLod(int(handle.previousOwned));
 			}
 		}
 
@@ -857,7 +854,7 @@ CollisionLoader::Load(
 		collision,
 		false);
 
-	target->SetOwnsColModel(1);
+	target->SetIsLod(1);
 
 	if (target->m_pColModel != collision) {
 		/*
@@ -868,10 +865,7 @@ CollisionLoader::Load(
 			handle.previousCollision,
 			false);
 
-		target->SetOwnsColModel(
-			handle.previousOwned
-				? 1
-				: 0);
+		target->SetIsLod(int(handle.previousOwned));
 
 		delete collision;
 
@@ -948,17 +942,14 @@ Result CollisionLoader::Attach(
 		handle.collision,
 		false);
 
-	modelInfo->SetOwnsColModel(1);
+	modelInfo->SetIsLod(1);
 
 	if (modelInfo->m_pColModel != handle.collision) {
 		modelInfo->SetColModel(
 			handle.previousCollision,
 			false);
 
-		modelInfo->SetOwnsColModel(
-			handle.previousOwned
-				? 1
-				: 0);
+		modelInfo->SetIsLod(int(handle.previousOwned));
 
 		outError = "GTA rejected collision installation.";
 
@@ -1008,10 +999,7 @@ CollisionLoader::Detach(
 		handle.previousCollision,
 		false);
 
-	modelInfo->SetOwnsColModel(
-		handle.previousOwned
-			? 1
-			: 0);
+	modelInfo->SetIsLod(int(handle.previousOwned));
 
 	/*
 	 * IMPORTANT:
@@ -1095,14 +1083,8 @@ CollisionLoader::Release(
 		}
 
 		if (modelInfo->m_pColModel == handle.collision) {
-			modelInfo->SetColModel(
-				handle.previousCollision,
-				false);
-
-			modelInfo->SetOwnsColModel(
-				handle.previousOwned
-					? 1
-					: 0);
+			modelInfo->SetColModel(handle.previousCollision, false);
+			modelInfo->SetIsLod(int(handle.previousOwned));
 		} else {
 			outError = "Collision ownership was lost.";
 
@@ -1163,10 +1145,7 @@ CollisionLoader::Unload(
 			handle.previousCollision,
 			false);
 
-		modelInfo->SetOwnsColModel(
-			handle.previousOwned
-				? 1
-				: 0);
+		modelInfo->SetIsLod(int(handle.previousOwned));
 
 		handle.installed = false;
 	}

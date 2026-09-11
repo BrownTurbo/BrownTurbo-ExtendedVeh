@@ -186,14 +186,14 @@ void CBaseModelInfo::SetHasBeenPreRendered(int bHasBeenPreRendered) {
 	plugin::CallMethod<0x4C42F0, CBaseModelInfo *, int>(this, bHasBeenPreRendered);
 }
 
-// Converted from thiscall void CBaseModelInfo::SetIsLod(int bIsLod) 0x4C4A10
-void CBaseModelInfo::SetIsLod(int bIsLod) {
-	plugin::CallMethod<0x4C4A10, CBaseModelInfo *, int>(this, bIsLod);
+// Converted from thiscall void CBaseModelInfo::SetDoWeOwnTheColModel(int bOwned) 0x4C4A10
+void CBaseModelInfo::SetDoWeOwnTheColModel(int bOwned) {
+	plugin::CallMethod<0x4C4A10, CBaseModelInfo *, int>(this, bOwned);
 }
 
-// Converted from thiscall void CBaseModelInfo::SetOwnsColModel(int bOwns) 0x5328D0
-void CBaseModelInfo::SetOwnsColModel(int bOwns) {
-	plugin::CallMethod<0x5328D0, CBaseModelInfo *, int>(this, bOwns);
+// Converted from thiscall void CBaseModelInfo::SetIsLod(int bIsLod) 0x5328D0
+void CBaseModelInfo::SetIsLod(int bIsLod) {
+	plugin::CallMethod<0x5328D0, CBaseModelInfo *, int>(this, bIsLod);
 }
 
 // Converted from thiscall void CBaseModelInfo::IncreaseAlpha(void) 0x532900

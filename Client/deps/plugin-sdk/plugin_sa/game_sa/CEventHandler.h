@@ -25,10 +25,11 @@ public:
     int field_28;
     int field_2C;
     int field_30;
-
-    void ComputePedCollisionWithPedResponse(CEvent* event, CTask* activeTask, CTask* simplestTask);
-    void ComputePedCollisionWithPlayerResponse(CEvent* event, CTask* activeTask, CTask* simplestTask);
 };
+
+SUPPORTED_10US void ComputePedCollisionWithPedResponse(CEvent *event, CTask *activeTask, CTask *simplestTask);
+SUPPORTED_10US void ComputePedCollisionWithPlayerResponse(CEvent *event, CTask *activeTask, CTask *simplestTask);
+
 VALIDATE_OFFSET(CEventHandler, m_pPed, 0x0);
 VALIDATE_OFFSET(CEventHandler, field_4, 0x4);
 VALIDATE_OFFSET(CEventHandler, field_8, 0x8);
