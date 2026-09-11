@@ -365,28 +365,23 @@ fs::path GetDocumentsDirectory()
 
 fs::path GetSampCacheRoot()
 {
-    fs::path documents = GetDocumentsDirectory();
+	fs::path documents = GetDocumentsDirectory();
 
-    if (documents.empty())
-        return {};
+	if (documents.empty())
+		return {};
 
-	if (fs::exists(documents))
-	{
+	if (fs::exists(documents)) {
 		std::error_code ec;
 		fs::create_directories(documents, ec);
 	}
-    return documents /
-        "GTA San Andreas User Files" /
-        "SAMP" /
-        "cache";
+	return documents / "GTA San Andreas User Files" / "SAMP" / "cache";
 }
 
 std::string Sha256HexOfBuffer(const unsigned char* data, unsigned int size)
 {
-    std::string hash;
-    if (!CryptoUtility::ComputeSHA256(data, static_cast<std::size_t>(size), hash))
-    {
-        return {};
-    }
-    return hash;
+	std::string hash;
+	if (!CryptoUtility::ComputeSHA256(data, static_cast<std::size_t>(size), hash)) {
+		return {};
+	}
+	return hash;
 }

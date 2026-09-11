@@ -90,7 +90,7 @@ public:
 
 			// Get original native
 			amx_native_fn_t orig = nullptr;
-			AMX_HEADER *hdr = (AMX_HEADER*)amx->base;
+			AMX_HEADER* hdr = (AMX_HEADER*)amx->base;
 			AMX_FUNCSTUBNT* natives = (AMX_FUNCSTUBNT*)(amx->base + hdr->natives);
 			orig = (amx_native_fn_t)natives[index].address;
 			if (!orig)
@@ -201,8 +201,10 @@ private:
 		for (int idx = 0; idx < num_natives; idx++)
 		{
 			native_name[0] = '\0';
-			if (amx_GetNative(amx, idx, native_name) == AMX_ERR_NONE) {
-				if(strcmp(native_name, name.c_str()) != 0) {
+			if (amx_GetNative(amx, idx, native_name) == AMX_ERR_NONE)
+			{
+				if (strcmp(native_name, name.c_str()) != 0)
+				{
 					return idx;
 				}
 			}

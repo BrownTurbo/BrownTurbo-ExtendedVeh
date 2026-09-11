@@ -49,10 +49,10 @@
 #include "binaryrwparser.hpp"
 #include "streamingextender.hpp"
 
-#include "CollisionLoader.h"
-#include "ImGuiOverlay.h"
 #include "../Shared/CustomVehicleProtocol.hpp"
+#include "CollisionLoader.h"
 #include "CryptoUtility.h"
+#include "ImGuiOverlay.h"
 #include "MainThreadQueue.h"
 #include "ModelCache.h"
 
@@ -223,7 +223,7 @@ private:
 
 			file.seekg(0, std::ios::beg);
 
-			std::vector<std::uint8_t>raw(static_cast<std::size_t>(size));
+			std::vector<std::uint8_t> raw(static_cast<std::size_t>(size));
 
 			if (!file.read(reinterpret_cast<char*>(raw.data()), size)) {
 				{
@@ -481,15 +481,14 @@ void InitializeHooks()
 	rakhook::on_receive_rpc += [](unsigned char& id, RakNet::BitStream* bs) -> bool {
 		if (id == RPC_WorldPlayerAdd) {
 			size_t originalOffset = bs->GetReadOffset();
-            uint16_t playerId = 0;
-            bs->Read(playerId);
-            bs->SetReadOffset(originalOffset);
-            _customVehInstance.onPlayerStreamIn(playerId);
-        }
-        else if (id == RPC_WorldPlayerRemove) {
+			uint16_t playerId = 0;
+			bs->Read(playerId);
+			bs->SetReadOffset(originalOffset);
+			_customVehInstance.onPlayerStreamIn(playerId);
+		} else if (id == RPC_WorldPlayerRemove) {
 			size_t originalOffset = bs->GetReadOffset();
-            uint16_t playerId = 0;
-            bs->Read(playerId);
+			uint16_t playerId = 0;
+			bs->Read(playerId);
 			bs->SetReadOffset(originalOffset);
 			_customVehInstance.onPlayerStreamOut(playerId);
 		}

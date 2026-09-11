@@ -26,10 +26,10 @@
 #include <iterator>
 #include <sstream>
 
-#include "defs.h"
-#include "utils.h"
-#include "handling_manager.hpp"
 #include "../Shared/CustomVehicleProtocol.hpp"
+#include "defs.h"
+#include "handling_manager.hpp"
+#include "utils.h"
 
 ModelTransferClient::ModelTransferClient()
 {
@@ -177,7 +177,7 @@ void ModelTransferClient::FailImmediately(std::unordered_map<uint64_t, InFlight>
 
 void ModelTransferClient::CancelAll(const std::string& reason)
 {
-	std::vector<std::function<void(bool, const fs::path&)>>callbacks;
+	std::vector<std::function<void(bool, const fs::path&)>> callbacks;
 	{
 		std::lock_guard lock(m_mutex);
 		callbacks.reserve(m_active.size());
@@ -280,11 +280,10 @@ void ModelTransferClient::OnTransferChunk(RakNet::BitStream* bs)
 	}
 
 	auto& entry = it->second;
-    if (chunkIndex >= entry.progress.totalChunks)
-    {
-        ScheduleRetry(it, "chunk index out of bounds");
-        return;
-    }
+	if (chunkIndex >= entry.progress.totalChunks) {
+		ScheduleRetry(it, "chunk index out of bounds");
+		return;
+	}
 	const uint32_t offset = static_cast<std::uint64_t>(chunkIndex * 4096u);
 	if (offset >= entry.compressedBuffer.size()) {
 		ScheduleRetry(it, "chunk offset out of bounds");
@@ -374,8 +373,7 @@ void ModelTransferClient::OnTransferEnd(RakNet::BitStream* bs)
 		fs::path finalPath;
 		if (stored) {
 			finalPath = ModelCache::Instance().PathFor(modelId, static_cast<uint8_t>(kindByte));
-		}
-		else {
+		} else {
 			std::lock_guard lock(m_mutex);
 			auto it = m_active.find(key);
 			if (it != m_active.end()) {

@@ -113,7 +113,8 @@ template <typename T>
 bool IsHandlingType(CHandlingAttrib attrib, ICore* core)
 {
 	const CHandlingAttribType actualType = GetHandlingAttributeType(attrib);
-	const bool validType = [&] {
+	const bool validType = [&]
+	{
 		if constexpr (std::is_same_v<T, float>)
 			return actualType == TYPE_FLOAT;
 		if constexpr (std::is_same_v<T, unsigned int>)
@@ -680,8 +681,7 @@ bool GetPlayerHandling(uint16_t playerid, CHandlingAttrib attrib, unsigned int& 
 	auto it = playerHandlings.find(playerid);
 	if (it == playerHandlings.end())
 		return false;
-	return IsHandlingType<unsigned int>(attrib, ExtendedVehCompo::get()->getCore()) &&
-		GetHandlingValue(it->second.handlingData, attrib, ret);
+	return IsHandlingType<unsigned int>(attrib, ExtendedVehCompo::get()->getCore()) && GetHandlingValue(it->second.handlingData, attrib, ret);
 }
 
 bool GetPlayerHandling(uint16_t playerid, CHandlingAttrib attrib, uint8_t& ret)
@@ -759,7 +759,7 @@ void BeginCustomVehicleDef(uint32_t customModelId, uint32_t visualBase, uint32_t
 	entry.handlingModMap.clear();
 }
 
-bool SetCustomVehicleAsset(uint32_t customModelId, std::string filename, CustomVeh::Protocol::AssetDescriptor CustomVeh::Protocol::VehicleDefinition::* asset)
+bool SetCustomVehicleAsset(uint32_t customModelId, std::string filename, CustomVeh::Protocol::AssetDescriptor CustomVeh::Protocol::VehicleDefinition::*asset)
 {
 	auto it = stagedCustomVehicleDefs.find(customModelId);
 	if (it == stagedCustomVehicleDefs.end())
