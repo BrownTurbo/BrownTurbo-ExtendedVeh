@@ -92,7 +92,7 @@ add_definitions(
     #-DWIN32_LEAN_AND_MEAN
 	-D_HAS_STD_BYTE=0
 )
-target_compile_options(${PROJECT_NAME} PRIVATE /FIrpc.h /FIwindows.h)
+target_compile_options(${PROJECT_NAME} PRIVATE /FIrpc.h /FIwindows.h /FS)
 
 set(PLUGIN_SDK_DIR "${CMAKE_CURRENT_SOURCE_DIR}/deps/plugin-sdk")
 set(SAMPAPI_DIR "${CMAKE_CURRENT_SOURCE_DIR}/deps/samp-api")

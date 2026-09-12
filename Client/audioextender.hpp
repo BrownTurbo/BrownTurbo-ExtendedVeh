@@ -15,7 +15,7 @@
 #include "utils.h"
 
 class AudioExtender {
-private:
+public:
 	struct CustomVehicleAudioDefinition {
 		int32_t audioModelId = -1;
 		int16_t engineOnSoundBankId = -1;
@@ -36,84 +36,64 @@ private:
 		std::uint16_t vehicleId {};
 		CustomVehicleAudioRuntime engine;
 	};
-
+private:
 	static inline std::unordered_map<uint16_t, CustomVehicleAudioState> s_vehicleAudio;
 	static inline std::unordered_map<uint32_t, CustomVehicleAudioDefinition> s_customAudioMap;
 	static inline std::mutex s_audioMutex;
-	// using InitVehicleAudioFn = void(__thiscall*)(CAEVehicleAudioEntity*, void*, CVehicle*);
-	// static inline safetyhook::InlineHook s_initVehicleAudioHook;
+	using InitVehicleAudioFn = void(__thiscall*)(CAEVehicleAudioEntity*, CVehicle*);
+	static inline safetyhook::InlineHook s_initVehicleAudioHook;
 	static inline bool s_hooksInstalled = false;
 	static constexpr std::ptrdiff_t kVehicleAudioIdOffset = 0x2A;
 
-	static int16_t& GetModelAudioId(CVehicleModelInfo* pInfo)
-	{
-		return *reinterpret_cast<int16_t*>(reinterpret_cast<uint8_t*>(pInfo) + kVehicleAudioIdOffset);
+	static void __fastcall Hooked_InitialiseVehicleAudio(CAEVehicleAudioEntity* pAudio, CVehicle* pVehicle)	{
+		if (pVehicle) {
+			const std::uint32_t modelId = static_cast<std::uint32_t>(pVehicle->m_nModelIndex);
+			{
+				std::lock_guard<std::mutex> lock(s_audioMutex);
+				const auto it = s_customAudioMap.find(modelId);
+				if (it != s_customAudioMap.end()) {
+					AudioExtender::CustomVehicleAudioDefinition def = it->second;
+					pAudio = ApplyCustomVehicleAudio(*pVehicle, def).value();
+				}
+			}
+		}
+
+		s_initVehicleAudioHook.original<InitVehicleAudioFn>()(pAudio, pVehicle);
 	}
 
-	// Hook callback when CAEVehicleAudioEntity initializes sound for a created vehicle instance
-	// static void __fastcall Hooked_InitialiseVehicleAudio(CAEVehicleAudioEntity* pAudio, void* edx, CVehicle* pVehicle	{
-	// 	if (pVehicle) {
-	// 		uint32_t modelId = pVehicle->m_nModelIndex;
-	// 		int32_t customSoundId = -1;
-	// 		{
-	// 			std::lock_guard<std::mutex> lock(s_audioMutex);
-	// 			auto it = s_customAudioMap.find(modelId);
-	// 			if (it != s_customAudioMap.end()) {
-	// 				customSoundId = it->second;
-	// 			}
-	// 		}
-
-	// 		if (customSoundId != -1) {
-	// 			CVehicleModelInfo* pInfo = reinterpret_cast<CVehicleModelInfo*>(GetEngineModelInfo(modelId));
-	// 			if (pInfo) {
-	// 				int16_t& soundIdRef = GetModelAudioId(pInfo);
-	// 				int16_t originalSoundId = soundIdRef;
-	// 				soundIdRef = static_cast<int16_t>(customSoundId);
-
-	// 				s_initAudVehicleioHook.original<InitAudVehicleioFn>()(pAudio, edx, pVehicle);
-
-	// 				soundIdRef = originalSoundId;
-	// 				return;
-	// 			}
-	// 		}
-	// 	}
-
-	// 	s_initAudVehicleioHook.original<InitAudVehicleioFn>()(pAudio, edx, pVehicle);
-	// }
-
 public:
-	// static void InstallHooks()
-	// {
-	// 	if (s_hooksInstalled)
-	// 		return;
+	static void InstallHooks()
+	{
+		if (s_hooksInstalled)
+			return;
 
-	// 	void* addrVehicleAudio = GtaAddress(0x4EFA10);
-	// 	if (!addrVehicleAudio) {
-	// 		return;
-	// 	}
-	// 	if (!IsExecutableAddress(reinterpret_cast<uintptr_t>(addrVehicleAudio)) || !IsInsideMainModule(reinterpret_cast<uintptr_t>(addrVehicleAudio)) || !LooLooksLikeFunctionEntryinterpret_cast<uintptr_t>(addrVehicleAudio))) {
-	// 		return;
-	// 	}
-	// 	auto removeHook = safetyhook::create_inline(addrVehicleAudio, reinterpret_cast<void*>(&Hooked_InitialiseAudVehicleio));
+		void* addrVehicleAudio = GtaAddress(0x4F7670);
+		if (!addrVehicleAudio) {
+			return;
+		}
+		if (!IsExecutableAddress(reinterpret_cast<uintptr_t>(addrVehicleAudio)) || !IsInsideMainModule(reinterpret_cast<uintptr_t>(addrVehicleAudio)) || !LooksLikeFunctionEntry(reinterpret_cast<uintptr_t>(addrVehicleAudio))) {
+			return;
+		}
+		auto removeHook = safetyhook::create_inline(addrVehicleAudio, reinterpret_cast<void*>(&Hooked_InitialiseVehicleAudio));
 
-	// 	if (!removeHook) {
-	// 		s_initAudVehicleioHook.reset();
-	// 		return;
-	// 	}
+		if (!removeHook) {
+			s_initVehicleAudioHook.reset();
+			return;
+		}
 
-	// 	s_initAudVehicleioHook = std::move(removeHook);
+		s_initVehicleAudioHook = std::move(removeHook);
 
-	// 	s_hooksInstalled = true;
-	// }
+		s_hooksInstalled = true;
+	}
 
-	// static void RestoreHooks()
-	// {
-	// 	if (!s_hooksInstalled)
-	// 		return;
+	static void RestoreHooks()
+	{
+		if (!s_hooksInstalled)
+			return;
 
-	// 	s_initAudVehicleioHook.reset();
-	// 	s_hooksInstalled = false;
-	// }
+		s_initVehicleAudioHook.reset();
+		s_hooksInstalled = false;
+	}
 
 	static CAEVehicleAudioEntity* GetVehicleAudioEntity(CVehicle* vehicle)
 	{
@@ -153,14 +133,11 @@ public:
 		s_vehicleAudio.erase(vehicleRef);
 	}
 
-	static void ApplyCustomVehicleAudio(
-		CVehicle& vehicle,
-		const CustomVehicleAudioDefinition&
-			definition)
+	static std::optional<CAEVehicleAudioEntity*> ApplyCustomVehicleAudio(CVehicle& vehicle, const CustomVehicleAudioDefinition& definition)
 	{
 		if (!IsVehiclePointerValid(&vehicle))
-			return;
-		auto& audio = vehicle.m_vehicleAudio;
+			return std::nullopt;
+		CAEVehicleAudioEntity& audio = vehicle.m_vehicleAudio;
 
 		if (definition.accelerateSoundBankId >= 0) {
 			audio.m_nEngineAccelerateSoundBankId = definition.accelerateSoundBankId;
@@ -174,6 +151,7 @@ public:
 		if (definition.engineOffSoundBankId >= 0) {
 			audio.m_settings.m_nEngineOffSoundBankId = definition.engineOffSoundBankId;
 		}
+		return std::optional<CAEVehicleAudioEntity*>(&audio);
 	}
 
 	static bool InitialiseCustomVehicleAudio(CustomVehicleAudioRuntime& state, CVehicle& vehicle)
@@ -224,31 +202,10 @@ public:
 		return true;
 	}
 
-	static void RegisterVehicleAudio(uint32_t customModelId, int32_t audioBaseModelId, int16_t engineOnSoundId, int16_t engineOffSoundId, int16_t accelerateSoundId, int16_t decelerateSoundId)
+	static void RegisterVehicleAudio(uint32_t customModelId, uint32_t audioBaseModelId, int16_t engineOnSoundId, int16_t engineOffSoundId, int16_t accelerateSoundId, int16_t decelerateSoundId)
 	{
 		std::lock_guard<std::mutex> lock(s_audioMutex);
-		if (engineOnSoundId >= 0) {
-			s_customAudioMap[customModelId].audioModelId = audioBaseModelId;
-			s_customAudioMap[customModelId].engineOnSoundBankId = engineOnSoundId;
-			s_customAudioMap[customModelId].accelerateSoundBankId = accelerateSoundId;
-			s_customAudioMap[customModelId].engineOffSoundBankId = engineOffSoundId;
-			s_customAudioMap[customModelId].decelerateSoundBankId = decelerateSoundId;
-		} else if (audioBaseModelId >= 400 && audioBaseModelId <= 611) {
-			CVehicleModelInfo* pBaseInfo = reinterpret_cast<CVehicleModelInfo*>(GetEngineModelInfo(audioBaseModelId));
-			if (pBaseInfo) {
-				s_customAudioMap[customModelId].audioModelId = audioBaseModelId;
-				s_customAudioMap[customModelId].engineOnSoundBankId = GetModelAudioId(pBaseInfo);
-				s_customAudioMap[customModelId].accelerateSoundBankId = -1;
-				s_customAudioMap[customModelId].engineOffSoundBankId = -1;
-				s_customAudioMap[customModelId].decelerateSoundBankId = -1;
-			}
-		}
-	}
-
-	static void RegisterVehicleAudio(uint32_t customModelId, int16_t engineOnSoundId, int16_t engineOffSoundId, int16_t accelerateSoundId, int16_t decelerateSoundId)
-	{
-		std::lock_guard<std::mutex> lock(s_audioMutex);
-		s_customAudioMap[customModelId].audioModelId = -1;
+		s_customAudioMap[customModelId].audioModelId = audioBaseModelId;
 		s_customAudioMap[customModelId].engineOnSoundBankId = engineOnSoundId;
 		s_customAudioMap[customModelId].accelerateSoundBankId = accelerateSoundId;
 		s_customAudioMap[customModelId].engineOffSoundBankId = engineOffSoundId;

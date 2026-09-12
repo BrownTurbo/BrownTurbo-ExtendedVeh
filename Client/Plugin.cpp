@@ -337,7 +337,7 @@ public:
 		Events::initRwEvent.Add([this]() {
 			if (!m_runtimeInitialized) {
 				fs::create_directories(GetSampCacheRoot());
-				// AudioExtender::InstallHooks();
+				AudioExtender::InstallHooks();
 				TransferConfig::Instance().Load();
 				ModelCache::Instance().Sweep();
 				m_runtimeInitialized = true;
@@ -347,7 +347,7 @@ public:
 		Events::shutdownRwEvent.Add([this]() {
 			ModelTransferClient::Instance().CancelAll("client shutdown");
 			ModelTransferClient::Instance().Shutdown();
-			// AudioExtender::RestoreHooks();
+			AudioExtender::RestoreHooks();
 			StreamingExtender::ClearAllCustomModels();
 			m_runtimeInitialized = false;
 		});
@@ -595,6 +595,13 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD dwReason, LPVOID lpReserved)
 				if (!found) {
 					HandlingManager::CacheVehicleSAMPId(cur.gameVeh, cur.sampId);
 				}
+
+				std::optional<AudioExtender::CustomVehicleAudioState*> audioState = AudioExtender::GetOrCreateAudioState(*cur.gameVeh);
+				if (audioState) {
+					if (!AudioExtender::InitialiseCustomVehicleAudio(audioState.value()->engine, *cur.gameVeh)) {
+						AudioExtender::RemoveVehicleAudioState(static_cast<uint16_t>(CPools::GetVehicleRef(cur.gameVeh)));
+					}
+				}
 			}
 
 			// Detect vehicles that disappeared
@@ -608,6 +615,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD dwReason, LPVOID lpReserved)
 				}
 				if (!stillExists) {
 					HandlingManager::RemoveVehicleFromCache(old.gameVeh);
+					AudioExtender::RemoveVehicleAudioState(static_cast<uint16_t>(CPools::GetVehicleRef(old.gameVeh)));
 				}
 			}
 
