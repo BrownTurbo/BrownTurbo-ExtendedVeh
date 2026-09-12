@@ -176,18 +176,11 @@ target_include_directories(${PROJECT_NAME} PRIVATE ${SAMPAPI_DIR}/include/sampap
 target_include_directories(${PROJECT_NAME} PRIVATE ${RAKHOOK_DIR}/lib/minhook/include)
 target_include_directories(${PROJECT_NAME} PRIVATE ${RAKHOOK_DIR}/include)
 
-set_target_properties(${PROJECT_NAME} PROPERTIES
-	TARGET_NAME_RELEASE "plugin"
-	TARGET_NAME_DEBUG   "plugin_d"
-)
-
 find_package(imgui CONFIG REQUIRED)
 find_package(ZLIB REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)
 
 target_link_libraries(${PROJECT_NAME} PRIVATE
-    $<$<CONFIG:Debug>:plugin_d>
-    $<$<CONFIG:Release>:plugin>
     d3d9
 	minhook
     sampapi
