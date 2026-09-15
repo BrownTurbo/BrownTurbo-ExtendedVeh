@@ -23,6 +23,7 @@ std::map<uint16_t, std::unique_ptr<tHandlingData>> HandlingManager::m_modelHandl
 std::map<CVehicle*, std::unique_ptr<tHandlingData>> HandlingManager::m_customHandlings;
 std::map<uint16_t, std::unique_ptr<tHandlingData>> HandlingManager::m_playerHandlings;
 std::map<uint16_t, HandlingManager::PlayerAppliedInfo> HandlingManager::m_playerAppliedHandlings;
+std::map<uint16_t, std::vector<HandlingManager::HandlingAttribEntry>> HandlingManager::m_pendingVehicleAttribs;
 bool HandlingManager::m_isServerAuthorized = false;
 std::recursive_mutex HandlingManager::m_handlingMutex;
 std::deque<HandlingManager::PendingCommand> HandlingManager::m_pendingCommands;
@@ -433,6 +434,69 @@ void* HandlingManager::ResolveAttributePointer(tHandlingData* handling, uint8_t 
 	}
 }
 
+void HandlingManager::RecalculateDerivedHandling(tHandlingData* handling, CVehicle* pVehicle)
+{
+	if (!handling)
+		return;
+
+	if (handling->m_nPercentSubmerged > 0) {
+		handling->m_fBuoyancyConstant = 0.0080000004f * handling->m_fMass * 100.0f / static_cast<float>(handling->m_nPercentSubmerged);
+	}
+
+	if (pVehicle && IsVehiclePointerValid(pVehicle)) {
+		pVehicle->m_pHandlingData = handling;
+		pVehicle->m_fTurnMass = handling->m_fTurnMass;
+		pVehicle->m_fMass = handling->m_fMass;
+		pVehicle->m_nHandlingFlagsIntValue = handling->m_nHandlingFlags;
+		pVehicle->m_vecCentreOfMass = handling->m_vecCentreOfMass;
+		pVehicle->m_fBuoyancyConstant = handling->m_fBuoyancyConstant;
+	}
+}
+
+void HandlingManager::OnVehicleStreamIn(CVehicle* pVehicle, uint16_t sampId)
+{
+	if (!IsVehiclePointerValid(pVehicle) || !pVehicle->m_pHandlingData)
+		return;
+
+	std::lock_guard<std::recursive_mutex> lock(m_handlingMutex);
+
+	// 1. Check if there are pending attributes for this vehicle
+	auto pendingIt = m_pendingVehicleAttribs.find(sampId);
+	if (pendingIt != m_pendingVehicleAttribs.end()) {
+		auto it = m_vehicleHandlings.find(sampId);
+		if (it == m_vehicleHandlings.end()) {
+			auto newHandling = std::make_unique<tHandlingData>();
+			std::memcpy(newHandling.get(), pVehicle->m_pHandlingData, sizeof(tHandlingData));
+			auto [insertedIt, _] = m_vehicleHandlings.emplace(sampId, std::move(newHandling));
+			it = insertedIt;
+		}
+		tHandlingData* handling = it->second.get();
+		ApplyAttribEntries(handling, pendingIt->second);
+		handling->m_transmissionData.InitGearRatios();
+		RecalculateDerivedHandling(handling, pVehicle);
+		m_pendingVehicleAttribs.erase(pendingIt);
+		ClientLog(std::format("[Client] OnVehicleStreamIn: Applied pending handling for vehicle {}", sampId));
+		return;
+	}
+
+	// 2. Check if vehicle already has custom vehicle handling
+	auto vehIt = m_vehicleHandlings.find(sampId);
+	if (vehIt != m_vehicleHandlings.end()) {
+		RecalculateDerivedHandling(vehIt->second.get(), pVehicle);
+		ClientLog(std::format("[Client] OnVehicleStreamIn: Reapplied custom handling for vehicle {}", sampId));
+		return;
+	}
+
+	// 3. Check if vehicle has model handling override
+	uint16_t modelId = static_cast<uint16_t>(pVehicle->m_nModelIndex);
+	auto modelIt = m_modelHandlings.find(modelId);
+	if (modelIt != m_modelHandlings.end()) {
+		RecalculateDerivedHandling(modelIt->second.get(), pVehicle);
+		ClientLog(std::format("[Client] OnVehicleStreamIn: Reapplied model handling for vehicle {} (model {})", sampId, modelId));
+		return;
+	}
+}
+
 void HandlingManager::IsolateVehicleHandling(CVehicle* pVehicle)
 {
 	if (!IsVehiclePointerValid(pVehicle) || !pVehicle->m_pHandlingData)
@@ -459,6 +523,7 @@ void HandlingManager::ModifyMass(CVehicle* pVehicle, float mass)
 	handling->m_fMass = mass;
 	handling->m_fTurnMass = mass * 1.5f;
 	handling->m_fDragMult = (mass / 5.0f) * 0.002f;
+	RecalculateDerivedHandling(handling, pVehicle);
 }
 
 void HandlingManager::ModifyTransmission(CVehicle* pVehicle, float maxSpeed, float acceleration, int gears)
@@ -514,11 +579,7 @@ void HandlingManager::ApplyModelToVehicles(uint16_t modelId, tHandlingData* hand
 						continue;
 
 					if (m_vehicleHandlings.find(id) == m_vehicleHandlings.end() && m_playerAppliedHandlings.find(id) == m_playerAppliedHandlings.end() && m_customHandlings.find(gtaVeh) == m_customHandlings.end()) {
-						gtaVeh->m_pHandlingData = handling;
-						gtaVeh->m_fTurnMass = handling->m_fTurnMass;
-						gtaVeh->m_fMass = handling->m_fMass;
-						gtaVeh->m_nHandlingFlagsIntValue = handling->m_nHandlingFlags;
-						gtaVeh->m_vecCentreOfMass = handling->m_vecCentreOfMass;
+						RecalculateDerivedHandling(handling, gtaVeh);
 					}
 				}
 			}
@@ -551,9 +612,7 @@ void HandlingManager::RevertModelToOriginal(uint16_t modelId)
 						continue;
 
 					if (m_vehicleHandlings.find(id) == m_vehicleHandlings.end() && m_playerAppliedHandlings.find(id) == m_playerAppliedHandlings.end() && m_customHandlings.find(gtaVeh) == m_customHandlings.end()) {
-						gtaVeh->m_pHandlingData = original;
-						gtaVeh->m_fMass = original->m_fMass;
-						gtaVeh->m_fTurnMass = original->m_fTurnMass;
+						RecalculateDerivedHandling(original, gtaVeh);
 					}
 				}
 			}
@@ -582,11 +641,7 @@ void HandlingManager::ApplyPlayerHandling(uint16_t playerId, CVehicle* pVehicle)
 
 	auto newHandling = std::make_unique<tHandlingData>();
 	std::memcpy(newHandling.get(), it->second.get(), sizeof(tHandlingData));
-	pVehicle->m_pHandlingData = newHandling.get();
-	pVehicle->m_fTurnMass = newHandling->m_fTurnMass;
-	pVehicle->m_fMass = newHandling->m_fMass;
-	pVehicle->m_nHandlingFlagsIntValue = newHandling->m_nHandlingFlags;
-	pVehicle->m_vecCentreOfMass = newHandling->m_vecCentreOfMass;
+	RecalculateDerivedHandling(newHandling.get(), pVehicle);
 
 	PlayerAppliedInfo info;
 	info.playerId = playerId;
@@ -693,8 +748,12 @@ void HandlingManager::ProcessVehicleMods(uint16_t sampVehicleId, const std::vect
 	std::lock_guard<std::recursive_mutex> lock(m_handlingMutex);
 
 	CVehicle* gtaVehicle = GetGameVehicleFromPool(sampVehicleId);
-	if (!IsVehiclePointerValid(gtaVehicle) || !gtaVehicle->m_pHandlingData)
+	if (!IsVehiclePointerValid(gtaVehicle) || !gtaVehicle->m_pHandlingData) {
+		auto& pending = m_pendingVehicleAttribs[sampVehicleId];
+		pending.insert(pending.end(), entries.begin(), entries.end());
+		ClientLog(std::format("[Client] ProcessVehicleMods: Vehicle {} not in pool, queued {} attribs", sampVehicleId, entries.size()));
 		return;
+	}
 
 	auto customIt = m_customHandlings.find(gtaVehicle);
 	if (customIt != m_customHandlings.end()) {
@@ -713,16 +772,15 @@ void HandlingManager::ProcessVehicleMods(uint16_t sampVehicleId, const std::vect
 	ApplyAttribEntries(handling, entries);
 	handling->m_transmissionData.InitGearRatios();
 
-	gtaVehicle->m_pHandlingData = handling;
-	gtaVehicle->m_fTurnMass = handling->m_fTurnMass;
-	gtaVehicle->m_fMass = handling->m_fMass;
-	gtaVehicle->m_nHandlingFlagsIntValue = handling->m_nHandlingFlags;
-	gtaVehicle->m_vecCentreOfMass = handling->m_vecCentreOfMass;
+	RecalculateDerivedHandling(handling, gtaVehicle);
+	ClientLog(std::format("[Client] ProcessVehicleMods: Applied {} attribs to vehicle {}", entries.size(), sampVehicleId));
 }
 
 void HandlingManager::ResetVehicle(uint16_t sampVehicleId)
 {
 	std::lock_guard<std::recursive_mutex> lock(m_handlingMutex);
+
+	m_pendingVehicleAttribs.erase(sampVehicleId);
 
 	auto it = m_vehicleHandlings.find(sampVehicleId);
 	if (it == m_vehicleHandlings.end())
@@ -734,9 +792,7 @@ void HandlingManager::ResetVehicle(uint16_t sampVehicleId)
 
 		tHandlingData* fallback = ResolveFallbackHandling(gtaVehicle, sampVehicleId, modelId);
 		if (fallback) {
-			gtaVehicle->m_pHandlingData = fallback;
-			gtaVehicle->m_fMass = fallback->m_fMass;
-			gtaVehicle->m_fTurnMass = fallback->m_fTurnMass;
+			RecalculateDerivedHandling(fallback, gtaVehicle);
 		}
 	}
 	m_vehicleHandlings.erase(it);
@@ -762,8 +818,10 @@ void HandlingManager::ProcessModelMods(uint16_t modelId, const std::vector<Handl
 	tHandlingData* handling = it->second.get();
 	ApplyAttribEntries(handling, entries);
 	handling->m_transmissionData.InitGearRatios();
+	RecalculateDerivedHandling(handling);
 
 	ApplyModelToVehicles(modelId, handling);
+	ClientLog(std::format("[Client] ProcessModelMods: Applied {} attribs to model {}", entries.size(), modelId));
 }
 
 void HandlingManager::ResetModel(uint16_t modelId)
@@ -820,14 +878,6 @@ void HandlingManager::OnVehicleDestructor(CVehicle* pVehicle)
 		}
 	}
 
-	if (vehicleId != 0xFFFF) {
-		if (vehhndleit != m_vehicleHandlings.end()) {
-			m_vehicleHandlings.erase(vehhndleit);
-		}
-		if (plrhndleit != m_playerAppliedHandlings.end()) {
-			m_playerAppliedHandlings.erase(plrhndleit);
-		}
-	}
 	if (cushndleit != m_customHandlings.end()) {
 		m_customHandlings.erase(cushndleit);
 	}
@@ -1048,6 +1098,7 @@ bool HandlingManager::ProcessAction(CustomVehAction action, RakNet::BitStream* b
 		ClientLog("[Client] ACTION_RESET_ALL: Resetting all vehicles, models, and players");
 		// Reset all vehicles, models, and players
 		std::lock_guard<std::recursive_mutex> lock(m_handlingMutex);
+		m_pendingVehicleAttribs.clear();
 
 		// Revert all vehicles to their original handling (or model override)
 		while (!m_vehicleHandlings.empty())

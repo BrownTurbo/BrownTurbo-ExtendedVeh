@@ -139,8 +139,14 @@ public:
 	};
 	static std::map<uint16_t, PlayerAppliedInfo> m_playerAppliedHandlings;
 
+	static std::map<uint16_t, std::vector<HandlingAttribEntry>> m_pendingVehicleAttribs;
+
 	static bool m_isServerAuthorized; // declared, defined in .cpp
 	static std::recursive_mutex m_handlingMutex;
+
+	// Derived properties calculation
+	static void RecalculateDerivedHandling(tHandlingData* handling, CVehicle* pVehicle = nullptr);
+	static void OnVehicleStreamIn(CVehicle* pVehicle, uint16_t sampId);
 
 	// Direct CVehicle* functions (public, but must be called with lock if they modify)
 	static void ModifyMass(CVehicle* pVehicle, float mass);

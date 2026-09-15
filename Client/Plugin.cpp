@@ -692,6 +692,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD dwReason, LPVOID lpReserved)
 					}
 					if (!found) {
 						HandlingManager::CacheVehicleSAMPId(cur.gameVeh, cur.sampId);
+						HandlingManager::OnVehicleStreamIn(cur.gameVeh, cur.sampId);
 					}
 
 					if (IsVehiclePointerValid(cur.gameVeh)) {
