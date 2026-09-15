@@ -1,5 +1,7 @@
 #include "HandlingEnum.h"
 #include "HandlingStruct.h"
+#include "extendedveh.h"
+#include <cmath>
 
 CHandlingAttribType GetHandlingAttributeType(CHandlingAttrib attribute)
 {
@@ -48,8 +50,19 @@ CHandlingAttribType GetHandlingAttributeType(CHandlingAttrib attribute)
 	case HANDL_HANDLINGFLAGS:
 	case HANDL_MODELFLAGS:
 		return TYPE_FLAG;
+	default: {
+		ExtendedVehCompo* compo = ExtendedVehCompo::get();
+		if (compo)
+		{
+			ICore* core_ = compo->getCore();
+			if (core_)
+			{
+				core_->logLn(LogLevel::Error, "[ExtendedVeh] GetHandlingAttributeType: Unknown attribute %d", attribute);
+			}
+		}
+		return TYPE_NONE;
 	}
-	return TYPE_NONE;
+	}
 }
 
 bool CanSetHandlingAttrib(CHandlingAttrib attribute)
@@ -58,8 +71,18 @@ bool CanSetHandlingAttrib(CHandlingAttrib attribute)
 	{
 	case HANDL_UIDENTIFIER:
 	case HANDL_ANIMGROUP:
-	case HANDL_UIMONETARYVALUE:
+	case HANDL_UIMONETARYVALUE: {
+		ExtendedVehCompo* compo = ExtendedVehCompo::get();
+		if (compo)
+		{
+			ICore* core_ = compo->getCore();
+			if (core_)
+			{
+				core_->logLn(LogLevel::Warning, "[ExtendedVeh] CanSetHandlingAttrib: Attribute %d is read-only and cannot be modified", attribute);
+			}
+		}
 		return false;
+	}
 	default:
 		return true;
 	}
@@ -67,6 +90,20 @@ bool CanSetHandlingAttrib(CHandlingAttrib attribute)
 
 bool IsValidHandlingValue(CHandlingAttrib attribute, float value)
 {
+	if (std::isnan(value) || std::isinf(value))
+	{
+		ExtendedVehCompo* compo = ExtendedVehCompo::get();
+		if (compo)
+		{
+			ICore* core_ = compo->getCore();
+			if (core_)
+			{
+				core_->logLn(LogLevel::Warning, "[ExtendedVeh] IsValidHandlingValue: Invalid float value (NaN or Inf) for attribute %d", attribute);
+			}
+		}
+		return false;
+	}
+
 	if (GetHandlingAttributeType(attribute) != TYPE_FLOAT)
 		return false;
 

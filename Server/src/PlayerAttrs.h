@@ -34,6 +34,15 @@ public:
 		return (it != m_map.end()) && it->second.hasExtendedVeh();
 	}
 
+	void SetExtendedVeh(int playerid, bool value = true)
+	{
+		std::lock_guard<std::mutex> lock(m_mutex);
+		if (value)
+			m_map[playerid].sethasExtendedVeh();
+		else
+			m_map[playerid].Reset();
+	}
+
 	void Reset(int playerid)
 	{
 		std::lock_guard<std::mutex> lock(m_mutex);

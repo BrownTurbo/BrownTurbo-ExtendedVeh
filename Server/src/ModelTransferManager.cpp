@@ -88,18 +88,50 @@ namespace
 			}
 		}
 		if (!IsPathInsideBase(g_modelsDir, path))
+		{
+			ExtendedVehCompo* compo = ExtendedVehCompo::get();
+			ICore* core = compo ? compo->getCore() : nullptr;
+			if (core)
+				core->logLn(LogLevel::Warning, "[ModelTransfer] Path traversal detected or path outside models dir: '%s'", path.string().c_str());
 			return nullptr;
+		}
+		if (!fs::exists(path))
+		{
+			ExtendedVehCompo* compo = ExtendedVehCompo::get();
+			ICore* core = compo ? compo->getCore() : nullptr;
+			if (core)
+				core->logLn(LogLevel::Warning, "[ModelTransfer] Asset file '%s' does not exist for model %u", path.string().c_str(), modelId);
+			return nullptr;
+		}
 		std::ifstream file(path, std::ios::binary | std::ios::ate);
 		if (!file.is_open())
+		{
+			ExtendedVehCompo* compo = ExtendedVehCompo::get();
+			ICore* core = compo ? compo->getCore() : nullptr;
+			if (core)
+				core->logLn(LogLevel::Warning, "[ModelTransfer] Failed to open asset file '%s' for model %u", path.string().c_str(), modelId);
 			return nullptr;
+		}
 
 		std::streamsize size = file.tellg();
-		if (size < 0)
+		if (size <= 0)
+		{
+			ExtendedVehCompo* compo = ExtendedVehCompo::get();
+			ICore* core = compo ? compo->getCore() : nullptr;
+			if (core)
+				core->logLn(LogLevel::Warning, "[ModelTransfer] Asset file '%s' is empty or invalid size (%lld)", path.string().c_str(), static_cast<long long>(size));
 			return nullptr;
+		}
 		file.seekg(0, std::ios::beg);
 		std::vector<uint8_t> raw(static_cast<size_t>(size));
-		if (size > 0 && !file.read(reinterpret_cast<char*>(raw.data()), size))
+		if (!file.read(reinterpret_cast<char*>(raw.data()), size))
+		{
+			ExtendedVehCompo* compo = ExtendedVehCompo::get();
+			ICore* core = compo ? compo->getCore() : nullptr;
+			if (core)
+				core->logLn(LogLevel::Warning, "[ModelTransfer] Failed to read %lld bytes from '%s'", static_cast<long long>(size), path.string().c_str());
 			return nullptr;
+		}
 
 		CachedFile entry;
 		entry.uncompressedSize = static_cast<uint32_t>(raw.size());
@@ -176,7 +208,7 @@ void OnRequestFile(IPlayer& player, uint32_t modelId, ModelFileKind kind)
 		cancel.data.Write(modelId);
 		cancel.data.Write(static_cast<uint8_t>(kind));
 		player.sendPacket(
-			Span<uint8_t>(cancel.data.GetData(), cancel.data.GetNumberOfBytesUsed()),
+			Span<uint8_t>(cancel.data.GetData(), cancel.data.GetNumberOfBitsUsed()),
 			kFileTransferChannel, true);
 		ExtendedVehCompo* compo = ExtendedVehCompo::get();
 		if (compo)
@@ -192,7 +224,25 @@ void OnRequestFile(IPlayer& player, uint32_t modelId, ModelFileKind kind)
 	}
 
 	if (cached->uncompressedSize == 0 || cached->uncompressedSize > kMaxModelFileSize || cached->compressed.empty())
+	{
+		CustomVehActionPacket cancel(ACTION_ASSET_CANCEL);
+		cancel.data.Write(modelId);
+		cancel.data.Write(static_cast<uint8_t>(kind));
+		player.sendPacket(
+			Span<uint8_t>(cancel.data.GetData(), cancel.data.GetNumberOfBitsUsed()),
+			kFileTransferChannel, true);
+
+		ExtendedVehCompo* compo = ExtendedVehCompo::get();
+		ICore* core = compo ? compo->getCore() : nullptr;
+		if (core)
+		{
+			core->logLn(LogLevel::Warning,
+				"[ModelTransfer] player %d requested modelId %u kind %u - invalid size: uncompressed=%u, compressed=%zu (max=%u)",
+				player.getID(), modelId, static_cast<unsigned>(kind),
+				cached->uncompressedSize, cached->compressed.size(), kMaxModelFileSize);
+		}
 		return;
+	}
 
 	const uint32_t totalChunks = (static_cast<uint32_t>(cached->compressed.size()) + kFileChunkSize - 1) / kFileChunkSize;
 
@@ -205,7 +255,7 @@ void OnRequestFile(IPlayer& player, uint32_t modelId, ModelFileKind kind)
 	begin.data.Write(cached->sha256Hex.c_str(),
 		static_cast<int>(cached->sha256Hex.size()) + 1); // NUL-terminated
 	player.sendPacket(
-		Span<uint8_t>(begin.data.GetData(), begin.data.GetNumberOfBytesUsed()),
+		Span<uint8_t>(begin.data.GetData(), begin.data.GetNumberOfBitsUsed()),
 		kFileTransferChannel, true);
 
 	ActiveTransfer transfer;
@@ -296,7 +346,7 @@ void ProcessTick()
 			chunkPkt.data.Write(transfer.nextChunkIndex);
 			chunkPkt.data.Write(chunkLen);
 			chunkPkt.data.Write(reinterpret_cast<const char*>(cached->compressed.data() + offset), chunkLen);
-			player->sendPacket(Span<uint8_t>(chunkPkt.data.GetData(), chunkPkt.data.GetNumberOfBytesUsed()), kFileTransferChannel, true);
+			player->sendPacket(Span<uint8_t>(chunkPkt.data.GetData(), chunkPkt.data.GetNumberOfBitsUsed()), kFileTransferChannel, true);
 
 			++transfer.nextChunkIndex;
 			++sentThisTick;
@@ -308,7 +358,7 @@ void ProcessTick()
 			end.data.Write(transfer.modelId);
 			end.data.Write(static_cast<uint8_t>(transfer.kind));
 			player->sendPacket(
-				Span<uint8_t>(end.data.GetData(), end.data.GetNumberOfBytesUsed()),
+				Span<uint8_t>(end.data.GetData(), end.data.GetNumberOfBitsUsed()),
 				kFileTransferChannel, true);
 			// done
 		}

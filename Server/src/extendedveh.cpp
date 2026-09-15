@@ -154,7 +154,8 @@ void ExtendedVehCompo::onReady()
 	size_t netCount = 0;
 	for (auto network : core_->getNetworks())
 	{
-		network->getInEventDispatcher().addEventHandler(this);
+		network->getInEventDispatcher().addEventHandler(this, EventPriority_FairlyHigh);
+		network->getPerPacketInEventDispatcher().addEventHandler(this, (uint8_t)ExtendedVehPacketID::PKT_EXTVEH, EventPriority_FairlyHigh);
 		netCount++;
 	}
 	core_->logLn(LogLevel::Message, "[ExtendedVeh] onReady: Registered inEvent handler on %zu network(s)", netCount);
@@ -182,6 +183,11 @@ void ExtendedVehCompo::onTick(Microseconds elapsed, TimePoint now)
 	ModelTransferMgr::ProcessTick();
 }
 
+bool ExtendedVehCompo::onReceive(IPlayer& peer, NetworkBitStream& bs)
+{
+	return onReceivePacket(peer, (uint8_t)ExtendedVehPacketID::PKT_EXTVEH, bs);
+}
+
 bool ExtendedVehCompo::onReceivePacket(IPlayer& peer, int id,
 	NetworkBitStream& bs)
 {
@@ -195,7 +201,12 @@ bool ExtendedVehCompo::onReceivePacket(IPlayer& peer, int id,
 		{
 			uint8_t action;
 			if (!bs.Read(action))
+			{
+				core_->logLn(LogLevel::Warning,
+					"[ExtendedVeh] Failed to read action byte from player %d packet",
+					peer.getID());
 				return false;
+			}
 
 			core_->logLn(LogLevel::Message,
 				"[ExtendedVeh] Processing action %d from player %d",
@@ -203,6 +214,13 @@ bool ExtendedVehCompo::onReceivePacket(IPlayer& peer, int id,
 
 			Actions::Process((CustomVehAction)action, bs, peer);
 		}
+		else
+		{
+			core_->logLn(LogLevel::Warning,
+				"[ExtendedVeh] Custom packet from player %d has insufficient bits (%d)",
+				peer.getID(), bs.GetNumberOfUnreadBits());
+		}
+		return false;
 	}
 	return true;
 }
@@ -226,6 +244,7 @@ void ExtendedVehCompo::onFree(IComponent* component)
 		for (auto network : core_->getNetworks())
 		{
 			network->getInEventDispatcher().removeEventHandler(this);
+			network->getPerPacketInEventDispatcher().removeEventHandler(this, (uint8_t)ExtendedVehPacketID::PKT_EXTVEH);
 		}
 	}
 }
@@ -258,15 +277,19 @@ void ExtendedVehCompo::onIncomingConnection(IPlayer& player,
 	unsigned short port)
 {
 	int playerid = player.getID();
-	if (playerid >= 0 && playerid < MAX_PLAYERS)
+	if (core_)
 	{
-		gPlayers[playerid].Reset();
+		core_->logLn(LogLevel::Debug, "[ExtendedVeh] onIncomingConnection: playerid=%d", playerid);
 	}
+	gPlayers.Reset(playerid);
 }
 
 void ExtendedVehCompo::onPlayerConnect(IPlayer& player)
 {
-	core_->logLn(LogLevel::Debug, "[ExtendedVeh] OnPlayerConnect");
+	if (core_)
+	{
+		core_->logLn(LogLevel::Debug, "[ExtendedVeh] OnPlayerConnect: playerid=%d", player.getID());
+	}
 	HandlingMgr::OnPlayerConnect(player);
 }
 
@@ -274,10 +297,11 @@ void ExtendedVehCompo::onPlayerDisconnect(IPlayer& player,
 	PeerDisconnectReason reason)
 {
 	int playerid = player.getID();
-	if (playerid >= 0 && playerid < MAX_PLAYERS)
+	if (core_)
 	{
-		gPlayers[playerid].Reset();
+		core_->logLn(LogLevel::Debug, "[ExtendedVeh] onPlayerDisconnect: playerid=%d, reason=%d", playerid, static_cast<int>(reason));
 	}
+	gPlayers.Reset(playerid);
 	HandlingMgr::OnPlayerDisconnect(player, reason);
 	ModelTransferMgr::OnPlayerDisconnect(player);
 }
@@ -294,7 +318,10 @@ void ExtendedVehCompo::onVehicleStreamIn(IVehicle& vehicle, IPlayer& player)
 	if (!customModel)
 		return;
 
-	CustomVehicleTransport::SendVehicleBind(player, static_cast<uint16_t>(vehicle.getID()), *customModel);
+	if (gPlayers.HasExtendedVeh(player.getID()))
+	{
+		CustomVehicleTransport::SendVehicleBind(player, static_cast<uint16_t>(vehicle.getID()), *customModel);
+	}
 }
 
 void ExtendedVehCompo::onPoolEntryCreated(IVehicle& vehicle)

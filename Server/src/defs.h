@@ -4,4 +4,4 @@
 
 inline std::string g_modelsDir = "models";
 
-#define MAX_PLAYERS 1000
+constexpr uint16_t MAX_PLAYERS = 1000;

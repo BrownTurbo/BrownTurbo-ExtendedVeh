@@ -6,6 +6,7 @@
 #include "PacketEnum.h"
 #include "extendedveh.h"
 #include "ModelTransferManager.h"
+#include "CustomVehicleBindingRegistry.h"
 
 #include <cstring>
 #include <type_traits>
@@ -84,14 +85,22 @@ void __WriteHandlingEntryToBitStream(NetworkBitStream* bs, const struct stHandli
 
 void __addMod(struct stHandlingEntry* handling, CHandlingAttrib attribute, const struct stHandlingMod mod)
 {
+	void* offs = GetHandlingAttribPtr(&handling->handlingData, attribute);
+	if (!offs)
+	{
+		ExtendedVehCompo* compo = ExtendedVehCompo::get();
+		ICore* core_ = compo ? compo->getCore() : nullptr;
+		if (core_)
+		{
+			core_->logLn(LogLevel::Error, "[ExtendedVeh] __addMod: Failed to resolve attribute pointer for attribute %d", static_cast<int>(attribute));
+		}
+		return;
+	}
+
 	if (handling->handlingModMap.count(attribute))
 		handling->handlingModMap.at(attribute) = mod;
 	else
 		handling->handlingModMap.emplace(attribute, mod);
-
-	void* offs = GetHandlingAttribPtr(&handling->handlingData, attribute);
-	if (!offs)
-		return;
 
 	/* write the value to the handling data so we can Get it later on */
 	switch (mod.type)
@@ -206,7 +215,7 @@ void SendPlayerHandling(uint16_t playerid, const stHandlingEntry& entry)
 	__WriteHandlingEntryToBitStream(&packet.data, entry);
 	IPlayer* player = compo->GetPlayerByID(playerid);
 	if (player)
-		player->sendPacket(Span<uint8_t>(packet.data.GetData(), packet.data.GetNumberOfBytesUsed()), 0, true);
+		player->sendPacket(Span<uint8_t>(packet.data.GetData(), packet.data.GetNumberOfBitsUsed()), 0, true);
 }
 
 const stHandlingEntry* GetVehicleHandlingEntry(uint16_t vehicleid)
@@ -282,6 +291,11 @@ void ProcessTick()
 		modelMods.swap(usOutgoingModelMods);
 	}
 
+	if (!vehicleMods.empty() || !modelMods.empty())
+	{
+		core_->logLn(LogLevel::Debug, "[ExtendedVeh] ProcessTick: Broadcasting %zu vehicle mods and %zu model mods", vehicleMods.size(), modelMods.size());
+	}
+
 	for (uint16_t vehicleid : vehicleMods)
 	{
 		auto vIt = vehicleHandlings.find(vehicleid);
@@ -296,7 +310,7 @@ void ProcessTick()
 		for (IPlayer* player : core_->getPlayers().players())
 		{
 			if (player)
-				player->sendPacket(Span<uint8_t>(p.data.GetData(), p.data.GetNumberOfBytesUsed()), 0, true);
+				player->sendPacket(Span<uint8_t>(p.data.GetData(), p.data.GetNumberOfBitsUsed()), 0, true);
 		}
 	}
 
@@ -315,7 +329,7 @@ void ProcessTick()
 		for (IPlayer* player : core_->getPlayers().players())
 		{
 			if (player)
-				player->sendPacket(Span<uint8_t>(p.data.GetData(), p.data.GetNumberOfBytesUsed()), 0, true);
+				player->sendPacket(Span<uint8_t>(p.data.GetData(), p.data.GetNumberOfBitsUsed()), 0, true);
 		}
 	}
 }
@@ -334,7 +348,12 @@ void InitializeModelHandlings()
 void OnCreateVehicle(int vehicleid)
 {
 	ExtendedVehCompo* compo = ExtendedVehCompo::get();
-	IVehicle* pVeh = compo->GetVehicleByID(vehicleid);
+	ICore* core_ = compo ? compo->getCore() : nullptr;
+	if (core_)
+	{
+		core_->logLn(LogLevel::Debug, "[ExtendedVeh] OnCreateVehicle: vehicleid=%d", vehicleid);
+	}
+	IVehicle* pVeh = compo ? compo->GetVehicleByID(vehicleid) : nullptr;
 	if (pVeh)
 	{
 		vehiclesIdMap[vehicleid] = pVeh;
@@ -344,6 +363,12 @@ void OnCreateVehicle(int vehicleid)
 
 void OnDestroyVehicle(int vehicleid)
 {
+	ExtendedVehCompo* compo = ExtendedVehCompo::get();
+	ICore* core_ = compo ? compo->getCore() : nullptr;
+	if (core_)
+	{
+		core_->logLn(LogLevel::Debug, "[ExtendedVeh] OnDestroyVehicle: vehicleid=%d", vehicleid);
+	}
 	IVehicle* pVeh = vehiclesIdMap[vehicleid];
 	if (pVeh)
 	{
@@ -351,12 +376,13 @@ void OnDestroyVehicle(int vehicleid)
 	}
 	vehicleHandlings.erase(vehicleid);
 	vehiclesIdMap.erase(vehicleid);
+	CustomVehicleBindingRegistry::Instance().Unbind(static_cast<uint16_t>(vehicleid));
 }
 
 void OnPlayerConnect(IPlayer& player)
 {
 	int playerid = player.getID();
-	if (!gPlayers[playerid].hasExtendedVeh())
+	if (!gPlayers.HasExtendedVeh(playerid))
 		return;
 
 	for (uint16_t model = 0; model < CVehicleMgr::BASE_MAX_VEHICLE_MODELS; model++)
@@ -366,7 +392,7 @@ void OnPlayerConnect(IPlayer& player)
 			struct CustomVehActionPacket p(ACTION_SET_MODEL_HANDLING);
 			p.data.Write((uint16_t)(model + 400));
 			__WriteHandlingEntryToBitStream(&p.data, gBaseModelHandlings[model]);
-			player.sendPacket(Span<uint8_t>(p.data.GetData(), p.data.GetNumberOfBytesUsed()), 0, false);
+			player.sendPacket(Span<uint8_t>(p.data.GetData(), p.data.GetNumberOfBitsUsed()), 0, false);
 		}
 	}
 
@@ -377,7 +403,7 @@ void OnPlayerConnect(IPlayer& player)
 			struct CustomVehActionPacket p(ACTION_SET_MODEL_HANDLING);
 			p.data.Write((uint16_t)customModel);
 			__WriteHandlingEntryToBitStream(&p.data, entry);
-			player.sendPacket(Span<uint8_t>(p.data.GetData(), p.data.GetNumberOfBytesUsed()), 0, false);
+			player.sendPacket(Span<uint8_t>(p.data.GetData(), p.data.GetNumberOfBitsUsed()), 0, false);
 		}
 	}
 
@@ -404,13 +430,13 @@ void OnVehicleStreamIn(IVehicle& vehicle, IPlayer& player)
 	}
 
 	auto it = vehicleHandlings.find(vehicleid);
-	if (it == vehicleHandlings.end() || it->second.handlingModMap.empty() || !gPlayers[forplayerid].hasExtendedVeh())
+	if (it == vehicleHandlings.end() || it->second.handlingModMap.empty() || !gPlayers.HasExtendedVeh(forplayerid))
 		return;
 
 	struct CustomVehActionPacket p(ACTION_SET_VEHICLE_HANDLING);
 	p.data.Write((uint16_t)vehicleid);
 	__WriteHandlingEntryToBitStream(&p.data, it->second);
-	player.sendPacket(Span<uint8_t>(p.data.GetData(), p.data.GetNumberOfBytesUsed()), 0, false);
+	player.sendPacket(Span<uint8_t>(p.data.GetData(), p.data.GetNumberOfBitsUsed()), 0, false);
 }
 
 /*
@@ -435,7 +461,7 @@ bool ResetModelHandling(int modelid)
 	ICore* core_ = compo->getCore();
 	for (IPlayer* player : core_->getPlayers().players())
 	{
-		player->sendPacket(Span<uint8_t>(p.data.GetData(), p.data.GetNumberOfBytesUsed()), 0, true);
+		player->sendPacket(Span<uint8_t>(p.data.GetData(), p.data.GetNumberOfBitsUsed()), 0, true);
 	}
 	return true;
 }
@@ -462,7 +488,7 @@ void ResetVehicleHandling(IVehicle& vehicle, bool sendToPlayers)
 		ICore* core_ = compo->getCore();
 		for (IPlayer* player : core_->getPlayers().players())
 		{
-			player->sendPacket(Span<uint8_t>(p.data.GetData(), p.data.GetNumberOfBytesUsed()), 0, true);
+			player->sendPacket(Span<uint8_t>(p.data.GetData(), p.data.GetNumberOfBitsUsed()), 0, true);
 		}
 	}
 }
@@ -631,7 +657,8 @@ bool SetPlayerHandling(uint16_t playerid, CHandlingAttrib attrib, float value)
 	if (!IsHandlingType<float>(attrib, compo->getCore()) || !IsValidHandlingValue(attrib, value))
 		return false;
 	stHandlingEntry& entry = GetPlayerHandlingEntry(playerid);
-	SetHandlingValue(entry, attrib, value);
+	if (!SetHandlingValue(entry, attrib, value))
+		return false;
 	SendPlayerHandling(playerid, entry);
 	return true;
 }
@@ -644,7 +671,8 @@ bool SetPlayerHandling(uint16_t playerid, CHandlingAttrib attrib, unsigned int v
 	if (!IsHandlingType<unsigned int>(attrib, compo->getCore()))
 		return false;
 	stHandlingEntry& entry = GetPlayerHandlingEntry(playerid);
-	SetHandlingValue(entry, attrib, value);
+	if (!SetHandlingValue(entry, attrib, value))
+		return false;
 	SendPlayerHandling(playerid, entry);
 	return true;
 }
@@ -657,7 +685,8 @@ bool SetPlayerHandling(uint16_t playerid, CHandlingAttrib attrib, uint8_t value)
 	if (!IsHandlingType<uint8_t>(attrib, compo->getCore()) || !IsValidHandlingValue(attrib, value))
 		return false;
 	stHandlingEntry& entry = GetPlayerHandlingEntry(playerid);
-	SetHandlingValue(entry, attrib, value);
+	if (!SetHandlingValue(entry, attrib, value))
+		return false;
 	SendPlayerHandling(playerid, entry);
 	return true;
 }
@@ -677,7 +706,7 @@ bool ResetPlayerHandling(uint16_t playerid)
 		IPlayer* player = compo->GetPlayerByID(playerid);
 		if (player)
 		{
-			player->sendPacket(Span<uint8_t>(p.data.GetData(), p.data.GetNumberOfBytesUsed()), 0, true);
+			player->sendPacket(Span<uint8_t>(p.data.GetData(), p.data.GetNumberOfBitsUsed()), 0, true);
 		}
 	}
 	return true;
@@ -722,7 +751,7 @@ bool ResetAll(uint16_t playerid)
 			continue;
 		struct CustomVehActionPacket p(ACTION_RESET_VEHICLE);
 		p.data.Write(kv.first);
-		player->sendPacket(Span<uint8_t>(p.data.GetData(), p.data.GetNumberOfBytesUsed()), 0, true);
+		player->sendPacket(Span<uint8_t>(p.data.GetData(), p.data.GetNumberOfBitsUsed()), 0, true);
 	}
 
 	for (size_t i = 0; i < gBaseModelHandlings.size(); ++i)
@@ -731,7 +760,7 @@ bool ResetAll(uint16_t playerid)
 			continue;
 		struct CustomVehActionPacket p(ACTION_RESET_MODEL);
 		p.data.Write((uint16_t)(i + 400));
-		player->sendPacket(Span<uint8_t>(p.data.GetData(), p.data.GetNumberOfBytesUsed()), 0, true);
+		player->sendPacket(Span<uint8_t>(p.data.GetData(), p.data.GetNumberOfBitsUsed()), 0, true);
 	}
 
 	for (const auto& [customModel, entry] : gCustomModelHandlings)
@@ -740,7 +769,7 @@ bool ResetAll(uint16_t playerid)
 			continue;
 		struct CustomVehActionPacket p(ACTION_RESET_MODEL);
 		p.data.Write((uint16_t)customModel);
-		player->sendPacket(Span<uint8_t>(p.data.GetData(), p.data.GetNumberOfBytesUsed()), 0, true);
+		player->sendPacket(Span<uint8_t>(p.data.GetData(), p.data.GetNumberOfBitsUsed()), 0, true);
 	}
 
 	ResetPlayerHandling(playerid);
@@ -749,6 +778,12 @@ bool ResetAll(uint16_t playerid)
 
 void UnregisterCustomVehicle(uint32_t customModelId)
 {
+	ExtendedVehCompo* compo = ExtendedVehCompo::get();
+	ICore* core_ = compo ? compo->getCore() : nullptr;
+	if (core_)
+	{
+		core_->logLn(LogLevel::Message, "[ExtendedVeh] UnregisterCustomVehicle: Model %u", customModelId);
+	}
 	customVehicleDefs.erase(customModelId);
 	customVehicleModels.erase(customModelId);
 	gCustomModelHandlings.erase(customModelId);
@@ -758,6 +793,12 @@ void UnregisterCustomVehicle(uint32_t customModelId)
 
 void BeginCustomVehicleDef(uint32_t customModelId, uint32_t visualBase, uint32_t audioBase, uint32_t handlingBase, CustomVeh::Protocol::EngineSound engineSoundId)
 {
+	ExtendedVehCompo* compo = ExtendedVehCompo::get();
+	ICore* core_ = compo ? compo->getCore() : nullptr;
+	if (core_)
+	{
+		core_->logLn(LogLevel::Message, "[ExtendedVeh] BeginCustomVehicleDef: Model %u (visual=%u, audio=%u, handling=%u)", customModelId, visualBase, audioBase, handlingBase);
+	}
 	CustomVeh::Protocol::VehicleDefinition def {};
 	def.customModelId = customModelId;
 	def.visualBaseModel = visualBase;
@@ -777,30 +818,58 @@ void BeginCustomVehicleDef(uint32_t customModelId, uint32_t visualBase, uint32_t
 
 bool SetCustomVehicleAsset(uint32_t customModelId, std::string filename, CustomVeh::Protocol::AssetDescriptor CustomVeh::Protocol::VehicleDefinition::*asset)
 {
+	ExtendedVehCompo* compo = ExtendedVehCompo::get();
+	ICore* core_ = compo ? compo->getCore() : nullptr;
+
 	auto it = stagedCustomVehicleDefs.find(customModelId);
 	if (it == stagedCustomVehicleDefs.end())
+	{
+		if (core_)
+			core_->logLn(LogLevel::Warning, "[ExtendedVeh] SetCustomVehicleAsset: Custom vehicle model %u is not staged", customModelId);
 		return false;
+	}
+
+	fs::path filePath = fs::path(filename);
+	if (!fs::exists(filePath))
+	{
+		filePath = fs::path(g_modelsDir) / filePath;
+	}
+	if (!fs::exists(filePath))
+	{
+		if (core_)
+			core_->logLn(LogLevel::Warning, "[ExtendedVeh] SetCustomVehicleAsset: Asset file '%s' does not exist for model %u", filePath.string().c_str(), customModelId);
+		return false;
+	}
+	if (!IsPathInsideBase(g_modelsDir, filePath))
+	{
+		if (core_)
+			core_->logLn(LogLevel::Warning, "[ExtendedVeh] SetCustomVehicleAsset: Asset file '%s' is outside base models directory", filePath.string().c_str());
+		return false;
+	}
 
 	CustomVeh::Protocol::AssetDescriptor& descriptor = it->second.*asset;
 	strncpy(descriptor.filename, filename.c_str(), sizeof(descriptor.filename) - 1);
 	descriptor.filename[sizeof(descriptor.filename) - 1] = '\0';
 
 	std::string shaHex;
-	if (ComputeFileSha256(filename, shaHex))
+	if (ComputeFileSha256(filePath.string(), shaHex))
 	{
 		strncpy(descriptor.sha256, shaHex.c_str(), sizeof(descriptor.sha256) - 1);
 		descriptor.sha256[sizeof(descriptor.sha256) - 1] = '\0';
 	}
-
-	fs::path filePath = fs::path(filename);
-	if (!filePath.is_absolute() && !IsPathInsideBase(g_modelsDir, filePath))
+	else
 	{
-		filePath = fs::path(g_modelsDir) / filePath;
+		if (core_)
+			core_->logLn(LogLevel::Warning, "[ExtendedVeh] SetCustomVehicleAsset: Failed to compute SHA-256 for '%s'", filename.c_str());
 	}
-	if (fs::exists(filePath))
+
+	std::error_code ec;
+	descriptor.size = fs::file_size(filePath, ec);
+	if (ec)
 	{
-		std::error_code ec;
-		descriptor.size = fs::file_size(filePath, ec);
+		if (core_)
+			core_->logLn(LogLevel::Warning, "[ExtendedVeh] SetCustomVehicleAsset: Failed to get file size for '%s': %s", filePath.string().c_str(), ec.message().c_str());
+		descriptor.size = 0;
 	}
 
 	return true;
@@ -815,6 +884,14 @@ bool SetCustomVehicleDff(uint32_t customModelId)
 		if (fs::exists(fallback))
 			dffPath = fallback;
 	}
+	if (!fs::exists(dffPath))
+	{
+		ExtendedVehCompo* compo = ExtendedVehCompo::get();
+		ICore* core_ = compo ? compo->getCore() : nullptr;
+		if (core_)
+			core_->logLn(LogLevel::Warning, "[ExtendedVeh] SetCustomVehicleDff: DFF file not found for model %u (tried '%s')", customModelId, dffPath.string().c_str());
+		return false;
+	}
 	return SetCustomVehicleAsset(customModelId, dffPath.string(), &CustomVeh::Protocol::VehicleDefinition::dff);
 }
 
@@ -826,6 +903,14 @@ bool SetCustomVehicleTxd(uint32_t customModelId)
 		fs::path fallback = fs::path(g_modelsDir) / (std::to_string(customModelId) + ".txd");
 		if (fs::exists(fallback))
 			txdPath = fallback;
+	}
+	if (!fs::exists(txdPath))
+	{
+		ExtendedVehCompo* compo = ExtendedVehCompo::get();
+		ICore* core_ = compo ? compo->getCore() : nullptr;
+		if (core_)
+			core_->logLn(LogLevel::Warning, "[ExtendedVeh] SetCustomVehicleTxd: TXD file not found for model %u (tried '%s')", customModelId, txdPath.string().c_str());
+		return false;
 	}
 	return SetCustomVehicleAsset(customModelId, txdPath.string(), &CustomVeh::Protocol::VehicleDefinition::txd);
 }
@@ -846,19 +931,41 @@ bool SetCustomVehicleCol(uint32_t customModelId)
 
 bool CommitCustomVehicleDef(uint32_t customModelId)
 {
+	ExtendedVehCompo* compo = ExtendedVehCompo::get();
+	ICore* core_ = compo ? compo->getCore() : nullptr;
+
 	auto it = stagedCustomVehicleDefs.find(customModelId);
 	if (it == stagedCustomVehicleDefs.end())
+	{
+		if (core_)
+			core_->logLn(LogLevel::Warning, "[ExtendedVeh] CommitCustomVehicleDef: Custom vehicle model %u is not staged", customModelId);
 		return false;
+	}
 
-	if (it->second.dff.filename[0] != '\0')
-		it->second.flags |= CustomVeh::Protocol::HasDff;
-	if (it->second.txd.filename[0] != '\0')
-		it->second.flags |= CustomVeh::Protocol::HasTxd;
+	if (it->second.dff.filename[0] == '\0')
+	{
+		if (core_)
+			core_->logLn(LogLevel::Warning, "[ExtendedVeh] CommitCustomVehicleDef: Custom vehicle model %u is missing DFF asset", customModelId);
+		return false;
+	}
+	it->second.flags |= CustomVeh::Protocol::HasDff;
+
+	if (it->second.txd.filename[0] == '\0')
+	{
+		if (core_)
+			core_->logLn(LogLevel::Warning, "[ExtendedVeh] CommitCustomVehicleDef: Custom vehicle model %u is missing TXD asset", customModelId);
+		return false;
+	}
+	it->second.flags |= CustomVeh::Protocol::HasTxd;
+
 	if (it->second.col.filename[0] != '\0')
 		it->second.flags |= CustomVeh::Protocol::HasCol;
 
 	customVehicleDefs[customModelId] = it->second;
 	stagedCustomVehicleDefs.erase(it);
+
+	if (core_)
+		core_->logLn(LogLevel::Message, "[ExtendedVeh] Custom vehicle model %u committed successfully (flags=0x%X)", customModelId, customVehicleDefs[customModelId].flags);
 
 	SendCustomVehicleDefToAll(customModelId);
 	return true;
@@ -907,7 +1014,7 @@ void SendCustomVehicleDefToPlayer(IPlayer& player, uint32_t modelId)
 	writeAsset(def.dff);
 	writeAsset(def.txd);
 	writeAsset(def.col);
-	player.sendPacket(Span<uint8_t>(pkt.data.GetData(), pkt.data.GetNumberOfBytesUsed()), 0, true);
+	player.sendPacket(Span<uint8_t>(pkt.data.GetData(), pkt.data.GetNumberOfBitsUsed()), 0, true);
 }
 
 void SendCustomVehicleDefToAll(uint32_t modelId)
@@ -924,7 +1031,7 @@ void SendCustomVehicleDestroyToPlayer(IPlayer& player, uint32_t modelId)
 {
 	CustomVehActionPacket pkt(ACTION_CUSTOM_VEHICLE_DESTROY);
 	pkt.data.Write(modelId);
-	player.sendPacket(Span<uint8_t>(pkt.data.GetData(), pkt.data.GetNumberOfBytesUsed()), 0, true);
+	player.sendPacket(Span<uint8_t>(pkt.data.GetData(), pkt.data.GetNumberOfBitsUsed()), 0, true);
 }
 
 void SendCustomVehicleDestroyToAll(uint32_t modelId)

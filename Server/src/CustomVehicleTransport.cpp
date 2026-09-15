@@ -31,7 +31,7 @@ void SendVehicleBind(IPlayer& player, uint16_t sampVehicleId, uint32_t customMod
 	ScvActionPacket pkt(CustomVeh::Protocol::Action::CustomVehicleBind);
 	pkt.data.Write(reinterpret_cast<const char*>(&binding), sizeof(binding));
 
-	player.sendPacket(Span<uint8_t>(reinterpret_cast<uint8_t*>(pkt.data.GetData()), pkt.data.GetNumberOfBytesUsed()), 0, true);
+	player.sendPacket(Span<uint8_t>(reinterpret_cast<uint8_t*>(pkt.data.GetData()), pkt.data.GetNumberOfBitsUsed()), 0, true);
 }
 
 void SendVehicleUnbind(IPlayer& player, uint16_t sampVehicleId)
@@ -42,6 +42,6 @@ void SendVehicleUnbind(IPlayer& player, uint16_t sampVehicleId)
 	ScvActionPacket pkt(CustomVeh::Protocol::Action::CustomVehicleUnbind);
 	pkt.data.Write(reinterpret_cast<const char*>(&unbinding), sizeof(unbinding));
 
-	player.sendPacket(Span<uint8_t>(reinterpret_cast<uint8_t*>(pkt.data.GetData()), pkt.data.GetNumberOfBytesUsed()), 0, true);
+	player.sendPacket(Span<uint8_t>(reinterpret_cast<uint8_t*>(pkt.data.GetData()), pkt.data.GetNumberOfBitsUsed()), 0, true);
 }
 };

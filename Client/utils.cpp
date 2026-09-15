@@ -8,7 +8,7 @@ void ClientLog(const std::string& msg)
 {
 	static std::mutex logMutex;
 	std::lock_guard<std::mutex> lock(logMutex);
-	std::ofstream log("brownturbo-chandling.log", std::ios::app);
+	std::ofstream log("brownturbo-extendedveh.log", std::ios::app);
 	if (log.is_open()) {
 		log << msg << "\n";
 		log.flush();

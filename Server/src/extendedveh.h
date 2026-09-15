@@ -35,6 +35,7 @@ class ExtendedVehCompo final : public IComponent,
 							   public PawnEventHandler,
 							   public CoreEventHandler,
 							   public NetworkInEventHandler,
+							   public SingleNetworkInEventHandler,
 							   public NetworkOutEventHandler,
 							   public PoolEventHandler<IVehicle>,
 							   public PlayerConnectEventHandler,
@@ -61,6 +62,8 @@ public:
 	void onTick(Microseconds elapsed, TimePoint now) override;
 
 	bool onReceivePacket(IPlayer& peer, int id, NetworkBitStream& bs) override;
+
+	bool onReceive(IPlayer& peer, NetworkBitStream& bs) override;
 
 	void onFree(IComponent* component) override;
 
