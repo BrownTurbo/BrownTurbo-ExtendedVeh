@@ -3,6 +3,11 @@
 
 #include <Impl/network_impl.hpp>
 #include <Impl/pool_impl.hpp>
+#include <amx/amx.h>
+#undef amx_ctof
+#define amx_ctof(c) (*((float*)&(c)))
+#undef amx_ftoc
+#define amx_ftoc(f) (static_cast<cell>(*reinterpret_cast<const uint32_t*>(&(f))))
 #include <pawn-natives/NativeFunc.hpp>
 #define PAWN_NATIVES_HAS_FUNC
 #include <sdk.hpp>
@@ -22,7 +27,7 @@
 #define EXTVEH_COMPAT_VERSION 0x1001D
 
 #define IS_VALID_PLAYERID(playerid) \
-	(playerid >= 1 && playerid <= MAX_PLAYERS)
+	((playerid) >= 0 && (playerid) < MAX_PLAYERS)
 
 using namespace Impl;
 
@@ -47,6 +52,8 @@ public:
 
 	void onInit(IComponentList* components) override;
 
+	void onReady() override;
+
 	void onAmxLoad(IPawnScript& script) override;
 
 	void onAmxUnload(IPawnScript& script) override;
@@ -68,6 +75,8 @@ public:
 	void onPlayerDisconnect(IPlayer& player, PeerDisconnectReason reason) override;
 
 	void onVehicleStreamIn(IVehicle& vehicle, IPlayer& player) override;
+
+	void onPoolEntryCreated(IVehicle& vehicle) override;
 
 	void onPoolEntryDestroyed(IVehicle& vehicle) override;
 

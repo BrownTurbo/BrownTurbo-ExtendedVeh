@@ -16,6 +16,7 @@
 #include "utils.h"
 #include <Server/Components/Pawn/pawn.hpp>
 #include <Server/Components/Pawn/Impl/pawn_natives.hpp>
+#include "defs.h"
 
 using namespace NativeHook;
 
@@ -89,7 +90,17 @@ inline cell OnDestroyVehicleHook(AMX* amx, cell* params, amx_native_fn_t orig)
 			core_->logLn(LogLevel::Debug, "[ExtendedVeh] Hooked DestroyVehicle");
 		}
 	}
-	const int vehicleid = static_cast<int>(params[1]);
+	int vehicleid = INVALID_VEHICLE_ID;
+	AMX_HEADER* hdr = reinterpret_cast<AMX_HEADER*>(amx->base);
+	if (hdr && hdr->magic == 0xf1e0) // AMX_MAGIC_32
+	{
+		const int32_t* params32 = reinterpret_cast<const int32_t*>(params);
+		vehicleid = params32[1];
+	}
+	else
+	{
+		vehicleid = static_cast<int>(params[1]);
+	}
 	if (vehicleid != INVALID_VEHICLE_ID)
 	{
 		HandlingMgr::OnDestroyVehicle(vehicleid);
@@ -108,13 +119,84 @@ inline void RegisterNativeHooks()
 	hooks.RegisterHookByName("DestroyVehicle", &FuncHook::OnDestroyVehicleHook);
 }
 
+#undef PAWN_NATIVE_DEFN_
+#define PAWN_NATIVE_DEFN_(used_namespace, failret, func, params)               \
+                                                                               \
+	template <>                                                                \
+	cell AMX_NATIVE_CALL Native_##func::Call(AMX* amx, cell* args)             \
+	{                                                                          \
+		if (amx && args)                                                       \
+		{                                                                      \
+			AMX_HEADER* hdr = reinterpret_cast<AMX_HEADER*>(amx->base);       \
+			if (hdr && hdr->magic == 0xf1e0)                                   \
+			{                                                                  \
+				const uint32_t* args32 = reinterpret_cast<const uint32_t*>(args); \
+				uint32_t byte_count = args32[0];                               \
+				uint32_t num_args = byte_count / sizeof(uint32_t);             \
+				cell args64[64];                                               \
+				uint32_t count = (num_args < 63) ? num_args : 63;             \
+				args64[0] = static_cast<cell>(count * sizeof(cell));           \
+				for (uint32_t i = 1; i <= count; ++i)                          \
+				{                                                              \
+					args64[i] = static_cast<cell>(static_cast<uint64_t>(args32[i])); \
+				}                                                              \
+				return used_namespace::func.CallDoOuter<failret>(amx, args64); \
+			}                                                                  \
+		}                                                                      \
+		return used_namespace::func.CallDoOuter<failret>(amx, args);           \
+	}                                                                          \
+                                                                               \
+	template <>                                                                \
+	Native_##func::Native_##func##_()                                          \
+		: Base(#func, (AMX_NATIVE)&Call)                                       \
+	{                                                                          \
+	}                                                                          \
+                                                                               \
+	Native_##func used_namespace::func;                                        \
+                                                                               \
+	template <>                                                                \
+	PAWN_NATIVE__RETURN(params)                                                \
+	Native_##func::                                                            \
+		Do(PAWN_NATIVE__PARAMETERS(params)) const;                             \
+                                                                               \
+	template <typename RET, typename... TS>                                    \
+	typename pawn_natives::ReturnResolver<RET>::type NATIVE_##func(TS... args) \
+	{                                                                          \
+		try                                                                    \
+		{                                                                      \
+			PAWN_NATIVE__GET_RETURN(params)                                    \
+			(used_namespace::func.Do(args...));                                \
+		}                                                                      \
+		catch (std::exception & e)                                             \
+		{                                                                      \
+			char msg[1024];                                                    \
+			sprintf(msg, "Exception in _" #func ": \"%s\"", e.what());         \
+			LOG_NATIVE_ERROR(msg);                                             \
+		}                                                                      \
+		catch (...)                                                            \
+		{                                                                      \
+			LOG_NATIVE_ERROR("Unknown exception in _" #func);                  \
+		}                                                                      \
+		PAWN_NATIVE__DEFAULT_RETURN(params);                                   \
+	}                                                                          \
+                                                                               \
+	template <>                                                                \
+	PAWN_NATIVE__RETURN(params)                                                \
+	Native_##func::                                                            \
+		Do(PAWN_NATIVE__PARAMETERS(params)) const
+
 // Vehicle handling related funcs
 // native GetHandlingAttribType(attrib);
-SCRIPT_API(GetHandlingAttribType, cell(int attr))
+SCRIPT_API(GetHandlingAttribType, int(int attr))
 {
 	CHandlingAttrib handlingAttr = static_cast<CHandlingAttrib>(attr);
 	CHandlingAttribType type = GetHandlingAttributeType(handlingAttr);
-	return static_cast<cell>(type);
+	ExtendedVehCompo* compo = ExtendedVehCompo::get();
+	if (compo && compo->getCore())
+	{
+		compo->getCore()->logLn(LogLevel::Message, "[ExtendedVeh] GetHandlingAttribType(attr=%d) returning %d", attr, static_cast<int>(type));
+	}
+	return static_cast<int>(type);
 }
 
 // native IsPlayerUsingExtendedVeh(playerid);
@@ -127,9 +209,28 @@ SCRIPT_API(IsPlayerUsingExtendedVeh, bool(IPlayer& player))
 	if (!core_)
 		return false;
 	int playerid = player.getID();
-	if (core_->getPlayers().get(playerid) != nullptr)
+	if (core_->getPlayers().get(playerid) == nullptr)
 		return false;
-	return gPlayers[playerid].hasExtendedVeh();
+	bool has = gPlayers.HasExtendedVeh(playerid);
+	core_->logLn(LogLevel::Message, "[ExtendedVeh] IsPlayerUsingExtendedVeh(playerid=%d) returning %s", playerid, has ? "true" : "false");
+	return has;
+}
+
+// native IsPlayerUsingCHandling(playerid);
+SCRIPT_API(IsPlayerUsingCHandling, bool(IPlayer& player))
+{
+	ExtendedVehCompo* compo = ExtendedVehCompo::get();
+	if (!compo)
+		return false;
+	ICore* core_ = compo->getCore();
+	if (!core_)
+		return false;
+	int playerid = player.getID();
+	if (core_->getPlayers().get(playerid) == nullptr)
+		return false;
+	bool has = gPlayers.HasExtendedVeh(playerid);
+	core_->logLn(LogLevel::Message, "[ExtendedVeh] IsPlayerUsingCHandling(playerid=%d) returning %s", playerid, has ? "true" : "false");
+	return has;
 }
 
 // native ResetModelHandling(modelid);
@@ -150,16 +251,18 @@ SCRIPT_API(ResetVehicleHandling, bool(IVehicle& vehicle))
 }
 
 // native SetVehicleHandlingFloat(vehicleid, attrib, Float:value);
-SCRIPT_API(SetVehicleHandlingFloat, bool(int vehicleid, CHandlingAttrib attrib, float value))
+SCRIPT_API(SetVehicleHandlingFloat, bool(IVehicle& vehicle, CHandlingAttrib attrib, float value))
 {
+	int vehicleid = vehicle.getID();
 	if (!CVehicleMgr::VehicleRegistry::Get().IsValidVehicleID(vehicleid))
 		return false;
 	return HandlingMgr::SetVehicleHandling(static_cast<uint16_t>(vehicleid), attrib, value);
 }
 
 // native SetVehicleHandlingInt(vehicleid, attrib, value);
-SCRIPT_API(SetVehicleHandlingInt, bool(int vehicleid, CHandlingAttrib attrib, int value))
+SCRIPT_API(SetVehicleHandlingInt, bool(IVehicle& vehicle, CHandlingAttrib attrib, int value))
 {
+	int vehicleid = vehicle.getID();
 	if (!CVehicleMgr::VehicleRegistry::Get().IsValidVehicleID(vehicleid))
 		return false;
 
@@ -190,18 +293,20 @@ SCRIPT_API(SetModelHandlingInt, bool(int modelid, CHandlingAttrib attrib, int va
 }
 
 // native GetVehicleHandlingFloat(vehicleid, attrib, &Float:value);
-SCRIPT_API(GetVehicleHandlingFloat, bool(int vehicleid, CHandlingAttrib attrib, float& value))
+SCRIPT_API(GetVehicleHandlingFloat, bool(IVehicle& vehicle, CHandlingAttrib attrib, float& value))
 {
 	value = 0.0f;
+	int vehicleid = vehicle.getID();
 	if (!CVehicleMgr::VehicleRegistry::Get().IsValidVehicleID(vehicleid))
 		return false;
 	return HandlingMgr::GetVehicleHandling(static_cast<uint16_t>(vehicleid), attrib, value);
 }
 
 // native GetVehicleHandlingInt(vehicleid, attrib, &value);
-SCRIPT_API(GetVehicleHandlingInt, bool(int vehicleid, CHandlingAttrib attrib, unsigned int& value))
+SCRIPT_API(GetVehicleHandlingInt, bool(IVehicle& vehicle, CHandlingAttrib attrib, unsigned int& value))
 {
 	value = 0;
+	int vehicleid = vehicle.getID();
 	if (!CVehicleMgr::VehicleRegistry::Get().IsValidVehicleID(vehicleid))
 		return false;
 
@@ -289,7 +394,7 @@ SCRIPT_API(SetPlayerHandlingFloat, bool(IPlayer& player, CHandlingAttrib attrib,
 	if (!core_)
 		return false;
 	int playerid = player.getID();
-	if (core_->getPlayers().get(playerid) != nullptr)
+	if (core_->getPlayers().get(playerid) == nullptr)
 		return false;
 	return HandlingMgr::SetPlayerHandling(static_cast<uint16_t>(playerid), attrib, value);
 }
@@ -304,7 +409,7 @@ SCRIPT_API(ResetAllHandlingForPlayer, bool(IPlayer& player))
 	if (!core_)
 		return false;
 	int playerid = player.getID();
-	if (core_->getPlayers().get(playerid) != nullptr)
+	if (core_->getPlayers().get(playerid) == nullptr)
 		return false;
 	return HandlingMgr::ResetAll(static_cast<uint16_t>(playerid));
 }
@@ -319,7 +424,7 @@ SCRIPT_API(SetPlayerHandlingInt, bool(IPlayer& player, CHandlingAttrib attrib, i
 	if (!core_)
 		return false;
 	int playerid = player.getID();
-	if (core_->getPlayers().get(playerid) != nullptr)
+	if (core_->getPlayers().get(playerid) == nullptr)
 		return false;
 	if (GetHandlingAttributeType(attrib) == TYPE_BYTE)
 		return HandlingMgr::SetPlayerHandling(static_cast<uint16_t>(playerid), attrib, (uint8_t)value);
@@ -337,7 +442,7 @@ SCRIPT_API(GetPlayerHandlingFloat, bool(IPlayer& player, CHandlingAttrib attrib,
 	if (!core_)
 		return false;
 	int playerid = player.getID();
-	if (core_->getPlayers().get(playerid) != nullptr)
+	if (core_->getPlayers().get(playerid) == nullptr)
 		return false;
 	return HandlingMgr::GetPlayerHandling(static_cast<uint16_t>(playerid), attrib, value);
 }
@@ -353,7 +458,7 @@ SCRIPT_API(GetPlayerHandlingInt, bool(IPlayer& player, CHandlingAttrib attrib, u
 	if (!core_)
 		return false;
 	int playerid = player.getID();
-	if (core_->getPlayers().get(playerid) != nullptr)
+	if (core_->getPlayers().get(playerid) == nullptr)
 		return false;
 	bool ret = false;
 	if (GetHandlingAttributeType(attrib) == TYPE_BYTE)
@@ -379,7 +484,7 @@ SCRIPT_API(ResetPlayerHandling, bool(IPlayer& player))
 	if (!core_)
 		return false;
 	int playerid = player.getID();
-	if (core_->getPlayers().get(playerid) != nullptr)
+	if (core_->getPlayers().get(playerid) == nullptr)
 		return false;
 	return HandlingMgr::ResetPlayerHandling(static_cast<uint16_t>(playerid));
 }
@@ -425,7 +530,6 @@ SCRIPT_API(DestroyCustomVehicle, bool(int customModelId))
 {
 	if (!HandlingMgr::IsCustomVehicle(static_cast<uint32_t>(customModelId)))
 		return false;
-	HandlingMgr::SendCustomVehicleDestroyToAll(static_cast<uint32_t>(customModelId));
 	HandlingMgr::UnregisterCustomVehicle(static_cast<uint32_t>(customModelId));
 	return true;
 }
@@ -440,7 +544,7 @@ SCRIPT_API(ResetAllHandling, bool(IPlayer& player))
 	if (!core_)
 		return false;
 	int playerid = player.getID();
-	if (core_->getPlayers().get(playerid) != nullptr)
+	if (core_->getPlayers().get(playerid) == nullptr)
 		return false;
 	return HandlingMgr::ResetAll(static_cast<uint16_t>(playerid));
 }
@@ -454,22 +558,18 @@ SCRIPT_API(IsCustomVehicleModel, bool(int modelid))
 }
 
 // native IsVehicleCustom(vehicleid);
-SCRIPT_API(IsVehicleCustom, bool(int vehicleid))
+SCRIPT_API(IsVehicleCustom, bool(IVehicle& vehicle))
 {
+	int vehicleid = vehicle.getID();
 	if (!CVehicleMgr::VehicleRegistry::Get().IsValidVehicleID(vehicleid))
 		return false;
-	ExtendedVehCompo* compo = ExtendedVehCompo::get();
-	if (!compo)
-		return false;
-	IVehicle* vehicle = compo->GetVehicleByID(vehicleid);
-	if (!vehicle)
-		return false;
-	return HandlingMgr::IsCustomVehicle(static_cast<uint32_t>(vehicle->getModel()));
+	return CustomVehicleBindingRegistry::Instance().Get(static_cast<uint16_t>(vehicleid)).has_value();
 }
 
 // native BindVehicleModel(vehicleid, customModelId);
-SCRIPT_API(BindVehicleModel, bool(int vehicleid, int customModelId))
+SCRIPT_API(BindVehicleModel, bool(IVehicle& vehicle, int customModelId))
 {
+	int vehicleid = vehicle.getID();
 	if (!CVehicleMgr::VehicleRegistry::Get().IsValidVehicleID(vehicleid))
 		return false;
 	if (!CVehicleMgr::VehicleRegistry::Get().IsValidVehicleModel(customModelId))
@@ -477,10 +577,19 @@ SCRIPT_API(BindVehicleModel, bool(int vehicleid, int customModelId))
 	ExtendedVehCompo* compo = ExtendedVehCompo::get();
 	if (!compo)
 		return false;
-	IVehicle* vehicle = compo->GetVehicleByID(vehicleid);
-	if (!vehicle)
-		return false;
 	CustomVehicleBindingRegistry::Instance().Bind(static_cast<uint16_t>(vehicleid), static_cast<uint32_t>(customModelId));
+
+	ICore* core_ = compo->getCore();
+	if (core_)
+	{
+		for (IPlayer* player : core_->getPlayers().players())
+		{
+			if (player && gPlayers[player->getID()].hasExtendedVeh())
+			{
+				CustomVehicleTransport::SendVehicleBind(*player, static_cast<uint16_t>(vehicleid), static_cast<uint32_t>(customModelId));
+			}
+		}
+	}
 	return true;
 }
 
@@ -514,7 +623,7 @@ SCRIPT_API(GetClientFileStoreStatus, int(IPlayer& player, int modelId, int kind)
 	if (!core_)
 		return 0;
 	int playerid = player.getID();
-	if (core_->getPlayers().get(playerid) != nullptr)
+	if (core_->getPlayers().get(playerid) == nullptr)
 		return 0;
 	return ModelTransferMgr::GetClientFileStoreStatus(playerid, static_cast<uint32_t>(modelId), static_cast<ModelFileKind>(kind));
 }

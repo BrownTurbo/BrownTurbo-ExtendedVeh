@@ -18,6 +18,7 @@ void OnRequestFile(IPlayer& player, uint32_t modelId, ModelFileKind kind);
 // onPlayerDisconnect - either drops one in-flight transfer or all of a
 // player's.
 void CancelTransfer(IPlayer& player, uint32_t modelId, ModelFileKind kind);
+void CancelTransfersForModel(uint32_t modelId);
 void OnPlayerDisconnect(IPlayer& player);
 
 // Called once per onTick - pumps up to kChunksPerPlayerPerTick chunks for

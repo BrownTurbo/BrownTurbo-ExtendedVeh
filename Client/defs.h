@@ -31,6 +31,7 @@ constexpr uint32_t EXTENDEDVEH_COMPAT_VERSION = 0x1001D;
 
 constexpr uint16_t RPC_WorldPlayerAdd = 137;
 constexpr uint16_t RPC_WorldPlayerRemove = 138;
+constexpr uint16_t RPC_InitGame = 139;
 
 constexpr uint32_t BASE_MODEL_START = 400;
 constexpr uint32_t BASE_MODEL_END = 611;
@@ -68,4 +69,4 @@ inline constexpr uint32_t GetBaseModelIndex(uint32_t modelId)
 }
 
 class CBaseModelInfo;
-CBaseModelInfo* GetEngineModelInfo(int modelId);
+inline CBaseModelInfo* GetEngineModelInfo(int modelId);

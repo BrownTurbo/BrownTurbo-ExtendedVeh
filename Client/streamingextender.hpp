@@ -19,6 +19,9 @@
 #include "handling_manager.hpp"
 #include "rpworld.h"
 
+class StreamingExtender;
+inline CBaseModelInfo* GetEngineModelInfo(int modelId);
+
 class StreamingExtender {
 private:
 	static inline std::unordered_map<uint32_t, CVehicleModelInfo*> s_customModels;
@@ -32,7 +35,7 @@ public:
 			return it->second;
 		}
 
-		CBaseModelInfo* visualBase = CModelInfo::GetModelInfo(def.visualBaseModel);
+		CBaseModelInfo* visualBase = GetEngineModelInfo(def.visualBaseModel);
 		if (!visualBase)
 			return nullptr;
 
@@ -46,7 +49,7 @@ public:
 		newModel->m_pRwObject = nullptr;
 		newModel->SetIsLod(0);
 
-		CBaseModelInfo* handlingBase = CModelInfo::GetModelInfo(def.handlingBaseModel);
+		CBaseModelInfo* handlingBase = GetEngineModelInfo(def.handlingBaseModel);
 		if (handlingBase) {
 			newModel->m_nHandlingId = reinterpret_cast<CVehicleModelInfo*>(handlingBase)->m_nHandlingId;
 		}

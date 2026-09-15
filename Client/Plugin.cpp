@@ -52,6 +52,7 @@
 #include "../Shared/CustomVehicleProtocol.hpp"
 #include "CollisionLoader.h"
 #include "CryptoUtility.h"
+#include "CustomVehicleBindingManager.h"
 #include "ImGuiOverlay.h"
 #include "MainThreadQueue.h"
 #include "ModelCache.h"
@@ -112,15 +113,13 @@ public:
 		if (!bs.Read(asset.chunkCount))
 			return false;
 
-		char sha256[CustomVeh::Protocol::SHA256_BUFFER_SIZE];
-		if (!bs.Read(sha256, CustomVeh::Protocol::SHA256_BUFFER_SIZE))
+		if (!bs.Read(asset.sha256, CustomVeh::Protocol::SHA256_BUFFER_SIZE))
 			return false;
-		asset.sha256 = std::string(sha256);
+		asset.sha256[CustomVeh::Protocol::SHA256_BUFFER_SIZE - 1] = '\0';
 
-		char filename[CustomVeh::Protocol::FILENAME_SIZE];
-		if (!bs.Read(filename, CustomVeh::Protocol::FILENAME_SIZE))
+		if (!bs.Read(asset.filename, CustomVeh::Protocol::FILENAME_SIZE))
 			return false;
-		asset.filename = filename;
+		asset.filename[CustomVeh::Protocol::FILENAME_SIZE - 1] = '\0';
 
 		return true;
 	}
@@ -174,28 +173,36 @@ private:
 
 		auto beginCol = [this, pending, pushToQueue]() {
 			if (pending->def.col.filename[0] == '\0') {
-				std::lock_guard<std::mutex> lock(pending->assetMutex);
-				pending->colState = AssetState::Failed;
+				{
+					std::lock_guard<std::mutex> lock(pending->assetMutex);
+					pending->colState = AssetState::Ready;
+				}
+				pushToQueue();
 				return;
 			}
 			ModelTransferClient::Instance().RequestFile(
 				pending->def.customModelId, ModelFileKind::Col, pending->def.col.sha256,
 				[pending, pushToQueue](bool ok, const fs::path& path) {
-					if (ok) {
+					{
 						std::lock_guard<std::mutex> lock(pending->assetMutex);
-						pending->colPath = path;
-						pending->colState = AssetState::Ready;
+						if (ok) {
+							pending->colPath = path;
+							pending->colState = AssetState::Ready;
+						} else {
+							pending->colState = AssetState::Failed;
+						}
 					}
 					pushToQueue();
 				});
 		};
 
-		auto beginDff = [this, pending, beginCol](bool ok, const fs::path& path) {
+		auto beginDff = [this, pending, beginCol, pushToQueue](bool ok, const fs::path& path) {
 			if (!ok) {
 				{
 					std::lock_guard<std::mutex> lock(pending->assetMutex);
 					pending->dffState = AssetState::Failed;
 				}
+				pushToQueue();
 				return;
 			}
 
@@ -210,6 +217,7 @@ private:
 					std::lock_guard<std::mutex> lock(pending->assetMutex);
 					pending->dffState = AssetState::Failed;
 				}
+				pushToQueue();
 				return;
 			}
 			const auto size = file.tellg();
@@ -218,6 +226,7 @@ private:
 					std::lock_guard<std::mutex> lock(pending->assetMutex);
 					pending->dffState = AssetState::Failed;
 				}
+				pushToQueue();
 				return;
 			}
 
@@ -230,6 +239,7 @@ private:
 					std::lock_guard<std::mutex> lock(pending->assetMutex);
 					pending->dffState = AssetState::Failed;
 				}
+				pushToQueue();
 				return;
 			}
 
@@ -239,6 +249,7 @@ private:
 					std::lock_guard<std::mutex> lock(pending->assetMutex);
 					pending->dffState = AssetState::Failed;
 				}
+				pushToQueue();
 				return;
 			}
 			{
@@ -251,9 +262,17 @@ private:
 
 		ModelTransferClient::Instance().RequestFile(
 			pending->def.customModelId, ModelFileKind::Txd, pending->def.txd.sha256,
-			[this, pending, beginDff](bool ok, const fs::path& path) {
-				if (!ok)
+			[this, pending, beginDff, pushToQueue](bool ok, const fs::path& path) {
+				if (!ok) {
+					{
+						std::lock_guard<std::mutex> lock(pending->assetMutex);
+						pending->txdState = AssetState::Failed;
+						pending->dffState = AssetState::Failed;
+						pending->colState = AssetState::Failed;
+					}
+					pushToQueue();
 					return;
+				}
 
 				{
 					std::lock_guard<std::mutex> lock(pending->assetMutex);
@@ -267,7 +286,33 @@ private:
 
 	void FinalizeCustomVehicle(std::shared_ptr<PendingCustomVehicle> pending)
 	{
+		if (pending->dffState != AssetState::Ready || pending->txdState != AssetState::Ready) {
+			StreamingExtender::DestroyCustomModel(pending->def.customModelId);
+			SendMsg(0xFF0000, std::format("[CustomVeh] Failed to load essential assets for model {}", pending->def.customModelId).c_str());
+			return;
+		}
+
 		CVehicleModelInfo* newModel = pending->modelInfo;
+		if (!newModel)
+			return;
+
+		if (pending->txd.empty() && !pending->txdPath.empty()) {
+			std::ifstream file(pending->txdPath, std::ios::binary | std::ios::ate);
+			if (file) {
+				const auto size = file.tellg();
+				if (size > 0) {
+					file.seekg(0, std::ios::beg);
+					pending->txd.resize(static_cast<std::size_t>(size));
+					file.read(reinterpret_cast<char*>(pending->txd.data()), size);
+				}
+			}
+		}
+
+		if (pending->txd.empty()) {
+			StreamingExtender::DestroyCustomModel(pending->def.customModelId);
+			SendMsg(0xFF0000, std::format("[CustomVeh] TXD file empty or unreadable for model {}", pending->def.customModelId).c_str());
+			return;
+		}
 
 		int txdSlot = CTxdStore::AddTxdSlot(std::format("custom_veh_{}", pending->def.customModelId).c_str());
 
@@ -276,6 +321,7 @@ private:
 
 		if (!txdStream) {
 			CTxdStore::RemoveTxdSlot(txdSlot);
+			StreamingExtender::DestroyCustomModel(pending->def.customModelId);
 			SendMsg(0xFF0000, std::format("[CustomVeh] Failed to open TXD stream for model {}", pending->def.customModelId).c_str());
 			return;
 		}
@@ -283,6 +329,7 @@ private:
 		if (!CTxdStore::LoadTxd(txdSlot, txdStream)) {
 			RwStreamClose(txdStream, nullptr);
 			CTxdStore::RemoveTxdSlot(txdSlot);
+			StreamingExtender::DestroyCustomModel(pending->def.customModelId);
 			SendMsg(0xFF0000, std::format("[CustomVeh] Failed to load TXD for model {}", pending->def.customModelId).c_str());
 			return;
 		}
@@ -298,28 +345,41 @@ private:
 		RwMemory dffMem { pending->dff.data(), static_cast<RwUInt32>(pending->dff.size()) };
 		RwStream* dffStream = RwStreamOpen(rwSTREAMMEMORY, rwSTREAMREAD, &dffMem);
 		if (dffStream != nullptr) {
-			if (RwStreamFindChunk(dffStream, rwID_CLUMP, nullptr, nullptr)) {
-				RpClump* pClump = RpClumpStreamRead(dffStream);
-				if (pClump) {
-					if (!StreamingExtender::FinalizeClump(newModel, pClump)) {
-						CTxdStore::RemoveTxdSlot(txdSlot);
-						SendMsg(0xFF0000, std::format("[CustomVeh] Failed to finalize clump for model {}", pending->def.customModelId).c_str());
+			RpClump* pClump = RpClumpStreamRead(dffStream);
+			if (pClump) {
+				if (!StreamingExtender::FinalizeClump(newModel, pClump)) {
+					CTxdStore::RemoveTxdSlot(txdSlot);
+					StreamingExtender::DestroyCustomModel(pending->def.customModelId);
+					SendMsg(0xFF0000, std::format("[CustomVeh] Failed to finalize clump for model {}", pending->def.customModelId).c_str());
+				}
+				if (pending->colState == AssetState::Ready && (pending->def.flags & CustomVeh::Protocol::HasCol) != 0) {
+					if (pending->col.empty() && !pending->colPath.empty()) {
+						std::ifstream colFile(pending->colPath, std::ios::binary | std::ios::ate);
+						if (colFile) {
+							const auto cSize = colFile.tellg();
+							if (cSize > 0) {
+								colFile.seekg(0, std::ios::beg);
+								pending->col.resize(static_cast<std::size_t>(cSize));
+								colFile.read(reinterpret_cast<char*>(pending->col.data()), cSize);
+							}
+						}
 					}
-					if (pending->colState == AssetState::Ready && (pending->def.flags & CustomVeh::Protocol::HasCol) != 0) {
+					if (!pending->col.empty()) {
 						ExtendedVeh::Collision::CollisionLoader* colLoader = &ExtendedVeh::Collision::CollisionLoader::Instance();
 						if (!colLoader->LoadCollisionFromMemory(pending->col.data(), pending->col.size(), newModel)) {
 							SendMsg(0xFF8800, std::format("[CustomVeh] Warning: Failed to parse COL for model {}", pending->def.customModelId).c_str());
 						}
 					}
-				} else {
-					CTxdStore::RemoveTxdSlot(txdSlot);
-					SendMsg(0xFF0000, std::format("[CustomVeh] Failed to parse DFF for model {}", pending->def.customModelId).c_str());
 				}
 			} else {
-				SendMsg(0xFF0000, std::format("[CustomVeh] No CLUMP chunk in DFF for model {}", pending->def.customModelId).c_str());
+				CTxdStore::RemoveTxdSlot(txdSlot);
+				StreamingExtender::DestroyCustomModel(pending->def.customModelId);
+				SendMsg(0xFF0000, std::format("[CustomVeh] Failed to parse DFF for model {}", pending->def.customModelId).c_str());
 			}
 			RwStreamClose(dffStream, nullptr);
 		} else {
+			CTxdStore::RemoveTxdSlot(txdSlot);
+			StreamingExtender::DestroyCustomModel(pending->def.customModelId);
 			SendMsg(0xFF0000, std::format("[CustomVeh] Failed to open DFF stream for model {}", pending->def.customModelId).c_str());
 		}
 
@@ -450,9 +510,7 @@ public:
 	void onPlayerStreamOut(uint16_t playerId)
 	{
 		MainThreadQueue::Instance().Push([playerId]() {
-			_customVehInstance.RequestClearAllCustomModels();
-			HandlingManager::ProcessAction(ACTION_RESET_ALL, nullptr);
-			ModelTransferClient::Instance().CancelAll("server connection lost");
+			HandlingManager::RemovePlayerHandling(playerId, nullptr);
 		});
 	}
 
@@ -462,15 +520,18 @@ public:
 bool ASIinitialized = false;
 void InitializeHooks()
 {
+	ClientLog("[Client] InitializeHooks thread started, waiting for samp.dll...");
 	while (GetModuleHandleA("samp.dll") == nullptr) {
 		std::this_thread::sleep_for(std::chrono::milliseconds(100));
 	}
+	ClientLog(std::format("[Client] samp.dll loaded at 0x{:X}", rakhook::samp_addr()));
 
 	while (!ASIinitialized) {
 		if (rakhook::samp_addr() && rakhook::samp_version() != rakhook::samp_ver::unknown) {
 			if (IsGameInitialized()) {
 				if (rakhook::initialize()) {
 					ASIinitialized = true;
+					ClientLog(std::format("[Client] rakhook initialized successfully (samp_version={})", static_cast<int>(rakhook::samp_version())));
 					break;
 				}
 			}
@@ -479,7 +540,10 @@ void InitializeHooks()
 	}
 
 	rakhook::on_receive_rpc += [](unsigned char& id, RakNet::BitStream* bs) -> bool {
-		if (id == RPC_WorldPlayerAdd) {
+		if (id == RPC_InitGame) {
+			ClientLog("[Client] Received RPC_InitGame (139), sending init packet...");
+			HandlingManager::SendInitPacket();
+		} else if (id == RPC_WorldPlayerAdd) {
 			size_t originalOffset = bs->GetReadOffset();
 			uint16_t playerId = 0;
 			bs->Read(playerId);
@@ -517,16 +581,28 @@ void InitializeHooks()
 					SendMsg(0xFF0000, "[CustomVeh] Failed to read vehicle modelId from packet");
 					return false;
 				}
+				ModelTransferClient::Instance().CancelModelTransfers(customModelId);
 				_customVehInstance.PushDestructionCommand(customModelId);
 				return false;
 			}
 			return HandlingManager::ProcessAction(actionID, &bs);
+		} else if (packetId == ID_CONNECTION_REQUEST_ACCEPTED) {
+			ClientLog("[Client] Received ID_CONNECTION_REQUEST_ACCEPTED, sending init packet...");
+			HandlingManager::SendInitPacket();
 		} else if (packetId == ID_DISCONNECTION_NOTIFICATION || packetId == ID_CONNECTION_LOST || packetId == ID_CONNECTION_BANNED) {
+			ClientLog("[Client] Disconnected from server");
+			HandlingManager::m_isServerAuthorized = false;
 			_customVehInstance.RequestClearAllCustomModels();
 			HandlingManager::ProcessAction(ACTION_RESET_ALL, nullptr);
+			ModelTransferClient::Instance().CancelAll("server connection lost");
 		}
 		return true;
 	};
+
+	if (rakhook::orig && rakhook::orig->IsConnected()) {
+		ClientLog("[Client] Already connected upon hook init, sending init packet...");
+		HandlingManager::SendInitPacket();
+	}
 }
 
 std::unique_ptr<c_plugin> Plugn;
@@ -538,108 +614,137 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD dwReason, LPVOID lpReserved)
 		DisableThreadLibraryCalls(hModule);
 
 		Plugn = std::make_unique<c_plugin>(hModule);
+		static bool threadSpawned = false;
+		if (!threadSpawned) {
+			threadSpawned = true;
+			std::thread(InitializeHooks).detach();
+		}
 		Events::initGameEvent += []() {
-			static bool threadSpawned = false;
-			if (!threadSpawned) {
-				threadSpawned = true;
-				std::thread(InitializeHooks).detach();
-			}
 			colLoader->Initialize();
 		};
 		static CVehicle* s_prevLocalVehicle = nullptr;
 		Events::gameProcessEvent += []() {
-			MainThreadQueue::Instance().DrainOnMainThread();
-			Plugn->game_loop();
-			_customVehInstance.ProcessPendingDefinitions();
-			_customVehInstance.ProcessCompletedDownloads();
-			_customVehInstance.ProcessPendingDestructions();
-			_customVehInstance.ProcessPendingClearAll();
-			HandlingManager::ProcessPendingCommands();
+			try {
+				MainThreadQueue::Instance().DrainOnMainThread();
 
-			// Update vehicle cache and model use counts
-			struct VehicleEntry {
-				CVehicle* gameVeh;
-				uint16_t sampId;
-			};
-			static std::vector<VehicleEntry> previousVehicles;
-			std::vector<VehicleEntry> currentVehicles;
-			currentVehicles.reserve(128);
+				if (!ASIinitialized) {
+					return;
+				}
 
-			auto pool = GetVehiclesPool();
-			if (!std::holds_alternative<std::nullptr_t>(pool)) {
-				std::visit([&](auto&& p) {
-					using T = std::decay_t<decltype(p)>;
-					if constexpr (!std::is_same_v<T, std::nullptr_t>) {
-						if (p) {
-							for (uint16_t id = 0; id < (std::min)(static_cast<uint16_t>(p->m_nCount), static_cast<uint16_t>(MAX_SAMP_VEHICLES)); ++id) {
-								auto* sampVeh = p->Get(id);
-								if (sampVeh && sampVeh->m_pGameVehicle && IsVehicleStreamedForLocalPlayer(sampVeh->m_pGameVehicle)) {
-									currentVehicles.push_back({ sampVeh->m_pGameVehicle, id });
+				Plugn->game_loop();
+				_customVehInstance.ProcessPendingDefinitions();
+				_customVehInstance.ProcessCompletedDownloads();
+				CustomVehicleBindingManager::Instance().Process();
+				_customVehInstance.ProcessPendingDestructions();
+				_customVehInstance.ProcessPendingClearAll();
+				HandlingManager::ProcessPendingCommands();
+
+				static auto lastInitTry = std::chrono::steady_clock::now();
+				if (!HandlingManager::m_isServerAuthorized && rakhook::orig && rakhook::orig->IsConnected()) {
+					auto now = std::chrono::steady_clock::now();
+					if (std::chrono::duration_cast<std::chrono::milliseconds>(now - lastInitTry).count() >= 1500) {
+						lastInitTry = now;
+						HandlingManager::SendInitPacket();
+					}
+				}
+
+				// Update vehicle cache and model use counts
+				struct VehicleEntry {
+					CVehicle* gameVeh;
+					uint16_t sampId;
+					uint16_t gtaRef;
+				};
+				static std::vector<VehicleEntry> previousVehicles;
+				std::vector<VehicleEntry> currentVehicles;
+				currentVehicles.reserve(128);
+
+				auto pool = GetVehiclesPool();
+				if (!std::holds_alternative<std::nullptr_t>(pool)) {
+					std::visit([&](auto&& p) {
+						using T = std::decay_t<decltype(p)>;
+						if constexpr (!std::is_same_v<T, std::nullptr_t>) {
+							if (p) {
+								int found = 0;
+								for (uint16_t id = 1; id < MAX_SAMP_VEHICLES && found < p->m_nCount; ++id) {
+									auto* sampVeh = p->Get(id);
+									if (sampVeh) {
+										++found;
+										if (sampVeh->m_pGameVehicle && IsVehiclePointerValid(sampVeh->m_pGameVehicle) && IsVehicleStreamedForLocalPlayer(sampVeh->m_pGameVehicle)) {
+											uint16_t gtaRef = static_cast<uint16_t>(CPools::GetVehicleRef(sampVeh->m_pGameVehicle));
+											currentVehicles.push_back({ sampVeh->m_pGameVehicle, id, gtaRef });
+										}
+									}
+								}
+							}
+						}
+					},
+						pool);
+				}
+
+				// Detect new vehicles
+				for (const auto& cur : currentVehicles) {
+					bool found = false;
+					for (const auto& old : previousVehicles) {
+						if (old.gameVeh == cur.gameVeh) {
+							found = true;
+							break;
+						}
+					}
+					if (!found) {
+						HandlingManager::CacheVehicleSAMPId(cur.gameVeh, cur.sampId);
+					}
+
+					if (IsVehiclePointerValid(cur.gameVeh)) {
+						if (AudioExtender::GetVehicleAudio(static_cast<uint32_t>(cur.gameVeh->m_nModelIndex)).has_value()) {
+							std::optional<AudioExtender::CustomVehicleAudioState*> audioState = AudioExtender::GetOrCreateAudioState(*cur.gameVeh);
+							if (audioState) {
+								if (!AudioExtender::InitialiseCustomVehicleAudio(audioState.value()->engine, *cur.gameVeh)) {
+									AudioExtender::RemoveVehicleAudioState(cur.gtaRef);
 								}
 							}
 						}
 					}
-				},
-					pool);
-			}
+				}
 
-			// Detect new vehicles
-			for (const auto& cur : currentVehicles) {
-				bool found = false;
+				// Detect vehicles that disappeared
 				for (const auto& old : previousVehicles) {
-					if (old.gameVeh == cur.gameVeh) {
-						found = true;
-						break;
+					bool stillExists = false;
+					for (const auto& cur : currentVehicles) {
+						if (cur.gameVeh == old.gameVeh) {
+							stillExists = true;
+							break;
+						}
+					}
+					if (!stillExists) {
+						HandlingManager::RemoveVehicleFromCache(old.gameVeh);
+						AudioExtender::RemoveVehicleAudioState(old.gtaRef);
 					}
 				}
-				if (!found) {
-					HandlingManager::CacheVehicleSAMPId(cur.gameVeh, cur.sampId);
+
+				// Update previousVehicles for next frame
+				previousVehicles = std::move(currentVehicles);
+
+				// Vehicle destructor cleanup
+				HandlingManager::OnVehicleDestructor(nullptr);
+
+				// Vehicle enter / exit for local player
+				auto* localPed = FindPlayerPed();
+				if (!localPed) {
+					s_prevLocalVehicle = nullptr;
+					return;
 				}
+				CVehicle* curVehicle = localPed->m_pVehicle;
 
-				std::optional<AudioExtender::CustomVehicleAudioState*> audioState = AudioExtender::GetOrCreateAudioState(*cur.gameVeh);
-				if (audioState) {
-					if (!AudioExtender::InitialiseCustomVehicleAudio(audioState.value()->engine, *cur.gameVeh)) {
-						AudioExtender::RemoveVehicleAudioState(static_cast<uint16_t>(CPools::GetVehicleRef(cur.gameVeh)));
-					}
+				if (curVehicle != s_prevLocalVehicle) {
+					uint16_t localId = GetLocalPlayerId();
+					if (s_prevLocalVehicle && IsVehiclePointerValid(s_prevLocalVehicle))
+						HandlingManager::RemovePlayerHandling(localId, s_prevLocalVehicle);
+					if (curVehicle && IsVehiclePointerValid(curVehicle))
+						HandlingManager::ApplyPlayerHandling(localId, curVehicle);
+					s_prevLocalVehicle = curVehicle;
 				}
-			}
-
-			// Detect vehicles that disappeared
-			for (const auto& old : previousVehicles) {
-				bool stillExists = false;
-				for (const auto& cur : currentVehicles) {
-					if (cur.gameVeh == old.gameVeh) {
-						stillExists = true;
-						break;
-					}
-				}
-				if (!stillExists) {
-					HandlingManager::RemoveVehicleFromCache(old.gameVeh);
-					AudioExtender::RemoveVehicleAudioState(static_cast<uint16_t>(CPools::GetVehicleRef(old.gameVeh)));
-				}
-			}
-
-			// Update previousVehicles for next frame
-			previousVehicles = std::move(currentVehicles);
-
-			// Vehicle destructor cleanup
-			HandlingManager::OnVehicleDestructor(nullptr);
-
-			// Vehicle enter / exit for local player
-			auto* localPed = FindPlayerPed();
-			if (!localPed) {
-				s_prevLocalVehicle = nullptr;
-				return;
-			}
-			CVehicle* curVehicle = localPed->m_pVehicle;
-
-			if (curVehicle != s_prevLocalVehicle) {
-				uint16_t localId = GetLocalPlayerId();
-				if (s_prevLocalVehicle)
-					HandlingManager::RemovePlayerHandling(localId, s_prevLocalVehicle);
-				if (curVehicle)
-					HandlingManager::ApplyPlayerHandling(localId, curVehicle);
-				s_prevLocalVehicle = curVehicle;
+			} catch (...) {
+				// Prevent unhandled exception termination
 			}
 		};
 		break;

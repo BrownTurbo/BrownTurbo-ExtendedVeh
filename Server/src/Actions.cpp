@@ -6,11 +6,6 @@
 #include "ModelTransferManager.h"
 #include "extendedveh.h"
 
-namespace HandlingMgr
-{
-void __WriteHandlingEntryToBitStream(NetworkBitStream* bs, const struct stHandlingEntry entry);
-}
-
 bool Actions::Process(CustomVehAction id, NetworkBitStream& bs, IPlayer& player)
 {
 	switch (id)
@@ -153,6 +148,8 @@ bool Actions::Process(CustomVehAction id, NetworkBitStream& bs, IPlayer& player)
 		uint16_t playerId;
 		if (!bs.Read(playerId))
 			return false;
+		if (playerId != player.getID())
+			return false;
 		HandlingMgr::ResetAll(playerId);
 		return false;
 	}
@@ -179,9 +176,8 @@ bool Actions::Process(CustomVehAction id, NetworkBitStream& bs, IPlayer& player)
 		uint32_t modelId;
 		uint8_t kindByte;
 		uint8_t successByte = 0;
-		bs.Read(modelId);
-		bs.Read(kindByte);
-		bs.Read(successByte);
+		if (!bs.Read(modelId) || !bs.Read(kindByte) || !bs.Read(successByte) || kindByte > static_cast<uint8_t>(ModelFileKind::Col))
+			return false;
 		ModelTransferMgr::OnClientReportFileStored(player, modelId, static_cast<ModelFileKind>(kindByte), successByte != 0);
 		return true;
 	}

@@ -5,6 +5,7 @@
 #include "HandlingDefault.h"
 #include "PacketEnum.h"
 #include "extendedveh.h"
+#include "ModelTransferManager.h"
 
 #include <cstring>
 #include <type_traits>
@@ -27,6 +28,7 @@ std::unordered_map<uint32_t, CustomVeh::Protocol::VehicleDefinition> stagedCusto
 
 std::unordered_set<uint16_t> usOutgoingVehicleMods;
 std::unordered_set<uint32_t> usOutgoingModelMods;
+std::mutex g_outgoingModsMutex;
 
 std::unordered_map<int, IVehicle*> vehiclesIdMap;
 
@@ -54,7 +56,7 @@ stHandlingEntry* GetModelHandlingEntry(uint32_t modelid)
 /*
  *  INTERNAL FUNCTIONS
  */
-void __WriteHandlingEntryToBitStream(NetworkBitStream* bs, const struct stHandlingEntry entry)
+void __WriteHandlingEntryToBitStream(NetworkBitStream* bs, const struct stHandlingEntry& entry)
 {
 	bs->Write((uint8_t)entry.handlingModMap.size());
 
@@ -228,7 +230,10 @@ bool __AddModelHandlingMod(uint16_t modelid, CHandlingAttrib attribute, const st
 
 	__addMod(entry, attribute, mod);
 
-	usOutgoingModelMods.emplace(modelid);
+	{
+		std::lock_guard<std::mutex> lock(g_outgoingModsMutex);
+		usOutgoingModelMods.emplace(modelid);
+	}
 	return true;
 }
 
@@ -250,7 +255,10 @@ bool __AddVehicleHandlingMod(uint16_t vehicleid, CHandlingAttrib attribute, cons
 	}
 	__addMod(&vEntry, attribute, mod);
 
-	usOutgoingVehicleMods.emplace(vehicleid);
+	{
+		std::lock_guard<std::mutex> lock(g_outgoingModsMutex);
+		usOutgoingVehicleMods.emplace(vehicleid);
+	}
 	return true;
 }
 
@@ -260,13 +268,22 @@ bool __AddVehicleHandlingMod(uint16_t vehicleid, CHandlingAttrib attribute, cons
 void ProcessTick()
 {
 	ExtendedVehCompo* compo = ExtendedVehCompo::get();
+	if (!compo)
+		return;
 	ICore* core_ = compo->getCore();
-	while (!usOutgoingVehicleMods.empty())
-	{
-		const auto it = usOutgoingVehicleMods.begin();
-		uint16_t vehicleid = *it;
-		usOutgoingVehicleMods.erase(it);
+	if (!core_)
+		return;
 
+	std::unordered_set<uint16_t> vehicleMods;
+	std::unordered_set<uint32_t> modelMods;
+	{
+		std::lock_guard<std::mutex> lock(g_outgoingModsMutex);
+		vehicleMods.swap(usOutgoingVehicleMods);
+		modelMods.swap(usOutgoingModelMods);
+	}
+
+	for (uint16_t vehicleid : vehicleMods)
+	{
 		auto vIt = vehicleHandlings.find(vehicleid);
 		if (!compo->IsValidVehicle(vehicleid) || vIt == vehicleHandlings.end() || vIt->second.usesModelHandling)
 		{
@@ -278,16 +295,13 @@ void ProcessTick()
 
 		for (IPlayer* player : core_->getPlayers().players())
 		{
-			player->sendPacket(Span<uint8_t>(p.data.GetData(), p.data.GetNumberOfBytesUsed()), 0, true);
+			if (player)
+				player->sendPacket(Span<uint8_t>(p.data.GetData(), p.data.GetNumberOfBytesUsed()), 0, true);
 		}
 	}
 
-	while (!usOutgoingModelMods.empty())
+	for (uint32_t modelid : modelMods)
 	{
-		const auto it = usOutgoingModelMods.begin();
-		uint32_t modelid = *it;
-		usOutgoingModelMods.erase(it);
-
 		stHandlingEntry* mEntry = GetModelHandlingEntry(modelid);
 		if (!CVehicleMgr::IS_VALID_VEHICLE_MODEL(modelid) || !mEntry || mEntry->handlingModMap.empty())
 		{
@@ -300,7 +314,8 @@ void ProcessTick()
 
 		for (IPlayer* player : core_->getPlayers().players())
 		{
-			player->sendPacket(Span<uint8_t>(p.data.GetData(), p.data.GetNumberOfBytesUsed()), 0, true);
+			if (player)
+				player->sendPacket(Span<uint8_t>(p.data.GetData(), p.data.GetNumberOfBytesUsed()), 0, true);
 		}
 	}
 }
@@ -334,6 +349,7 @@ void OnDestroyVehicle(int vehicleid)
 	{
 		ResetVehicleHandling(*pVeh, false);
 	}
+	vehicleHandlings.erase(vehicleid);
 	vehiclesIdMap.erase(vehicleid);
 }
 
@@ -766,24 +782,66 @@ bool SetCustomVehicleAsset(uint32_t customModelId, std::string filename, CustomV
 		return false;
 
 	CustomVeh::Protocol::AssetDescriptor& descriptor = it->second.*asset;
-	descriptor.filename = std::move(filename);
-	ComputeFileSha256(descriptor.filename, descriptor.sha256);
+	strncpy(descriptor.filename, filename.c_str(), sizeof(descriptor.filename) - 1);
+	descriptor.filename[sizeof(descriptor.filename) - 1] = '\0';
+
+	std::string shaHex;
+	if (ComputeFileSha256(filename, shaHex))
+	{
+		strncpy(descriptor.sha256, shaHex.c_str(), sizeof(descriptor.sha256) - 1);
+		descriptor.sha256[sizeof(descriptor.sha256) - 1] = '\0';
+	}
+
+	fs::path filePath = fs::path(filename);
+	if (!filePath.is_absolute() && !IsPathInsideBase(g_modelsDir, filePath))
+	{
+		filePath = fs::path(g_modelsDir) / filePath;
+	}
+	if (fs::exists(filePath))
+	{
+		std::error_code ec;
+		descriptor.size = fs::file_size(filePath, ec);
+	}
+
 	return true;
 }
 
 bool SetCustomVehicleDff(uint32_t customModelId)
 {
-	return SetCustomVehicleAsset(customModelId, GetAssetPath(customModelId, CustomVeh::Protocol::AssetType::Dff).string(), &CustomVeh::Protocol::VehicleDefinition::dff);
+	fs::path dffPath = GetAssetPath(customModelId, CustomVeh::Protocol::AssetType::Dff);
+	if (!fs::exists(dffPath))
+	{
+		fs::path fallback = fs::path(g_modelsDir) / (std::to_string(customModelId) + ".dff");
+		if (fs::exists(fallback))
+			dffPath = fallback;
+	}
+	return SetCustomVehicleAsset(customModelId, dffPath.string(), &CustomVeh::Protocol::VehicleDefinition::dff);
 }
 
 bool SetCustomVehicleTxd(uint32_t customModelId)
 {
-	return SetCustomVehicleAsset(customModelId, GetAssetPath(customModelId, CustomVeh::Protocol::AssetType::Txd).string(), &CustomVeh::Protocol::VehicleDefinition::txd);
+	fs::path txdPath = GetAssetPath(customModelId, CustomVeh::Protocol::AssetType::Txd);
+	if (!fs::exists(txdPath))
+	{
+		fs::path fallback = fs::path(g_modelsDir) / (std::to_string(customModelId) + ".txd");
+		if (fs::exists(fallback))
+			txdPath = fallback;
+	}
+	return SetCustomVehicleAsset(customModelId, txdPath.string(), &CustomVeh::Protocol::VehicleDefinition::txd);
 }
 
 bool SetCustomVehicleCol(uint32_t customModelId)
 {
-	return SetCustomVehicleAsset(customModelId, GetAssetPath(customModelId, CustomVeh::Protocol::AssetType::Col).string(), &CustomVeh::Protocol::VehicleDefinition::col);
+	fs::path colPath = GetAssetPath(customModelId, CustomVeh::Protocol::AssetType::Col);
+	if (!fs::exists(colPath))
+	{
+		fs::path fallback = fs::path(g_modelsDir) / (std::to_string(customModelId) + ".col");
+		if (fs::exists(fallback))
+			colPath = fallback;
+		else
+			return false; // COL is optional
+	}
+	return SetCustomVehicleAsset(customModelId, colPath.string(), &CustomVeh::Protocol::VehicleDefinition::col);
 }
 
 bool CommitCustomVehicleDef(uint32_t customModelId)
@@ -791,6 +849,13 @@ bool CommitCustomVehicleDef(uint32_t customModelId)
 	auto it = stagedCustomVehicleDefs.find(customModelId);
 	if (it == stagedCustomVehicleDefs.end())
 		return false;
+
+	if (it->second.dff.filename[0] != '\0')
+		it->second.flags |= CustomVeh::Protocol::HasDff;
+	if (it->second.txd.filename[0] != '\0')
+		it->second.flags |= CustomVeh::Protocol::HasTxd;
+	if (it->second.col.filename[0] != '\0')
+		it->second.flags |= CustomVeh::Protocol::HasCol;
 
 	customVehicleDefs[customModelId] = it->second;
 	stagedCustomVehicleDefs.erase(it);
@@ -811,7 +876,7 @@ void SendCustomVehicleDefToPlayer(IPlayer& player, uint32_t modelId)
 		return;
 
 	CustomVehActionPacket pkt(ACTION_CUSTOM_VEHICLE_DEFINE);
-	NetworkBitStream bs = pkt.data;
+	NetworkBitStream& bs = pkt.data;
 	auto writeToStream = [&bs](const std::string& s, size_t fixedLen)
 	{
 		std::string padded = s;
@@ -842,7 +907,7 @@ void SendCustomVehicleDefToPlayer(IPlayer& player, uint32_t modelId)
 	writeAsset(def.dff);
 	writeAsset(def.txd);
 	writeAsset(def.col);
-	player.sendPacket(Span<uint8_t>(pkt.data.GetData(), pkt.data.GetNumberOfBitsUsed()), 0, true);
+	player.sendPacket(Span<uint8_t>(pkt.data.GetData(), pkt.data.GetNumberOfBytesUsed()), 0, true);
 }
 
 void SendCustomVehicleDefToAll(uint32_t modelId)
@@ -858,18 +923,21 @@ void SendCustomVehicleDefToAll(uint32_t modelId)
 void SendCustomVehicleDestroyToPlayer(IPlayer& player, uint32_t modelId)
 {
 	CustomVehActionPacket pkt(ACTION_CUSTOM_VEHICLE_DESTROY);
-	NetworkBitStream bs = pkt.data;
-	bs.Write(modelId);
-	player.sendPacket(Span<uint8_t>(pkt.data.GetData(), pkt.data.GetNumberOfBitsUsed()), 0, true);
+	pkt.data.Write(modelId);
+	player.sendPacket(Span<uint8_t>(pkt.data.GetData(), pkt.data.GetNumberOfBytesUsed()), 0, true);
 }
 
 void SendCustomVehicleDestroyToAll(uint32_t modelId)
 {
+	ModelTransferMgr::CancelTransfersForModel(modelId);
 	ExtendedVehCompo* compo = ExtendedVehCompo::get();
-	ICore* core_ = compo->getCore();
-	for (IPlayer* player : core_->getPlayers().players())
+	ICore* core_ = compo ? compo->getCore() : nullptr;
+	if (core_)
 	{
-		SendCustomVehicleDestroyToPlayer(*player, modelId);
+		for (IPlayer* player : core_->getPlayers().players())
+		{
+			SendCustomVehicleDestroyToPlayer(*player, modelId);
+		}
 	}
 }
 }

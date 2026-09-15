@@ -103,18 +103,6 @@ void ModelTransferClient::RequestFile(uint32_t modelId, ModelFileKind kind, cons
 	std::function<void(bool, const fs::path&)> onReady)
 {
 	if (auto cached = ModelCache::Instance().TryGet(modelId, static_cast<uint8_t>(kind), expectedSha256Hex)) {
-		{
-			std::lock_guard<std::mutex> lock(m_mutex);
-			TransferProgress p;
-			p.modelId = modelId;
-			p.kind = kind;
-			p.fromCache = true;
-			p.statusText = "cached";
-			p.attempts = 0;
-			p.lastError.clear();
-			p.startTime = std::chrono::steady_clock::now();
-			m_active[Key(modelId, kind)].progress = p;
-		}
 		onReady(true, *cached);
 		return;
 	}
@@ -203,6 +191,35 @@ void ModelTransferClient::CancelAll(const std::string& reason)
 	});
 }
 
+void ModelTransferClient::CancelModelTransfers(uint32_t customModelId)
+{
+	std::vector<std::function<void(bool, const fs::path&)>> callbacks;
+	{
+		std::lock_guard lock(m_mutex);
+		for (auto it = m_active.begin(); it != m_active.end();) {
+			if (it->second.progress.modelId == customModelId) {
+				it->second.progress.failed = true;
+				it->second.progress.statusText = "cancelled";
+				it->second.progress.lastError = "model destroyed";
+				if (it->second.onReady) {
+					callbacks.push_back(it->second.onReady);
+				}
+				it = m_active.erase(it);
+			} else {
+				++it;
+			}
+		}
+	}
+
+	if (!callbacks.empty()) {
+		MainThreadQueue::Instance().Push([callbacks = std::move(callbacks)]() {
+			for (const auto& callback : callbacks) {
+				callback(false, {});
+			}
+		});
+	}
+}
+
 void ModelTransferClient::OnTransferBegin(RakNet::BitStream* bs)
 {
 	uint32_t modelId;
@@ -248,6 +265,7 @@ void ModelTransferClient::OnTransferBegin(RakNet::BitStream* bs)
 	it->second.progress.totalChunks = totalChunks;
 	it->second.progress.statusText = "downloading";
 	it->second.compressedBuffer.resize(compressedSize);
+	it->second.receivedChunkBitmap.assign(totalChunks, 0);
 	it->second.expectedSha256 = std::string(shaBuf);
 
 	// refresh start time so timeout counts from begin arrival
@@ -275,7 +293,7 @@ void ModelTransferClient::OnTransferChunk(RakNet::BitStream* bs)
 	std::lock_guard<std::mutex> lock(m_mutex);
 	auto it = m_active.find(Key(modelId, static_cast<ModelFileKind>(kindByte)));
 	if (it == m_active.end()) {
-		bs->IgnoreBits(8);
+		bs->IgnoreBits(chunkLen * 8);
 		return;
 	}
 
@@ -284,6 +302,12 @@ void ModelTransferClient::OnTransferChunk(RakNet::BitStream* bs)
 		ScheduleRetry(it, "chunk index out of bounds");
 		return;
 	}
+
+	if (chunkIndex < entry.receivedChunkBitmap.size() && entry.receivedChunkBitmap[chunkIndex]) {
+		bs->IgnoreBits(chunkLen * 8);
+		return;
+	}
+
 	const uint32_t offset = static_cast<std::uint64_t>(chunkIndex * 4096u);
 	if (offset >= entry.compressedBuffer.size()) {
 		ScheduleRetry(it, "chunk offset out of bounds");
@@ -300,6 +324,9 @@ void ModelTransferClient::OnTransferChunk(RakNet::BitStream* bs)
 		return;
 	}
 
+	if (chunkIndex < entry.receivedChunkBitmap.size()) {
+		entry.receivedChunkBitmap[chunkIndex] = 1;
+	}
 	entry.progress.receivedChunks++;
 	entry.progress.receivedBytes += chunkLen;
 
@@ -331,8 +358,16 @@ void ModelTransferClient::OnTransferEnd(RakNet::BitStream* bs)
 			return;
 		auto& entry = it->second;
 
-		if (entry.progress.receivedBytes != entry.progress.compressedSize) {
-			ScheduleRetry(it, "received byte count mismatch");
+		bool allChunksReceived = (entry.receivedChunkBitmap.size() == entry.progress.totalChunks);
+		for (uint8_t bit : entry.receivedChunkBitmap) {
+			if (!bit) {
+				allChunksReceived = false;
+				break;
+			}
+		}
+
+		if (!allChunksReceived || entry.progress.receivedBytes != entry.progress.compressedSize) {
+			ScheduleRetry(it, "missing chunks or byte count mismatch");
 			return;
 		}
 
@@ -364,8 +399,10 @@ void ModelTransferClient::OnTransferEnd(RakNet::BitStream* bs)
 				== Z_OK
 			&& destLen == uncompressedSize);
 
-	if (ok)
-		ok = (Sha256HexOfBuffer(decompressed.data(), decompressed.size()) == expectedSha);
+	if (ok) {
+		std::string computedSha = Sha256HexOfBuffer(decompressed.data(), decompressed.size());
+		ok = (_stricmp(computedSha.c_str(), expectedSha.c_str()) == 0);
+	}
 
 	if (ok) {
 		// store and finish

@@ -59,6 +59,11 @@ public:
 	void RegisterHookByName(const std::string& nativeName, Lambda handler)
 	{
 		std::lock_guard<std::mutex> lock(mutex_);
+		for (const auto& h : pendingHooks_)
+		{
+			if (h.nativeName == nativeName)
+				return;
+		}
 		pendingHooks_.emplace_back(nativeName, std::function<cell(AMX*, cell*, amx_native_fn_t)>(handler));
 	}
 
@@ -80,7 +85,7 @@ public:
 			int index = findNativeIndex(amx, hookData.nativeName);
 			if (index == -1)
 			{
-				core_->logLn(LogLevel::Error, "[ExtendedVeh] native %s not found in AMX.", hookData.nativeName.c_str());
+				core_->logLn(LogLevel::Debug, "[ExtendedVeh] native %s not referenced in script.", hookData.nativeName.c_str());
 				continue;
 			}
 
@@ -90,9 +95,20 @@ public:
 
 			// Get original native
 			amx_native_fn_t orig = nullptr;
-			AMX_HEADER* hdr = (AMX_HEADER*)amx->base;
-			AMX_FUNCSTUBNT* natives = (AMX_FUNCSTUBNT*)(amx->base + hdr->natives);
-			orig = (amx_native_fn_t)natives[index].address;
+			AMX_NATIVE_INFO info {};
+			if (amx_GetNativeByIndex(amx, index, &info) == AMX_ERR_NONE && info.func)
+			{
+				orig = info.func;
+			}
+			else if (amx->base)
+			{
+				AMX_HEADER* hdr = reinterpret_cast<AMX_HEADER*>(amx->base);
+				if (hdr && hdr->defsize > 0)
+				{
+					uint8_t* entryPtr = reinterpret_cast<uint8_t*>(amx->base) + hdr->natives + index * hdr->defsize;
+					orig = *reinterpret_cast<amx_native_fn_t*>(entryPtr);
+				}
+			}
 			if (!orig)
 				continue;
 
@@ -194,21 +210,61 @@ private:
 		if (!amx)
 			return -1;
 
-		int num_natives = 0;
-		if (amx_NumNatives(amx, &num_natives) != AMX_ERR_NONE)
-			return -1;
-		char native_name[64];
-		for (int idx = 0; idx < num_natives; idx++)
+		int index = -1;
+		if (amx_FindNative(amx, name.c_str(), &index) == AMX_ERR_NONE && index >= 0)
 		{
-			native_name[0] = '\0';
-			if (amx_GetNative(amx, idx, native_name) == AMX_ERR_NONE)
+			return index;
+		}
+
+		int num_natives = 0;
+		if (amx_NumNatives(amx, &num_natives) == AMX_ERR_NONE)
+		{
+			char native_name[64];
+			for (int idx = 0; idx < num_natives; idx++)
 			{
-				if (strcmp(native_name, name.c_str()) != 0)
+				native_name[0] = '\0';
+				if (amx_GetNative(amx, idx, native_name) == AMX_ERR_NONE)
 				{
-					return idx;
+					if (strcmp(native_name, name.c_str()) == 0)
+					{
+						return idx;
+					}
 				}
 			}
 		}
+
+		if (amx->base)
+		{
+			auto* hdr = reinterpret_cast<AMX_HEADER*>(amx->base);
+			if (hdr && hdr->defsize > 0 && hdr->natives < hdr->libraries)
+			{
+				int total = static_cast<int>((hdr->libraries - hdr->natives) / hdr->defsize);
+				for (int idx = 0; idx < total; ++idx)
+				{
+					uint8_t* entry = reinterpret_cast<uint8_t*>(amx->base) + hdr->natives + idx * hdr->defsize;
+					const char* entryName = nullptr;
+					if (hdr->defsize == 8)
+					{
+						uint32_t nameofs = *reinterpret_cast<uint32_t*>(entry + 4);
+						entryName = reinterpret_cast<const char*>(reinterpret_cast<uint8_t*>(amx->base) + nameofs);
+					}
+					else if (hdr->defsize == sizeof(AMX_FUNCSTUBNT))
+					{
+						uint32_t nameofs = reinterpret_cast<AMX_FUNCSTUBNT*>(entry)->nameofs;
+						entryName = reinterpret_cast<const char*>(reinterpret_cast<uint8_t*>(amx->base) + nameofs);
+					}
+					else if (hdr->defsize > 16)
+					{
+						entryName = reinterpret_cast<const char*>(entry + sizeof(uint32_t));
+					}
+					if (entryName && strcmp(entryName, name.c_str()) == 0)
+					{
+						return idx;
+					}
+				}
+			}
+		}
+
 		return -1;
 	}
 

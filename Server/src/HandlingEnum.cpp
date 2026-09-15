@@ -134,7 +134,7 @@ bool IsValidHandlingValue(CHandlingAttrib attribute, uint8_t value)
 	case HANDL_TR_NDRIVETYPE:
 		return value == 'R' || value == 'F' || value == '4';
 	case HANDL_TR_NNUMBEROFGEARS:
-		return 1 <= value && value <= 5;
+		return 1 <= value && value <= 6;
 	case HANDL_TR_NENGINETYPE:
 		return value == 'P' || value == 'D' || value == 'E';
 	case HANDL_FRONTLIGHTS:

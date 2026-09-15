@@ -25,7 +25,6 @@ namespace
 void SendVehicleBind(IPlayer& player, uint16_t sampVehicleId, uint32_t customModelId)
 {
 	CustomVeh::Protocol::VehicleBinding binding {};
-	binding.protocol = CustomVeh::Protocol::PROTOCOL_VERSION;
 	binding.sampVehicleId = sampVehicleId;
 	binding.customModelId = customModelId;
 
@@ -38,7 +37,6 @@ void SendVehicleBind(IPlayer& player, uint16_t sampVehicleId, uint32_t customMod
 void SendVehicleUnbind(IPlayer& player, uint16_t sampVehicleId)
 {
 	CustomVeh::Protocol::VehicleUnbinding unbinding {};
-	unbinding.protocol = CustomVeh::Protocol::PROTOCOL_VERSION;
 	unbinding.sampVehicleId = sampVehicleId;
 
 	ScvActionPacket pkt(CustomVeh::Protocol::Action::CustomVehicleUnbind);

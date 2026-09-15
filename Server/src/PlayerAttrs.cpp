@@ -1,8 +1,4 @@
 #include "PlayerAttrs.h"
+#include <mutex>
 
-std::unordered_map<int, PlayerAttrs> gPlayers;
-
-void PlayerAttrs::Reset()
-{
-	this->_hasExtendedVeh = false;
-}
+PlayerAttrsMap gPlayers;

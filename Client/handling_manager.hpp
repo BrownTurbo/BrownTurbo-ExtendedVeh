@@ -211,4 +211,5 @@ public:
 	static void ProcessPendingCommands();
 
 	static void SendHandlingPacket(CustomVehAction action, RakNet::BitStream* bs);
+	static void SendInitPacket();
 };

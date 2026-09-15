@@ -46,6 +46,7 @@ private:
 	struct InFlight {
 		TransferProgress progress;
 		std::vector<uint8_t> compressedBuffer;
+		std::vector<uint8_t> receivedChunkBitmap;
 		std::string expectedSha256;
 		std::function<void(bool, const fs::path&)> onReady;
 
@@ -81,6 +82,7 @@ public:
 	void FailImmediately(std::unordered_map<uint64_t, InFlight>::iterator it, const std::string& err);
 	void ManualRetry(uint32_t modelId, ModelFileKind kind);
 	void CancelAll(const std::string& reason);
+	void CancelModelTransfers(uint32_t customModelId);
 
 private:
 	ModelTransferClient();

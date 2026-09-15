@@ -78,7 +78,15 @@ namespace
 				return &it->second;
 		}
 
-		fs::path path = fs::path(g_modelsDir) / (std::to_string(modelId) + FileExtensionFor(kind));
+		fs::path path = GetAssetPath(modelId, static_cast<CustomVeh::Protocol::AssetType>(kind));
+		if (!fs::exists(path))
+		{
+			fs::path fallbackPath = fs::path(g_modelsDir) / (std::to_string(modelId) + FileExtensionFor(kind));
+			if (fs::exists(fallbackPath))
+			{
+				path = fallbackPath;
+			}
+		}
 		if (!IsPathInsideBase(g_modelsDir, path))
 			return nullptr;
 		std::ifstream file(path, std::ios::binary | std::ios::ate);
@@ -125,6 +133,7 @@ void Initialize(const std::string& modelsDirectory)
 
 void InvalidateCache(uint32_t modelId, ModelFileKind kind)
 {
+	std::lock_guard<std::mutex> lock(g_cacheMutex);
 	g_cache.erase(CacheKey(modelId, kind));
 }
 
@@ -134,28 +143,30 @@ void OnRequestFile(IPlayer& player, uint32_t modelId, ModelFileKind kind)
 		return;
 
 	const int playerId = player.getID();
-	if (std::any_of(g_activeTransfers.begin(), g_activeTransfers.end(),
+	{
+		std::lock_guard<std::mutex> lock(g_activeMutex);
+		if (std::any_of(g_activeTransfers.begin(), g_activeTransfers.end(),
+				[&](const ActiveTransfer& transfer)
+				{
+					return transfer.playerId == playerId && transfer.modelId == modelId && transfer.kind == kind;
+				}))
+			return;
+
+		const size_t playerTransferCount = static_cast<size_t>(std::count_if(
+			g_activeTransfers.begin(), g_activeTransfers.end(),
 			[&](const ActiveTransfer& transfer)
 			{
-				return transfer.playerId == playerId && transfer.modelId == modelId && transfer.kind == kind;
-			}))
-		return;
+				return transfer.playerId == playerId;
+			}));
 
-	const size_t playerTransferCount = static_cast<size_t>(std::count_if(
-		g_activeTransfers.begin(), g_activeTransfers.end(),
-		[&](const ActiveTransfer& transfer)
+		if (playerTransferCount >= kMaxActiveTransfersPerPlayer)
 		{
-			return transfer.playerId == playerId;
-		}));
-
-	ExtendedVehCompo* compo = ExtendedVehCompo::get();
-	ICore* core = compo->getCore();
-
-	if (playerTransferCount >= kMaxActiveTransfersPerPlayer)
-	{
-		if (core)
-			core->logLn(LogLevel::Warning, "[ModelTransfer] player %d exceeded max concurrent transfers.", player.getID());
-		return;
+			ExtendedVehCompo* compo = ExtendedVehCompo::get();
+			ICore* core = compo ? compo->getCore() : nullptr;
+			if (core)
+				core->logLn(LogLevel::Warning, "[ModelTransfer] player %d exceeded max concurrent transfers.", player.getID());
+			return;
+		}
 	}
 
 	const CachedFile* cached = GetOrLoadCache(modelId, kind);
@@ -167,11 +178,16 @@ void OnRequestFile(IPlayer& player, uint32_t modelId, ModelFileKind kind)
 		player.sendPacket(
 			Span<uint8_t>(cancel.data.GetData(), cancel.data.GetNumberOfBytesUsed()),
 			kFileTransferChannel, true);
-		if (core)
-			core->logLn(LogLevel::Warning,
-				"[ModelTransfer] player %d requested modelId %u kind %u - "
-				"file missing/unreadable.",
-				player.getID(), modelId, static_cast<unsigned>(kind));
+		ExtendedVehCompo* compo = ExtendedVehCompo::get();
+		if (compo)
+		{
+			ICore* core = compo->getCore();
+			if (core)
+				core->logLn(LogLevel::Warning,
+					"[ModelTransfer] player %d requested modelId %u kind %u - "
+					"file missing/unreadable.",
+					player.getID(), modelId, static_cast<unsigned>(kind));
+		}
 		return;
 	}
 
@@ -216,6 +232,18 @@ void CancelTransfer(IPlayer& player, uint32_t modelId, ModelFileKind kind)
 		g_activeTransfers.end());
 }
 
+void CancelTransfersForModel(uint32_t modelId)
+{
+	std::lock_guard<std::mutex> lock(g_activeMutex);
+	g_activeTransfers.erase(
+		std::remove_if(g_activeTransfers.begin(), g_activeTransfers.end(),
+			[modelId](const ActiveTransfer& t)
+			{
+				return t.modelId == modelId;
+			}),
+		g_activeTransfers.end());
+}
+
 void OnPlayerDisconnect(IPlayer& player)
 {
 	const int playerId = player.getID();
@@ -231,29 +259,21 @@ void OnPlayerDisconnect(IPlayer& player)
 
 void ProcessTick()
 {
+	std::deque<ActiveTransfer> currentBatch;
 	{
 		std::lock_guard<std::mutex> lock(g_activeMutex);
 		if (g_activeTransfers.empty())
 			return;
+		currentBatch.swap(g_activeTransfers);
 	}
 
 	ExtendedVehCompo* compo = ExtendedVehCompo::get();
-	ICore* core = compo->getCore();
-	if (!core)
-		return;
+	std::deque<ActiveTransfer> remainingTransfers;
 
-	size_t count = 0;
+	while (!currentBatch.empty())
 	{
-		std::lock_guard<std::mutex> lock(g_activeMutex);
-		count = g_activeTransfers.size();
-	}
-	for (size_t i = 0; i < count; ++i)
-	{
-		ActiveTransfer transfer = g_activeTransfers.front();
-		{
-			std::lock_guard<std::mutex> lock(g_activeMutex);
-			g_activeTransfers.pop_front();
-		}
+		ActiveTransfer transfer = currentBatch.front();
+		currentBatch.pop_front();
 
 		IPlayer* player = compo->GetPlayerByID(transfer.playerId);
 		if (!player)
@@ -294,9 +314,14 @@ void ProcessTick()
 		}
 		else
 		{
-			std::lock_guard<std::mutex> lock(g_activeMutex);
-			g_activeTransfers.push_back(transfer);
+			remainingTransfers.push_back(transfer);
 		}
+	}
+
+	if (!remainingTransfers.empty())
+	{
+		std::lock_guard<std::mutex> lock(g_activeMutex);
+		g_activeTransfers.insert(g_activeTransfers.end(), remainingTransfers.begin(), remainingTransfers.end());
 	}
 }
 

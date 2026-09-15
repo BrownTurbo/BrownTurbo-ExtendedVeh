@@ -69,7 +69,11 @@ bool ComputeFileSha256(const std::string& relativePath, std::string& outHex)
 {
 	try
 	{
-		fs::path candidate = fs::path(g_modelsDir) / fs::path(relativePath);
+		fs::path candidate = fs::path(relativePath);
+		if (!candidate.is_absolute() && !IsPathInsideBase(g_modelsDir, candidate))
+		{
+			candidate = fs::path(g_modelsDir) / candidate;
+		}
 		if (!IsPathInsideBase(g_modelsDir, candidate))
 			return false;
 		std::ifstream file(candidate, std::ios::binary);

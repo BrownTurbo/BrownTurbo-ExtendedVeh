@@ -1,5 +1,6 @@
 #include "HandlingDefault.h"
 #include "CVehicleManager.hpp"
+#include "HandlingManager.h"
 #include "extendedveh.h"
 #include <cstring>
 
@@ -18,6 +19,14 @@ bool copyDefaultModelHandling(uint16_t modelid, struct tHandlingData* dest)
 		return true;
 	}
 
+	auto it = HandlingMgr::customVehicleDefs.find(static_cast<uint32_t>(modelid));
+	if (it != HandlingMgr::customVehicleDefs.end() && CVehicleMgr::IsBaseVehicleModel(it->second.handlingBaseModel))
+	{
+		uint16_t baseModel = static_cast<uint16_t>(it->second.handlingBaseModel);
+		memcpy(dest, &gDefaultModelHandlings[CVehicleMgr::GetBaseModelIndex(baseModel)], sizeof(struct tHandlingData));
+		return true;
+	}
+
 	// Custom vehicle model fallback (e.g., Landstalker 400 default)
 	memcpy(dest, &gDefaultModelHandlings[0], sizeof(struct tHandlingData));
 	return true;
@@ -31,6 +40,13 @@ struct tHandlingData* getDefaultModelHandling(uint16_t modelid)
 	if (CVehicleMgr::IsBaseVehicleModel(modelid))
 	{
 		return &gDefaultModelHandlings[CVehicleMgr::GetBaseModelIndex(modelid)];
+	}
+
+	auto it = HandlingMgr::customVehicleDefs.find(static_cast<uint32_t>(modelid));
+	if (it != HandlingMgr::customVehicleDefs.end() && CVehicleMgr::IsBaseVehicleModel(it->second.handlingBaseModel))
+	{
+		uint16_t baseModel = static_cast<uint16_t>(it->second.handlingBaseModel);
+		return &gDefaultModelHandlings[CVehicleMgr::GetBaseModelIndex(baseModel)];
 	}
 
 	return &gDefaultModelHandlings[0];

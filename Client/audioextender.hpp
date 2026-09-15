@@ -36,6 +36,7 @@ public:
 		std::uint16_t vehicleId {};
 		CustomVehicleAudioRuntime engine;
 	};
+
 private:
 	static inline std::unordered_map<uint16_t, CustomVehicleAudioState> s_vehicleAudio;
 	static inline std::unordered_map<uint32_t, CustomVehicleAudioDefinition> s_customAudioMap;
@@ -45,20 +46,35 @@ private:
 	static inline bool s_hooksInstalled = false;
 	static constexpr std::ptrdiff_t kVehicleAudioIdOffset = 0x2A;
 
-	static void __fastcall Hooked_InitialiseVehicleAudio(CAEVehicleAudioEntity* pAudio, CVehicle* pVehicle)	{
-		if (pVehicle) {
+	static void __fastcall Hooked_InitialiseVehicleAudio(CAEVehicleAudioEntity* pAudio, void* edx, CVehicle* pVehicle)
+	{
+		if (pVehicle && IsVehiclePointerValid(pVehicle)) {
 			const std::uint32_t modelId = static_cast<std::uint32_t>(pVehicle->m_nModelIndex);
+			const int origModelIndex = pVehicle->m_nModelIndex;
+			bool swappedModel = false;
 			{
 				std::lock_guard<std::mutex> lock(s_audioMutex);
 				const auto it = s_customAudioMap.find(modelId);
 				if (it != s_customAudioMap.end()) {
 					AudioExtender::CustomVehicleAudioDefinition def = it->second;
-					pAudio = ApplyCustomVehicleAudio(*pVehicle, def).value();
+					ApplyCustomVehicleAudio(*pVehicle, def);
+					if (def.audioModelId >= 400 && def.audioModelId <= 611) {
+						pVehicle->m_nModelIndex = def.audioModelId;
+						swappedModel = true;
+					}
 				}
 			}
+			if (!swappedModel && (pVehicle->m_nModelIndex < 400 || pVehicle->m_nModelIndex > 611)) {
+				pVehicle->m_nModelIndex = 400;
+				swappedModel = true;
+			}
+			s_initVehicleAudioHook.original<InitVehicleAudioFn>()(pAudio, pVehicle);
+			if (swappedModel) {
+				pVehicle->m_nModelIndex = origModelIndex;
+			}
+		} else {
+			s_initVehicleAudioHook.original<InitVehicleAudioFn>()(pAudio, pVehicle);
 		}
-
-		s_initVehicleAudioHook.original<InitVehicleAudioFn>()(pAudio, pVehicle);
 	}
 
 public:

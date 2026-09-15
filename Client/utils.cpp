@@ -1,6 +1,19 @@
 #include "utils.h"
 #include <plugin_sa.h>
 #include "CryptoUtility.h"
+#include <fstream>
+#include <mutex>
+
+void ClientLog(const std::string& msg)
+{
+	static std::mutex logMutex;
+	std::lock_guard<std::mutex> lock(logMutex);
+	std::ofstream log("brownturbo-chandling.log", std::ios::app);
+	if (log.is_open()) {
+		log << msg << "\n";
+		log.flush();
+	}
+}
 
 bool SendMsg(int color, const char* msg)
 {
@@ -205,8 +218,12 @@ uint16_t GetLocalPlayerId()
 
 VehiclePoolVariant GetVehiclesPool()
 {
-	rakhook::samp_ver version = rakhook::samp_version();
 	VehiclePoolVariant vehPool = nullptr;
+	if (GetModuleHandleA("samp.dll") == nullptr)
+		return vehPool;
+	rakhook::samp_ver version = rakhook::samp_version();
+	if (version == rakhook::samp_ver::unknown)
+		return vehPool;
 	switch (version) {
 	case rakhook::samp_ver::v037r1: {
 		SAMPAPI_EXPORT sampapi::v037r1::CNetGame* pNetGame = sampapi::v037r1::RefNetGame();
@@ -370,11 +387,10 @@ fs::path GetSampCacheRoot()
 	if (documents.empty())
 		return {};
 
-	if (fs::exists(documents)) {
-		std::error_code ec;
-		fs::create_directories(documents, ec);
-	}
-	return documents / "GTA San Andreas User Files" / "SAMP" / "cache";
+	fs::path cachePath = documents / "GTA San Andreas User Files" / "SAMP" / "cache";
+	std::error_code ec;
+	fs::create_directories(cachePath, ec);
+	return cachePath;
 }
 
 std::string Sha256HexOfBuffer(const unsigned char* data, unsigned int size)

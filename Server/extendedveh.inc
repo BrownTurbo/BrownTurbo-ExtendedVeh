@@ -171,6 +171,8 @@ enum CHandlingAttribType
  */
 native CHandlingAttribType:GetHandlingAttribType(CHandlingAttrib:attribute);
 native bool:IsPlayerUsingExtendedVeh(playerid);
+#pragma deprecated Use IsPlayerUsingExtendedVeh instead
+native bool:IsPlayerUsingCHandling(playerid);
 
 // Model Handling Natives
 native bool:ResetModelHandling(customModelId);
@@ -205,16 +207,16 @@ native bool:CommitCustomVehicleDef(customModelId);
 native bool:DestroyCustomVehicle(customModelId);
 native bool:IsCustomVehicleModel(customModelId);
 native bool:IsVehicleCustom(vehicleid);
-native SetCustomVehicleCol(customModelId);
-native BindVehicleModel(vehicleid, customModelId);
-native GetFileSha256(const filename[], outputHash[]);
-native InvalidateModelCache(customModelId, fileKind);
+native bool:SetCustomVehicleCol(customModelId);
+native bool:BindVehicleModel(vehicleid, customModelId);
+native bool:GetFileSha256(const filename[], outputHash[]);
+native bool:InvalidateModelCache(customModelId, fileKind);
 native GetClientFileStoreStatus(playerid, customModelId, fileKind);
 
 /*
  * Stock Wrapper Helper for Single-Call Custom Vehicle Creation
  */
-stock bool:DefineCustomVehicle(customModelId, visualBase, audioBase, handlingBase, engineOnSoundId, engineOffSoundId, engineOffSoundId)
+stock bool:DefineCustomVehicle(customModelId, visualBase, audioBase, handlingBase, engineOnSoundId, engineOffSoundId)
 {
     if (!BeginCustomVehicleDef(customModelId, visualBase, audioBase, handlingBase, engineOnSoundId, engineOffSoundId))
         return false;

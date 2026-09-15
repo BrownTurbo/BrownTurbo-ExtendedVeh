@@ -11,10 +11,10 @@
 class CHandlingStore
 {
 private:
-	// O(1) fast-path for base models 400-611
+	// fast-path for base models 400-611
 	std::array<tHandlingData, CVehicleMgr::BASE_MAX_VEHICLE_MODELS> m_baseModels;
 
-	// O(1) average-case map for open.mp custom models (20000+)
+	// average-case map for open.mp custom models (20000+)
 	std::unordered_map<uint32_t, tHandlingData> m_customModels;
 
 	// Read-Write lock for thread-safe network synchronization

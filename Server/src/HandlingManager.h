@@ -28,6 +28,7 @@ struct stHandlingMod
 		uint8_t bval;
 	};
 };
+#pragma pack(pop)
 
 struct stHandlingEntry
 {
@@ -40,7 +41,6 @@ struct stVehicleHandlingEntry : stHandlingEntry
 	struct stHandlingEntry* modelHandling = nullptr;
 	bool usesModelHandling = false; // set to true under OnCreateVehicle, set to false as soon as you change any handling attribute for this vehicle
 };
-#pragma pack(pop)
 
 extern std::unordered_map<uint16_t, struct stVehicleHandlingEntry> vehicleHandlings;
 extern std::unordered_map<uint16_t, struct stHandlingEntry> playerHandlings; // key = playerid
@@ -48,6 +48,7 @@ extern std::unordered_map<uint32_t, CustomVeh::Protocol::VehicleDefinition> cust
 extern std::unordered_set<uint32_t> customVehicleModels;
 
 stHandlingEntry* GetModelHandlingEntry(uint32_t modelid);
+void __WriteHandlingEntryToBitStream(NetworkBitStream* bs, const struct stHandlingEntry& entry);
 
 void ProcessTick();
 

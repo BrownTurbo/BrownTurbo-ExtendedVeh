@@ -12,7 +12,7 @@ inline constexpr uint32_t BASE_MODEL_START = 400;
 inline constexpr uint32_t BASE_MODEL_END = 611;
 inline constexpr uint32_t BASE_MAX_VEHICLE_MODELS = 212;
 inline constexpr uint32_t CUSTOM_MODEL_START = 20000;
-inline constexpr uint32_t DEFAULT_MAX_VEHICLES = 2000;
+inline constexpr uint32_t DEFAULT_MAX_VEHICLES = 65535;
 inline constexpr uint32_t MAX_NETWORK_VEHICLES = 65535;
 
 inline constexpr bool IsBaseVehicleModel(uint32_t modelId) noexcept

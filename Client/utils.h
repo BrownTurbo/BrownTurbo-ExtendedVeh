@@ -21,6 +21,7 @@
 namespace fs = std::filesystem;
 
 bool SendMsg(int color, const char* msg);
+void ClientLog(const std::string& msg);
 
 using PlayerPoolVariant = std::variant<
 	std::nullptr_t,

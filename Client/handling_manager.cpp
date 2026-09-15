@@ -9,6 +9,7 @@
 #include "utils.h"
 
 #include "CustomVehicleBindingManager.h"
+#include "MainThreadQueue.h"
 #include "streamingextender.hpp"
 #include <cstring>
 #include <deque>
@@ -46,6 +47,9 @@ std::vector<HandlingManager::HandlingAttribEntry> HandlingManager::ParseAttribEn
 	for (int i = 0; i < count; ++i) {
 		CHandlingAttrib attrib;
 		if (!bs->Read(attrib))
+			return {};
+		uint8_t typeByte;
+		if (!bs->Read(typeByte))
 			return {};
 		CHandlingAttribType expectedType = GetHandlingAttribType(attrib);
 
@@ -410,7 +414,7 @@ void* HandlingManager::ResolveAttributePointer(tHandlingData* handling, uint8_t 
 
 void HandlingManager::IsolateVehicleHandling(CVehicle* pVehicle)
 {
-	if (!IsVehiclePointerValid(pVehicle) && pVehicle->m_pHandlingData != nullptr)
+	if (!IsVehiclePointerValid(pVehicle) || !pVehicle->m_pHandlingData)
 		return;
 
 	if (m_customHandlings.find(pVehicle) == m_customHandlings.end()) {
@@ -425,7 +429,7 @@ void HandlingManager::IsolateVehicleHandling(CVehicle* pVehicle)
 
 void HandlingManager::ModifyMass(CVehicle* pVehicle, float mass)
 {
-	if (!IsVehiclePointerValid(pVehicle) && pVehicle->m_pHandlingData != nullptr)
+	if (!IsVehiclePointerValid(pVehicle) || !pVehicle->m_pHandlingData)
 		return;
 	std::lock_guard<std::recursive_mutex> lock(m_handlingMutex);
 	IsolateVehicleHandling(pVehicle);
@@ -438,7 +442,7 @@ void HandlingManager::ModifyMass(CVehicle* pVehicle, float mass)
 
 void HandlingManager::ModifyTransmission(CVehicle* pVehicle, float maxSpeed, float acceleration, int gears)
 {
-	if (!IsVehiclePointerValid(pVehicle) && pVehicle->m_pHandlingData != nullptr)
+	if (!IsVehiclePointerValid(pVehicle) || !pVehicle->m_pHandlingData)
 		return;
 	std::lock_guard<std::recursive_mutex> lock(m_handlingMutex);
 	IsolateVehicleHandling(pVehicle);
@@ -753,15 +757,7 @@ void HandlingManager::ResetModel(uint16_t modelId)
 
 void HandlingManager::OnVehicleDestructor(CVehicle* pVehicle)
 {
-	if (!IsVehiclePointerValid(pVehicle))
-		return;
 	std::lock_guard<std::recursive_mutex> lock(m_handlingMutex);
-
-	uint16_t vehicleId = GetVehicleSAMPId(pVehicle);
-	auto cushndleit = m_customHandlings.find(pVehicle);
-	auto plrhndleit = m_playerAppliedHandlings.find(vehicleId);
-	auto vehhndleit = m_vehicleHandlings.find(vehicleId);
-	auto cacheit = m_vehicleToSAMPIdCache.find(pVehicle);
 
 	if (!pVehicle) {
 		for (auto it = m_customHandlings.begin(); it != m_customHandlings.end();) {
@@ -780,6 +776,15 @@ void HandlingManager::OnVehicleDestructor(CVehicle* pVehicle)
 		}
 		return;
 	}
+
+	if (!IsVehiclePointerValid(pVehicle))
+		return;
+
+	uint16_t vehicleId = GetVehicleSAMPId(pVehicle);
+	auto cushndleit = m_customHandlings.find(pVehicle);
+	auto plrhndleit = m_playerAppliedHandlings.find(vehicleId);
+	auto vehhndleit = m_vehicleHandlings.find(vehicleId);
+	auto cacheit = m_vehicleToSAMPIdCache.find(pVehicle);
 
 	if (pVehicle->m_pHandlingData) {
 		auto customIt = m_customHandlings.find(pVehicle);
@@ -821,6 +826,14 @@ void HandlingManager::SendHandlingPacket(CustomVehAction action, RakNet::BitStre
 	rakhook::send(&packet, HIGH_PRIORITY, RELIABLE_ORDERED, 0);
 }
 
+void HandlingManager::SendInitPacket()
+{
+	ClientLog(std::format("[Client] Sending ACTION_INIT packet (compat_ver=0x{:X})...", EXTENDEDVEH_COMPAT_VERSION));
+	RakNet::BitStream bs;
+	bs.Write(static_cast<uint32_t>(EXTENDEDVEH_COMPAT_VERSION));
+	SendHandlingPacket(ACTION_INIT, &bs);
+}
+
 bool HandlingManager::ProcessAction(CustomVehAction action, RakNet::BitStream* bs)
 {
 	if (action != ACTION_RESET_ALL && bs == nullptr)
@@ -833,6 +846,7 @@ bool HandlingManager::ProcessAction(CustomVehAction action, RakNet::BitStream* b
 		if (!bs->Read(compat_ver) || !bs->Read(allowed))
 			return false;
 
+		ClientLog(std::format("[Client] ACTION_INIT_RESPONSE: allowed={}, server_compat_ver=0x{:X}", allowed, compat_ver));
 		if (allowed && compat_ver == EXTENDEDVEH_COMPAT_VERSION) {
 			m_isServerAuthorized = true;
 			SendMsg(-1, "{00FF00}[ExtendedVeh]{FFFFFF} Server authorized handling modifications.");
@@ -1004,7 +1018,8 @@ bool HandlingManager::ProcessAction(CustomVehAction action, RakNet::BitStream* b
 		ModelTransferClient::Instance().OnTransferEnd(bs);
 		return false;
 	}
-	case ACTION_ASSET_CANCEL: {
+	case ACTION_ASSET_CANCEL:
+	case ACTION_ASSET_REJECTED: {
 		ModelTransferClient::Instance().OnTransferCancel(bs);
 		return false;
 	}
@@ -1019,7 +1034,10 @@ bool HandlingManager::ProcessAction(CustomVehAction action, RakNet::BitStream* b
 	case static_cast<CustomVehAction>(CustomVeh::Protocol::Action::CustomVehicleUnbind): {
 		CustomVeh::Protocol::VehicleUnbinding unbinding {};
 		if (bs->Read(reinterpret_cast<char*>(&unbinding), sizeof(unbinding))) {
-			CustomVehicleBindingManager::Instance().Unbind(unbinding.sampVehicleId);
+			uint16_t vehicleId = unbinding.sampVehicleId;
+			MainThreadQueue::Instance().Push([vehicleId]() {
+				CustomVehicleBindingManager::Instance().Unbind(vehicleId);
+			});
 		}
 		return false;
 	}
