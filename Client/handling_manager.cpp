@@ -911,9 +911,9 @@ void HandlingManager::ProcessVehicleDoorState(uint16_t sampVehicleId, uint8_t do
 
 	if (IsVehiclePointerValid(gtaVehicle)) {
 		ApplyDoorState(gtaVehicle, doorId, missing);
-		ClientLog(std::format("[Client] ProcessVehicleDoorState: Applied door {} (missing={}) to vehicle {}", doorId, missing, sampVehicleId));
+		ClientLog(std::format("[Client] ProcessVehicleDoorState: Applied doorId {} (missing={}) to vehicleId {}", doorId, missing, sampVehicleId));
 	} else {
-		ClientLog(std::format("[Client] ProcessVehicleDoorState: Vehicle {} not in pool, cached door {} (missing={})", sampVehicleId, doorId, missing));
+		ClientLog(std::format("[Client] ProcessVehicleDoorState: vehicleId {} not in pool, cached doorId {} (missing={})", sampVehicleId, doorId, missing));
 	}
 }
 
@@ -928,39 +928,48 @@ void HandlingManager::ApplyDoorState(CVehicle* pVehicle, uint8_t doorId, bool mi
 
 	CAutomobile* autoVeh = reinterpret_cast<CAutomobile*>(pVehicle);
 
-	auto applySingleDoor = [&](uint8_t d) {
-		if (d > 5) return;
-		int nodeIdx = -1;
-		switch (d) {
-			case 0: nodeIdx = CAR_BONNET; break;     // 16
-			case 1: nodeIdx = CAR_BOOT; break;       // 17
-			case 2: nodeIdx = CAR_DOOR_LF; break;    // 10
-			case 3: nodeIdx = CAR_DOOR_RF; break;    // 8
-			case 4: nodeIdx = CAR_DOOR_LR; break;    // 11
-			case 5: nodeIdx = CAR_DOOR_RR; break;    // 9
-		}
+	struct DoorInfo {
+		int nodeIdx;
+		eDoors gtaDoor;
+	};
 
-		eDoors gtaDoor = static_cast<eDoors>(d);
-		autoVeh->m_damageManager.SetDoorStatus(gtaDoor, missing ? DAMSTATE_NOTPRESENT : DAMSTATE_OK);
+	static constexpr DoorInfo kDoors[6] = {
+		{ CAR_BONNET, BONNET },             // 0: Bonnet / Hood
+		{ CAR_BOOT, BOOT },                 // 1: Boot / Trunk
+		{ CAR_DOOR_LF, DOOR_FRONT_LEFT },   // 2: Front Left Door
+		{ CAR_DOOR_RF, DOOR_FRONT_RIGHT },  // 3: Front Right Door
+		{ CAR_DOOR_LR, DOOR_REAR_LEFT },    // 4: Rear Left Door
+		{ CAR_DOOR_RR, DOOR_REAR_RIGHT }    // 5: Rear Right Door
+	};
 
-		if (!missing) {
-			autoVeh->m_doors[d].m_fAngle = autoVeh->m_doors[d].m_fClosedAngle;
-			autoVeh->m_doors[d].m_fPrevAngle = autoVeh->m_doors[d].m_fClosedAngle;
-			autoVeh->m_doors[d].m_fAngVel = 0.0f;
-			autoVeh->m_doors[d].m_nDoorState = DOOR_NOTHING;
-		}
+	auto applySingleDoor = [&](uint8_t index) {
+		if (index > 5)
+			return;
 
-		if (nodeIdx >= 0 && nodeIdx < CAR_NUM_NODES) {
-			RwFrame* frame = autoVeh->m_aCarNodes[nodeIdx];
-			if (frame) {
-				pVehicle->SetComponentVisibility(frame, missing ? 0 : 1);
+		const auto& [nodeIdx, gtaDoor] = kDoors[index];
+
+		if (missing) {
+			autoVeh->PopDoor(nodeIdx, gtaDoor, false);
+			autoVeh->m_damageManager.SetDoorStatus(gtaDoor, DAMSTATE_NOTPRESENT);
+			if (nodeIdx >= 0 && nodeIdx < CAR_NUM_NODES && autoVeh->m_aCarNodes[nodeIdx]) {
+				pVehicle->SetComponentVisibility(autoVeh->m_aCarNodes[nodeIdx], 0);
+			}
+		} else {
+			autoVeh->FixDoor(nodeIdx, gtaDoor);
+			autoVeh->m_damageManager.SetDoorStatus(gtaDoor, DAMSTATE_OK);
+			autoVeh->m_doors[gtaDoor].m_fAngle = autoVeh->m_doors[gtaDoor].m_fClosedAngle;
+			autoVeh->m_doors[gtaDoor].m_fPrevAngle = autoVeh->m_doors[gtaDoor].m_fClosedAngle;
+			autoVeh->m_doors[gtaDoor].m_fAngVel = 0.0f;
+			autoVeh->m_doors[gtaDoor].m_nDoorState = DOOR_NOTHING;
+			if (nodeIdx >= 0 && nodeIdx < CAR_NUM_NODES && autoVeh->m_aCarNodes[nodeIdx]) {
+				pVehicle->SetComponentVisibility(autoVeh->m_aCarNodes[nodeIdx], 1);
 			}
 		}
 	};
 
 	if (doorId == 0xFF) {
-		for (uint8_t d = 0; d < 6; ++d) {
-			applySingleDoor(d);
+		for (uint8_t i = 0; i < 6; ++i) {
+			applySingleDoor(i);
 		}
 	} else if (doorId <= 5) {
 		applySingleDoor(doorId);
