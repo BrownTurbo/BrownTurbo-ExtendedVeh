@@ -550,11 +550,14 @@ void HandlingManager::OnVehicleStreamIn(CVehicle* pVehicle, uint16_t sampId)
 	// Apply custom door states if configured for this vehicle
 	auto doorIt = m_vehicleDoorStates.find(sampId);
 	if (doorIt != m_vehicleDoorStates.end() && doorIt->second != 0) {
+		uint8_t appliedCount = 0;
 		for (uint8_t d = 0; d < 6; ++d) {
 			if (doorIt->second & (1 << d)) {
 				ApplyDoorState(pVehicle, d, true);
+				appliedCount++;
 			}
 		}
+		ClientLog(std::format("[Client] OnVehicleStreamIn: Applied {} cached missing door(s) for vehicle {}", appliedCount, sampId));
 	}
 
 	// 1. Check if there are pending attributes for this vehicle
@@ -896,6 +899,16 @@ void HandlingManager::ProcessVehicleDoorState(uint16_t sampVehicleId, uint8_t do
 	}
 
 	CVehicle* gtaVehicle = GetGameVehicleFromPool(sampVehicleId);
+	if (!gtaVehicle) {
+		std::lock_guard<std::mutex> clock(m_cacheMutex);
+		for (const auto& [veh, id] : m_vehicleToSAMPIdCache) {
+			if (id == sampVehicleId && IsVehiclePointerValid(veh)) {
+				gtaVehicle = veh;
+				break;
+			}
+		}
+	}
+
 	if (IsVehiclePointerValid(gtaVehicle)) {
 		ApplyDoorState(gtaVehicle, doorId, missing);
 		ClientLog(std::format("[Client] ProcessVehicleDoorState: Applied door {} (missing={}) to vehicle {}", doorId, missing, sampVehicleId));
