@@ -215,7 +215,7 @@ void BackgroundInitializationWorker()
 {
 	DWORD deviceAddr = 0;
 	int attempts = 0;
-	while (!g_shutdownRequested && (deviceAddr = *(DWORD*)DEVICE_PTR) == 0 && attempts < 50) {
+	while (!g_shutdownRequested && (deviceAddr = *(DWORD*)DEVICE_PTR) == 0 && attempts < 300) {
 		std::this_thread::sleep_for(std::chrono::milliseconds(100));
 		++attempts;
 	}
@@ -226,6 +226,9 @@ void BackgroundInitializationWorker()
 		oPresent = (_Present)g_vmtHooks->Hook(PRESENT_INDEX, (void*)hkPresent);
 		oEndScene = (_EndScene)g_vmtHooks->Hook(ENDSCENE_INDEX, (void*)hkEndScene);
 		oReset = (_Reset)g_vmtHooks->Hook(RESET_INDEX, (void*)hkReset);
+		ClientLog("[Client] Direct3D 9 hooks installed successfully (hkEndScene/hkPresent/hkReset)");
+	} else {
+		ClientLog("[Client] Failed to hook Direct3D 9: DEVICE_PTR was 0 after timeout");
 	}
 }
 
@@ -270,7 +273,7 @@ void c_plugin::shutdown_for_unload()
 c_plugin::c_plugin(HMODULE hmodule)
 	: hmodule(hmodule)
 {
-	// Constructor does nothing.
+	c_plugin::game_loop();
 }
 
 c_plugin::~c_plugin()

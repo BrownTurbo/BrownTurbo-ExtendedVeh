@@ -298,7 +298,7 @@ SCRIPT_API(SetVehicleHandlingFloat, bool(IVehicle& vehicle, CHandlingAttrib attr
 	if (core_)
 	{
 		if (ret)
-			core_->logLn(LogLevel::Debug, "[ExtendedVeh] SetVehicleHandlingFloat(veh=%d, attr=%d, val=%f) succeeded", vehicleid, static_cast<int>(attrib), value);
+			core_->logLn(LogLevel::Message, "[ExtendedVeh] SetVehicleHandlingFloat(veh=%d, attr=%d, val=%f) succeeded", vehicleid, static_cast<int>(attrib), value);
 		else
 			core_->logLn(LogLevel::Warning, "[ExtendedVeh] SetVehicleHandlingFloat(veh=%d, attr=%d, val=%f) failed in HandlingMgr", vehicleid, static_cast<int>(attrib), value);
 	}
@@ -341,7 +341,7 @@ SCRIPT_API(SetVehicleHandlingInt, bool(IVehicle& vehicle, CHandlingAttrib attrib
 	if (core_)
 	{
 		if (ret)
-			core_->logLn(LogLevel::Debug, "[ExtendedVeh] SetVehicleHandlingInt(veh=%d, attr=%d, val=%d) succeeded", vehicleid, static_cast<int>(attrib), value);
+			core_->logLn(LogLevel::Message, "[ExtendedVeh] SetVehicleHandlingInt(veh=%d, attr=%d, val=%d) succeeded", vehicleid, static_cast<int>(attrib), value);
 		else
 			core_->logLn(LogLevel::Warning, "[ExtendedVeh] SetVehicleHandlingInt(veh=%d, attr=%d, val=%d) failed in HandlingMgr", vehicleid, static_cast<int>(attrib), value);
 	}
@@ -501,6 +501,261 @@ SCRIPT_API(GetVehicleHandlingInt, bool(IVehicle& vehicle, CHandlingAttrib attrib
 			core_->logLn(LogLevel::Warning, "[ExtendedVeh] GetVehicleHandlingInt(veh=%d, attr=%d) failed to retrieve value", vehicleid, static_cast<int>(attrib));
 	}
 	return ret;
+}
+
+// native SetVehicleWaterDrive(vehicleid, bool:enable, submergedPercent = 30);
+SCRIPT_API(SetVehicleWaterDrive, bool(IVehicle& vehicle, bool enable, int submergedPercent))
+{
+	int vehicleid = vehicle.getID();
+	ExtendedVehCompo* compo = ExtendedVehCompo::get();
+	ICore* core_ = compo ? compo->getCore() : nullptr;
+	if (!CVehicleMgr::VehicleRegistry::Get().IsValidVehicleID(vehicleid))
+	{
+		if (core_)
+			core_->logLn(LogLevel::Warning, "[ExtendedVeh] SetVehicleWaterDrive: Invalid vehicle ID %d", vehicleid);
+		return false;
+	}
+
+	if (submergedPercent <= 0 || submergedPercent > 100)
+		submergedPercent = 30;
+
+	unsigned int modelFlags = 0;
+	if (!HandlingMgr::GetVehicleHandling(static_cast<uint16_t>(vehicleid), HANDL_MODELFLAGS, modelFlags))
+	{
+		int modelid = vehicle.getModel();
+		HandlingMgr::GetModelHandling(static_cast<uint16_t>(modelid), HANDL_MODELFLAGS, modelFlags);
+	}
+
+	if (enable)
+	{
+		modelFlags |= VEHICLE_HANDLING_MODEL_IS_BOAT;
+		HandlingMgr::SetVehicleHandling(static_cast<uint16_t>(vehicleid), HANDL_MODELFLAGS, modelFlags);
+		HandlingMgr::SetVehicleHandling(static_cast<uint16_t>(vehicleid), HANDL_NPERCENTSUBMERGED, static_cast<uint8_t>(submergedPercent));
+	}
+	else
+	{
+		modelFlags &= ~VEHICLE_HANDLING_MODEL_IS_BOAT;
+		HandlingMgr::SetVehicleHandling(static_cast<uint16_t>(vehicleid), HANDL_MODELFLAGS, modelFlags);
+		uint8_t defSub = 85;
+		int modelid = vehicle.getModel();
+		if (HandlingMgr::GetDefaultHandling(static_cast<uint16_t>(modelid), HANDL_NPERCENTSUBMERGED, defSub))
+			HandlingMgr::SetVehicleHandling(static_cast<uint16_t>(vehicleid), HANDL_NPERCENTSUBMERGED, defSub);
+	}
+
+	if (core_)
+		core_->logLn(LogLevel::Message, "[ExtendedVeh] SetVehicleWaterDrive(veh=%d, enable=%d, submerged=%d) succeeded", vehicleid, enable, submergedPercent);
+	return true;
+}
+
+// native GetVehicleWaterDrive(vehicleid, &bool:enabled);
+SCRIPT_API(GetVehicleWaterDrive, bool(IVehicle& vehicle, bool& enabled))
+{
+	enabled = false;
+	int vehicleid = vehicle.getID();
+	ExtendedVehCompo* compo = ExtendedVehCompo::get();
+	ICore* core_ = compo ? compo->getCore() : nullptr;
+	if (!CVehicleMgr::VehicleRegistry::Get().IsValidVehicleID(vehicleid))
+	{
+		if (core_)
+			core_->logLn(LogLevel::Warning, "[ExtendedVeh] GetVehicleWaterDrive: Invalid vehicle ID %d", vehicleid);
+		return false;
+	}
+
+	unsigned int modelFlags = 0;
+	if (HandlingMgr::GetVehicleHandling(static_cast<uint16_t>(vehicleid), HANDL_MODELFLAGS, modelFlags))
+	{
+		enabled = (modelFlags & VEHICLE_HANDLING_MODEL_IS_BOAT) != 0;
+	}
+	else
+	{
+		int modelid = vehicle.getModel();
+		if (HandlingMgr::GetModelHandling(static_cast<uint16_t>(modelid), HANDL_MODELFLAGS, modelFlags))
+			enabled = (modelFlags & VEHICLE_HANDLING_MODEL_IS_BOAT) != 0;
+	}
+
+	if (core_)
+		core_->logLn(LogLevel::Debug, "[ExtendedVeh] GetVehicleWaterDrive(veh=%d) -> enabled=%d", vehicleid, enabled);
+	return true;
+}
+
+// native SetModelWaterDrive(modelid, bool:enable, submergedPercent = 30);
+SCRIPT_API(SetModelWaterDrive, bool(int modelid, bool enable, int submergedPercent))
+{
+	ExtendedVehCompo* compo = ExtendedVehCompo::get();
+	ICore* core_ = compo ? compo->getCore() : nullptr;
+	if (!CVehicleMgr::VehicleRegistry::Get().IsValidVehicleModel(modelid))
+	{
+		if (core_)
+			core_->logLn(LogLevel::Warning, "[ExtendedVeh] SetModelWaterDrive: Invalid model ID %d", modelid);
+		return false;
+	}
+
+	if (submergedPercent <= 0 || submergedPercent > 100)
+		submergedPercent = 30;
+
+	unsigned int modelFlags = 0;
+	HandlingMgr::GetModelHandling(static_cast<uint16_t>(modelid), HANDL_MODELFLAGS, modelFlags);
+
+	if (enable)
+	{
+		modelFlags |= VEHICLE_HANDLING_MODEL_IS_BOAT;
+		HandlingMgr::SetModelHandling(static_cast<uint16_t>(modelid), HANDL_MODELFLAGS, modelFlags);
+		HandlingMgr::SetModelHandling(static_cast<uint16_t>(modelid), HANDL_NPERCENTSUBMERGED, static_cast<uint8_t>(submergedPercent));
+	}
+	else
+	{
+		modelFlags &= ~VEHICLE_HANDLING_MODEL_IS_BOAT;
+		HandlingMgr::SetModelHandling(static_cast<uint16_t>(modelid), HANDL_MODELFLAGS, modelFlags);
+		uint8_t defSub = 85;
+		if (HandlingMgr::GetDefaultHandling(static_cast<uint16_t>(modelid), HANDL_NPERCENTSUBMERGED, defSub))
+			HandlingMgr::SetModelHandling(static_cast<uint16_t>(modelid), HANDL_NPERCENTSUBMERGED, defSub);
+	}
+
+	if (core_)
+		core_->logLn(LogLevel::Message, "[ExtendedVeh] SetModelWaterDrive(model=%d, enable=%d, submerged=%d) succeeded", modelid, enable, submergedPercent);
+	return true;
+}
+
+// native GetModelWaterDrive(modelid, &bool:enabled);
+SCRIPT_API(GetModelWaterDrive, bool(int modelid, bool& enabled))
+{
+	enabled = false;
+	ExtendedVehCompo* compo = ExtendedVehCompo::get();
+	ICore* core_ = compo ? compo->getCore() : nullptr;
+	if (!CVehicleMgr::VehicleRegistry::Get().IsValidVehicleModel(modelid))
+	{
+		if (core_)
+			core_->logLn(LogLevel::Warning, "[ExtendedVeh] GetModelWaterDrive: Invalid model ID %d", modelid);
+		return false;
+	}
+
+	unsigned int modelFlags = 0;
+	if (HandlingMgr::GetModelHandling(static_cast<uint16_t>(modelid), HANDL_MODELFLAGS, modelFlags))
+		enabled = (modelFlags & VEHICLE_HANDLING_MODEL_IS_BOAT) != 0;
+
+	if (core_)
+		core_->logLn(LogLevel::Debug, "[ExtendedVeh] GetModelWaterDrive(model=%d) -> enabled=%d", modelid, enabled);
+	return true;
+}
+
+// native SetVehicleFlying(vehicleid, bool:enable);
+SCRIPT_API(SetVehicleFlying, bool(IVehicle& vehicle, bool enable))
+{
+	int vehicleid = vehicle.getID();
+	ExtendedVehCompo* compo = ExtendedVehCompo::get();
+	ICore* core_ = compo ? compo->getCore() : nullptr;
+	if (!CVehicleMgr::VehicleRegistry::Get().IsValidVehicleID(vehicleid))
+	{
+		if (core_)
+			core_->logLn(LogLevel::Warning, "[ExtendedVeh] SetVehicleFlying: Invalid vehicle ID %d", vehicleid);
+		return false;
+	}
+
+	unsigned int modelFlags = 0;
+	if (!HandlingMgr::GetVehicleHandling(static_cast<uint16_t>(vehicleid), HANDL_MODELFLAGS, modelFlags))
+	{
+		int modelid = vehicle.getModel();
+		HandlingMgr::GetModelHandling(static_cast<uint16_t>(modelid), HANDL_MODELFLAGS, modelFlags);
+	}
+
+	if (enable)
+	{
+		modelFlags |= VEHICLE_HANDLING_MODEL_IS_PLANE;
+	}
+	else
+	{
+		modelFlags &= ~VEHICLE_HANDLING_MODEL_IS_PLANE;
+	}
+	HandlingMgr::SetVehicleHandling(static_cast<uint16_t>(vehicleid), HANDL_MODELFLAGS, modelFlags);
+
+	if (core_)
+		core_->logLn(LogLevel::Message, "[ExtendedVeh] SetVehicleFlying(veh=%d, enable=%d) succeeded", vehicleid, enable);
+	return true;
+}
+
+// native GetVehicleFlying(vehicleid, &bool:enabled);
+SCRIPT_API(GetVehicleFlying, bool(IVehicle& vehicle, bool& enabled))
+{
+	enabled = false;
+	int vehicleid = vehicle.getID();
+	ExtendedVehCompo* compo = ExtendedVehCompo::get();
+	ICore* core_ = compo ? compo->getCore() : nullptr;
+	if (!CVehicleMgr::VehicleRegistry::Get().IsValidVehicleID(vehicleid))
+	{
+		if (core_)
+			core_->logLn(LogLevel::Warning, "[ExtendedVeh] GetVehicleFlying: Invalid vehicle ID %d", vehicleid);
+		return false;
+	}
+
+	unsigned int modelFlags = 0;
+	if (HandlingMgr::GetVehicleHandling(static_cast<uint16_t>(vehicleid), HANDL_MODELFLAGS, modelFlags))
+	{
+		enabled = (modelFlags & VEHICLE_HANDLING_MODEL_IS_PLANE) != 0;
+	}
+	else
+	{
+		int modelid = vehicle.getModel();
+		if (HandlingMgr::GetModelHandling(static_cast<uint16_t>(modelid), HANDL_MODELFLAGS, modelFlags))
+		{
+			enabled = (modelFlags & VEHICLE_HANDLING_MODEL_IS_PLANE) != 0;
+		}
+	}
+
+	if (core_)
+		core_->logLn(LogLevel::Debug, "[ExtendedVeh] GetVehicleFlying(veh=%d) -> enabled=%d", vehicleid, enabled);
+	return true;
+}
+
+// native SetModelFlying(modelid, bool:enable);
+SCRIPT_API(SetModelFlying, bool(int modelid, bool enable))
+{
+	ExtendedVehCompo* compo = ExtendedVehCompo::get();
+	ICore* core_ = compo ? compo->getCore() : nullptr;
+	if (!CVehicleMgr::VehicleRegistry::Get().IsValidVehicleModel(modelid))
+	{
+		if (core_)
+			core_->logLn(LogLevel::Warning, "[ExtendedVeh] SetModelFlying: Invalid model ID %d", modelid);
+		return false;
+	}
+
+	unsigned int modelFlags = 0;
+	HandlingMgr::GetModelHandling(static_cast<uint16_t>(modelid), HANDL_MODELFLAGS, modelFlags);
+
+	if (enable)
+	{
+		modelFlags |= VEHICLE_HANDLING_MODEL_IS_PLANE;
+	}
+	else
+	{
+		modelFlags &= ~VEHICLE_HANDLING_MODEL_IS_PLANE;
+	}
+	HandlingMgr::SetModelHandling(static_cast<uint16_t>(modelid), HANDL_MODELFLAGS, modelFlags);
+
+	if (core_)
+		core_->logLn(LogLevel::Message, "[ExtendedVeh] SetModelFlying(model=%d, enable=%d) succeeded", modelid, enable);
+	return true;
+}
+
+// native GetModelFlying(modelid, &bool:enabled);
+SCRIPT_API(GetModelFlying, bool(int modelid, bool& enabled))
+{
+	enabled = false;
+	ExtendedVehCompo* compo = ExtendedVehCompo::get();
+	ICore* core_ = compo ? compo->getCore() : nullptr;
+	if (!CVehicleMgr::VehicleRegistry::Get().IsValidVehicleModel(modelid))
+	{
+		if (core_)
+			core_->logLn(LogLevel::Warning, "[ExtendedVeh] GetModelFlying: Invalid model ID %d", modelid);
+		return false;
+	}
+
+	unsigned int modelFlags = 0;
+	if (HandlingMgr::GetModelHandling(static_cast<uint16_t>(modelid), HANDL_MODELFLAGS, modelFlags))
+		enabled = (modelFlags & VEHICLE_HANDLING_MODEL_IS_PLANE) != 0;
+
+	if (core_)
+		core_->logLn(LogLevel::Debug, "[ExtendedVeh] GetModelFlying(model=%d) -> enabled=%d", modelid, enabled);
+	return true;
 }
 
 // native GetModelHandlingFloat(modelid, attrib, &Float:value);
@@ -1065,3 +1320,62 @@ SCRIPT_API(GetClientFileStoreStatus, int(IPlayer& player, int modelId, int kind)
 		return 0;
 	return ModelTransferMgr::GetClientFileStoreStatus(playerid, static_cast<uint32_t>(modelId), static_cast<ModelFileKind>(kind));
 }
+
+// native SetVehicleDoorMissing(vehicleid, doorid, bool:missing);
+SCRIPT_API(SetVehicleDoorMissing, bool(IVehicle& vehicle, int doorid, bool missing))
+{
+	int vehicleid = vehicle.getID();
+	ExtendedVehCompo* compo = ExtendedVehCompo::get();
+	ICore* core_ = compo ? compo->getCore() : nullptr;
+	if (!CVehicleMgr::VehicleRegistry::Get().IsValidVehicleID(vehicleid))
+	{
+		if (core_)
+			core_->logLn(LogLevel::Warning, "[ExtendedVeh] SetVehicleDoorMissing: Invalid vehicle ID %d", vehicleid);
+		return false;
+	}
+
+	bool ret = HandlingMgr::SetVehicleDoorMissing(static_cast<uint16_t>(vehicleid), static_cast<uint8_t>(doorid), missing);
+	if (core_)
+		core_->logLn(LogLevel::Debug, "[ExtendedVeh] SetVehicleDoorMissing(veh=%d, door=%d, missing=%d) -> %s", vehicleid, doorid, missing, ret ? "true" : "false");
+	return ret;
+}
+
+// native GetVehicleDoorMissing(vehicleid, doorid, &bool:missing);
+SCRIPT_API(GetVehicleDoorMissing, bool(IVehicle& vehicle, int doorid, bool& missing))
+{
+	missing = false;
+	int vehicleid = vehicle.getID();
+	ExtendedVehCompo* compo = ExtendedVehCompo::get();
+	ICore* core_ = compo ? compo->getCore() : nullptr;
+	if (!CVehicleMgr::VehicleRegistry::Get().IsValidVehicleID(vehicleid))
+	{
+		if (core_)
+			core_->logLn(LogLevel::Warning, "[ExtendedVeh] GetVehicleDoorMissing: Invalid vehicle ID %d", vehicleid);
+		return false;
+	}
+
+	bool ret = HandlingMgr::GetVehicleDoorMissing(static_cast<uint16_t>(vehicleid), static_cast<uint8_t>(doorid), missing);
+	if (core_)
+		core_->logLn(LogLevel::Debug, "[ExtendedVeh] GetVehicleDoorMissing(veh=%d, door=%d) -> missing=%d, ret=%s", vehicleid, doorid, missing, ret ? "true" : "false");
+	return ret;
+}
+
+// native SetVehicleAllDoorsMissing(vehicleid, bool:missing);
+SCRIPT_API(SetVehicleAllDoorsMissing, bool(IVehicle& vehicle, bool missing))
+{
+	int vehicleid = vehicle.getID();
+	ExtendedVehCompo* compo = ExtendedVehCompo::get();
+	ICore* core_ = compo ? compo->getCore() : nullptr;
+	if (!CVehicleMgr::VehicleRegistry::Get().IsValidVehicleID(vehicleid))
+	{
+		if (core_)
+			core_->logLn(LogLevel::Warning, "[ExtendedVeh] SetVehicleAllDoorsMissing: Invalid vehicle ID %d", vehicleid);
+		return false;
+	}
+
+	bool ret = HandlingMgr::SetVehicleAllDoorsMissing(static_cast<uint16_t>(vehicleid), missing);
+	if (core_)
+		core_->logLn(LogLevel::Debug, "[ExtendedVeh] SetVehicleAllDoorsMissing(veh=%d, missing=%d) -> %s", vehicleid, missing, ret ? "true" : "false");
+	return ret;
+}
+

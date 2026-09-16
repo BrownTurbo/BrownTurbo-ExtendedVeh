@@ -23,6 +23,7 @@ inline constexpr CustomVehAction ACTION_GET_VEHICLE_HANDLING = CustomVehAction::
 inline constexpr CustomVehAction ACTION_GET_MODEL_HANDLING = CustomVehAction::GetModelHandling;
 inline constexpr CustomVehAction ACTION_GET_PLAYER_HANDLING = CustomVehAction::GetPlayerHandling;
 inline constexpr CustomVehAction ACTION_RESET_ALL = CustomVehAction::ResetAll;
+inline constexpr CustomVehAction ACTION_SET_VEHICLE_DOOR_STATE = CustomVehAction::SetVehicleDoorState;
 inline constexpr CustomVehAction ACTION_CUSTOM_VEHICLE_DEFINE = CustomVehAction::CustomVehicleDefine;
 inline constexpr CustomVehAction ACTION_CUSTOM_VEHICLE_BIND = CustomVehAction::CustomVehicleBind;
 inline constexpr CustomVehAction ACTION_CUSTOM_VEHICLE_UNBIND = CustomVehAction::CustomVehicleUnbind;

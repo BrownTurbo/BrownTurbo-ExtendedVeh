@@ -149,6 +149,18 @@ enum CHandlingLights
 	LIGHTS_BIG,
 	LIGHTS_TALL
 };
+#define eVehicleLightsSize CHandlingLights
+
+enum eVehicleDoor
+{
+	VEHICLE_DOOR_BONNET = 0,
+	VEHICLE_DOOR_BOOT = 1,
+	VEHICLE_DOOR_FRONT_LEFT = 2,
+	VEHICLE_DOOR_FRONT_RIGHT = 3,
+	VEHICLE_DOOR_REAR_LEFT = 4,
+	VEHICLE_DOOR_REAR_RIGHT = 5,
+	VEHICLE_DOOR_ALL = 0xFF
+};
 
 enum CHandlingEngineType
 {
@@ -190,6 +202,18 @@ native bool:SetVehicleHandlingInt(vehicleid, CHandlingAttrib:attribute, value);
 native bool:GetVehicleHandlingFloat(vehicleid, CHandlingAttrib:attribute, &Float:result);
 native bool:GetVehicleHandlingInt(vehicleid, CHandlingAttrib:attribute, &result);
 
+// Water Driving & Amphibious Floating Natives
+native bool:SetVehicleWaterDrive(vehicleid, bool:enable, submergedPercent = 30);
+native bool:GetVehicleWaterDrive(vehicleid, &bool:enabled);
+native bool:SetModelWaterDrive(modelid, bool:enable, submergedPercent = 30);
+native bool:GetModelWaterDrive(modelid, &bool:enabled);
+
+// Flying Vehicle Natives (Cars, Boats, and Bikes)
+native bool:SetVehicleFlying(vehicleid, bool:enable);
+native bool:GetVehicleFlying(vehicleid, &bool:enabled);
+native bool:SetModelFlying(modelid, bool:enable);
+native bool:GetModelFlying(modelid, &bool:enabled);
+
 // Player Handling Overrides
 native bool:SetPlayerHandlingFloat(playerid, CHandlingAttrib:attribute, Float:value);
 native bool:SetPlayerHandlingInt(playerid, CHandlingAttrib:attribute, value);
@@ -212,6 +236,11 @@ native bool:BindVehicleModel(vehicleid, customModelId);
 native bool:GetFileSha256(const filename[], outputHash[]);
 native bool:InvalidateModelCache(customModelId, fileKind);
 native GetClientFileStoreStatus(playerid, customModelId, fileKind);
+
+// Vehicle Door Removal / Restoration Natives
+native bool:SetVehicleDoorMissing(vehicleid, doorid, bool:missing);
+native bool:GetVehicleDoorMissing(vehicleid, doorid, &bool:missing);
+native bool:SetVehicleAllDoorsMissing(vehicleid, bool:missing);
 
 /*
  * Stock Wrapper Helper for Single-Call Custom Vehicle Creation

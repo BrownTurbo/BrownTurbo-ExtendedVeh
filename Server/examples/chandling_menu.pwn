@@ -18,7 +18,9 @@
 enum
 {
 	DIALOG_MAIN = 28333,
-	DIALOG_SETVAL
+	DIALOG_SETVAL,
+	DIALOG_LIGHTS,
+	DIALOG_DOORS
 };
 
 static fmt[1256];
@@ -74,7 +76,10 @@ ShowCHandlingList(playerid)
 		HANDL_HANDLINGFLAGS\n\
 		HANDL_FRONTLIGHTS\n\
 		HANDL_REARLIGHTS\n\
-		HANDL_ANIMGROUP", "Select", "Cancel");
+		HANDL_ANIMGROUP\n\
+		{FFFF00}Vehicle Doors (Remove / Restore)\n\
+		{33CCFF}Water Driving & Floating (Amphibious)\n\
+		{00FFFF}Vehicle Flight (Takeoff & Glide)", "Select", "Cancel");
 }
 
 #if defined ZCMD
@@ -119,7 +124,52 @@ public OnDialogResponse(playerid, dialogid, response, listitem, inputtext[])
 		if(!vid)
 			return SendClientMessage(playerid, -1, "You must be driving a vehicle to use /chandling");
 
+		if(listitem == 35)
+		{
+			ShowDoorsDialog(playerid, vid);
+			return 1;
+		}
+
+		if(listitem == 36)
+		{
+			new bool:waterEnabled;
+			GetVehicleWaterDrive(vid, waterEnabled);
+			SetVehicleWaterDrive(vid, !waterEnabled, 30);
+			format(fmt, sizeof fmt, "Vehicle %d water driving / floating %s", vid, (!waterEnabled) ? ("{00FF00}ENABLED") : ("{FF0000}DISABLED"));
+			SendClientMessage(playerid, 0x33CCFFFF, fmt);
+			ShowCHandlingList(playerid);
+			return 1;
+		}
+
+		if(listitem == 37)
+		{
+			new bool:flyEnabled;
+			GetVehicleFlying(vid, flyEnabled);
+			SetVehicleFlying(vid, !flyEnabled);
+			format(fmt, sizeof fmt, "Vehicle %d flight mode %s", vid, (!flyEnabled) ? ("{00FF00}ENABLED (Drive & takeoff, Steer/Pitch to fly)") : ("{FF0000}DISABLED"));
+			SendClientMessage(playerid, 0x00FFFFFF, fmt);
+			ShowCHandlingList(playerid);
+			return 1;
+		}
+
 		new CHandlingAttrib:attrib = CHandlingAttrib:(listitem+2); // +2 because we ignore 0 and HANDL_IDENTIFIER
+
+		if(attrib == HANDL_FRONTLIGHTS || attrib == HANDL_REARLIGHTS)
+		{
+			new ival;
+			GetVehicleHandlingInt(vid, attrib, ival);
+			SetPVarInt(playerid, "chandlattrib", _:attrib);
+
+			format(fmt, sizeof fmt, "%s0 LIGHTS_LONG%s\n", (ival == 0) ? ("{00FF00}") : ("{FFFFFF}"), (ival == 0) ? (" (Current)") : (""));
+			format(fmt, sizeof fmt, "%s%s1 LIGHTS_SMALL%s\n", fmt, (ival == 1) ? ("{00FF00}") : ("{FFFFFF}"), (ival == 1) ? (" (Current)") : (""));
+			format(fmt, sizeof fmt, "%s%s2 LIGHTS_BIG%s\n", fmt, (ival == 2) ? ("{00FF00}") : ("{FFFFFF}"), (ival == 2) ? (" (Current)") : (""));
+			format(fmt, sizeof fmt, "%s%s3 LIGHTS_TALL%s", fmt, (ival == 3) ? ("{00FF00}") : ("{FFFFFF}"), (ival == 3) ? (" (Current)") : (""));
+
+			ShowPlayerDialog(playerid, DIALOG_LIGHTS, DIALOG_STYLE_LIST,
+				(attrib == HANDL_FRONTLIGHTS) ? ("CHandling -> Front Lights Size") : ("CHandling -> Rear Lights Size"),
+				fmt, "Select", "Cancel");
+			return 1;
+		}
 
 		new Float:fval, ival;
 
@@ -279,5 +329,92 @@ public OnDialogResponse(playerid, dialogid, response, listitem, inputtext[])
 		}
 		return 1;
 	}
+	else if(dialogid == DIALOG_LIGHTS && IsPlayerUsingCHandling(playerid))
+	{
+		if(!response)
+		{
+			ShowCHandlingList(playerid);
+			return 1;
+		}
+
+		new vid = GetPlayerVehicleID(playerid);
+		if(!vid)
+			return SendClientMessage(playerid, -1, "You must be driving a vehicle");
+
+		new CHandlingAttrib:attrib = CHandlingAttrib:GetPVarInt(playerid, "chandlattrib");
+		if(attrib != HANDL_FRONTLIGHTS && attrib != HANDL_REARLIGHTS)
+			return 1;
+
+		new const lightNames[4][13] = { "LIGHTS_LONG", "LIGHTS_SMALL", "LIGHTS_BIG", "LIGHTS_TALL" };
+		if(listitem < 0 || listitem > 3)
+			return 1;
+
+		if(!SetVehicleHandlingInt(vid, attrib, listitem))
+			return SendClientMessage(playerid, -1, "Failed to set lights size!");
+
+		format(fmt, sizeof fmt, "%s size set to %s (%d)", (attrib == HANDL_FRONTLIGHTS) ? ("Front lights") : ("Rear lights"), lightNames[listitem], listitem);
+		SendClientMessage(playerid, 0x00FF00FF, fmt);
+		ShowCHandlingList(playerid);
+		return 1;
+	}
+	else if(dialogid == DIALOG_DOORS && IsPlayerUsingCHandling(playerid))
+	{
+		if(!response)
+		{
+			ShowCHandlingList(playerid);
+			return 1;
+		}
+
+		new vid = GetPlayerVehicleID(playerid);
+		if(!vid)
+			return SendClientMessage(playerid, -1, "You must be driving a vehicle");
+
+		if(listitem < 6)
+		{
+			new bool:isMissing;
+			GetVehicleDoorMissing(vid, listitem, isMissing);
+			SetVehicleDoorMissing(vid, listitem, !isMissing);
+			format(fmt, sizeof fmt, "Door %d %s", listitem, (!isMissing) ? ("removed") : ("restored"));
+			SendClientMessage(playerid, 0xFFFF00FF, fmt);
+			ShowDoorsDialog(playerid, vid);
+			return 1;
+		}
+		else if(listitem == 6)
+		{
+			SetVehicleAllDoorsMissing(vid, true);
+			SendClientMessage(playerid, 0xFF0000FF, "All vehicle doors removed!");
+			ShowDoorsDialog(playerid, vid);
+			return 1;
+		}
+		else if(listitem == 7)
+		{
+			SetVehicleAllDoorsMissing(vid, false);
+			SendClientMessage(playerid, 0x00FF00FF, "All vehicle doors restored!");
+			ShowDoorsDialog(playerid, vid);
+			return 1;
+		}
+		return 1;
+	}
 	return 0;
+}
+
+ShowDoorsDialog(playerid, vid)
+{
+	new bool:isMissing;
+	fmt[0] = '\0';
+	GetVehicleDoorMissing(vid, VEHICLE_DOOR_BONNET, isMissing);
+	format(fmt, sizeof fmt, "Bonnet (Hood)\t\t%s\n", isMissing ? ("{FF0000}[REMOVED]") : ("{00FF00}[INTACT]"));
+	GetVehicleDoorMissing(vid, VEHICLE_DOOR_BOOT, isMissing);
+	format(fmt, sizeof fmt, "%sBoot (Trunk)\t\t%s\n", fmt, isMissing ? ("{FF0000}[REMOVED]") : ("{00FF00}[INTACT]"));
+	GetVehicleDoorMissing(vid, VEHICLE_DOOR_FRONT_LEFT, isMissing);
+	format(fmt, sizeof fmt, "%sFront Left Door\t\t%s\n", fmt, isMissing ? ("{FF0000}[REMOVED]") : ("{00FF00}[INTACT]"));
+	GetVehicleDoorMissing(vid, VEHICLE_DOOR_FRONT_RIGHT, isMissing);
+	format(fmt, sizeof fmt, "%sFront Right Door\t\t%s\n", fmt, isMissing ? ("{FF0000}[REMOVED]") : ("{00FF00}[INTACT]"));
+	GetVehicleDoorMissing(vid, VEHICLE_DOOR_REAR_LEFT, isMissing);
+	format(fmt, sizeof fmt, "%sRear Left Door\t\t%s\n", fmt, isMissing ? ("{FF0000}[REMOVED]") : ("{00FF00}[INTACT]"));
+	GetVehicleDoorMissing(vid, VEHICLE_DOOR_REAR_RIGHT, isMissing);
+	format(fmt, sizeof fmt, "%sRear Right Door\t\t%s\n", fmt, isMissing ? ("{FF0000}[REMOVED]") : ("{00FF00}[INTACT]"));
+	format(fmt, sizeof fmt, "%s{FFFF00}[>] Remove All Doors\n{00FFFF}[>] Restore All Doors", fmt);
+
+	ShowPlayerDialog(playerid, DIALOG_DOORS, DIALOG_STYLE_LIST, "Vehicle Doors (Remove / Restore)", fmt, "Toggle", "Back");
 }

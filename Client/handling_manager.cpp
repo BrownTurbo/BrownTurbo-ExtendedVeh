@@ -11,6 +11,7 @@
 #include "CustomVehicleBindingManager.h"
 #include "MainThreadQueue.h"
 #include "streamingextender.hpp"
+#include <game_sa/CAutomobile.h>
 #include <cstring>
 #include <deque>
 #include <map>
@@ -24,6 +25,9 @@ std::map<CVehicle*, std::unique_ptr<tHandlingData>> HandlingManager::m_customHan
 std::map<uint16_t, std::unique_ptr<tHandlingData>> HandlingManager::m_playerHandlings;
 std::map<uint16_t, HandlingManager::PlayerAppliedInfo> HandlingManager::m_playerAppliedHandlings;
 std::map<uint16_t, std::vector<HandlingManager::HandlingAttribEntry>> HandlingManager::m_pendingVehicleAttribs;
+std::unordered_map<uint16_t, uint8_t> HandlingManager::m_vehicleDoorStates;
+std::unordered_map<uint16_t, bool> HandlingManager::m_vehicleFlying;
+std::unordered_map<CVehicle*, bool> HandlingManager::m_vehicleFlyingByPtr;
 bool HandlingManager::m_isServerAuthorized = false;
 std::recursive_mutex HandlingManager::m_handlingMutex;
 std::deque<HandlingManager::PendingCommand> HandlingManager::m_pendingCommands;
@@ -31,6 +35,44 @@ std::mutex HandlingManager::m_pendingMutex;
 std::unordered_map<CVehicle*, uint16_t> HandlingManager::m_vehicleToSAMPIdCache;
 std::unordered_map<uint32_t, int32_t> HandlingManager::m_modelUseCount;
 std::mutex HandlingManager::m_cacheMutex;
+
+bool HandlingManager::IsVehicleFlying(uint16_t sampVehicleId)
+{
+	std::lock_guard<std::recursive_mutex> lock(m_handlingMutex);
+	auto it = m_vehicleFlying.find(sampVehicleId);
+	return (it != m_vehicleFlying.end()) ? it->second : false;
+}
+
+bool HandlingManager::IsVehicleFlying(CVehicle* pVehicle)
+{
+	if (!pVehicle)
+		return false;
+	std::lock_guard<std::recursive_mutex> lock(m_handlingMutex);
+	auto it = m_vehicleFlyingByPtr.find(pVehicle);
+	if (it != m_vehicleFlyingByPtr.end() && it->second)
+		return true;
+	uint16_t sampId = GetVehicleSAMPId(pVehicle);
+	if (sampId != 0xFFFF) {
+		auto itSamp = m_vehicleFlying.find(sampId);
+		if (itSamp != m_vehicleFlying.end() && itSamp->second)
+			return true;
+	}
+	return false;
+}
+
+void HandlingManager::SetVehicleFlyingState(uint16_t sampVehicleId, bool flying, CVehicle* pVehicle)
+{
+	std::lock_guard<std::recursive_mutex> lock(m_handlingMutex);
+	if (sampVehicleId != 0xFFFF && sampVehicleId != 0) {
+		m_vehicleFlying[sampVehicleId] = flying;
+	}
+	if (pVehicle) {
+		m_vehicleFlyingByPtr[pVehicle] = flying;
+		if (flying) {
+			pVehicle->bIsHandbrakeOn = false;
+		}
+	}
+}
 
 void HandlingManager::QueueCommand(PendingCommand cmd)
 {
@@ -78,6 +120,7 @@ std::vector<HandlingManager::HandlingAttribEntry> HandlingManager::ParseAttribEn
 				return {};
 			}
 			entry.value.f = v;
+			ClientLog(std::format("[Client] ParseAttribEntries: Entry {}: attrib={} (FLOAT), val={:.4f}", i, static_cast<int>(attrib), v));
 			break;
 		}
 		case TYPE_UINT:
@@ -88,6 +131,7 @@ std::vector<HandlingManager::HandlingAttribEntry> HandlingManager::ParseAttribEn
 				return {};
 			}
 			entry.value.u = v;
+			ClientLog(std::format("[Client] ParseAttribEntries: Entry {}: attrib={} (UINT/FLAG), val={:#x} ({})", i, static_cast<int>(attrib), v, v));
 			break;
 		}
 		case TYPE_BYTE: {
@@ -97,6 +141,7 @@ std::vector<HandlingManager::HandlingAttribEntry> HandlingManager::ParseAttribEn
 				return {};
 			}
 			entry.value.b = v;
+			ClientLog(std::format("[Client] ParseAttribEntries: Entry {}: attrib={} (BYTE), val={}", i, static_cast<int>(attrib), static_cast<int>(v)));
 			break;
 		}
 		default:
@@ -113,7 +158,7 @@ std::vector<HandlingManager::HandlingAttribEntry> HandlingManager::ParseAttribEn
 	return entries;
 }
 
-void HandlingManager::ApplyAttribEntries(tHandlingData* handling, const std::vector<HandlingAttribEntry>& entries)
+void HandlingManager::ApplyAttribEntries(tHandlingData* handling, const std::vector<HandlingAttribEntry>& entries, CVehicle* pVehicle)
 {
 	for (const auto& e : entries) {
 		void* ptr = ResolveAttributePointer(handling, static_cast<uint8_t>(e.attrib));
@@ -125,9 +170,24 @@ void HandlingManager::ApplyAttribEntries(tHandlingData* handling, const std::vec
 			*reinterpret_cast<float*>(ptr) = e.value.f;
 			break;
 		case TYPE_UINT:
-		case TYPE_FLAG:
-			*reinterpret_cast<uint32_t*>(ptr) = e.value.u;
+		case TYPE_FLAG: {
+			uint32_t val = e.value.u;
+			if (e.attrib == HANDL_MODELFLAGS) {
+				bool wantsFlight = (val & 0x4000000) != 0;
+				if (pVehicle) {
+					SetVehicleFlyingState(GetVehicleSAMPId(pVehicle), wantsFlight, pVehicle);
+					if (pVehicle->m_nVehicleSubClass != VEHICLE_PLANE) {
+						// Mask off MFLAG_IS_PLANE (0x4000000) and MFLAG_IS_HELI (0x2000000) for non-planes
+						// so GTA SA's CAutomobile does not disable wheel drive and engage landing gear brakes!
+						val &= ~(0x4000000 | 0x2000000);
+					}
+				} else {
+					val &= ~(0x4000000 | 0x2000000);
+				}
+			}
+			*reinterpret_cast<uint32_t*>(ptr) = val;
 			break;
+		}
 		case TYPE_BYTE:
 			*reinterpret_cast<uint8_t*>(ptr) = e.value.b;
 			break;
@@ -167,6 +227,23 @@ void HandlingManager::ProcessPendingCommands()
 		case PendingCommandType::ResetPlayer:
 			ResetPlayerHandling(cmd.id);
 			break;
+		}
+	}
+
+	// Retry pending vehicle attributes for vehicles that are now available in the pool
+	std::lock_guard<std::recursive_mutex> lock(m_handlingMutex);
+	if (!m_pendingVehicleAttribs.empty()) {
+		for (auto it = m_pendingVehicleAttribs.begin(); it != m_pendingVehicleAttribs.end();) {
+			uint16_t targetVehId = it->first;
+			CVehicle* gtaVeh = GetGameVehicleFromPool(targetVehId);
+			if (IsVehiclePointerValid(gtaVeh) && gtaVeh->m_pHandlingData) {
+				auto attribs = std::move(it->second);
+				it = m_pendingVehicleAttribs.erase(it);
+				ClientLog(std::format("[Client] ProcessPendingCommands: Vehicle {} is now available, applying {} queued attribs", targetVehId, attribs.size()));
+				ProcessVehicleMods(targetVehId, attribs);
+			} else {
+				++it;
+			}
 		}
 	}
 }
@@ -217,9 +294,11 @@ uint16_t HandlingManager::GetVehicleSAMPId(CVehicle* pVehicle)
 			using T = std::decay_t<decltype(p)>;
 			if constexpr (!std::is_same_v<T, std::nullptr_t>) {
 				if (p) {
-					for (uint16_t id = 0; id < (std::min)(static_cast<uint16_t>(p->m_nCount), static_cast<uint16_t>(MAX_SAMP_VEHICLES)); ++id) {
+					for (uint16_t id = 1; id < MAX_SAMP_VEHICLES; ++id) {
 						auto* sampVeh = p->Get(id);
-						if (sampVeh && sampVeh->m_pGameVehicle == pVehicle) {
+						if (!sampVeh)
+							continue;
+						if (sampVeh->m_pGameVehicle == pVehicle) {
 							foundId = id;
 							break;
 						}
@@ -251,6 +330,10 @@ void HandlingManager::RemoveVehicleFromCache(CVehicle* vehicle)
 {
 	if (!IsVehiclePointerValid(vehicle))
 		return;
+	{
+		std::lock_guard<std::recursive_mutex> hlock(m_handlingMutex);
+		m_vehicleFlyingByPtr.erase(vehicle);
+	}
 	std::lock_guard<std::mutex> lock(m_cacheMutex);
 	auto it = m_vehicleToSAMPIdCache.find(vehicle);
 	if (it == m_vehicleToSAMPIdCache.end())
@@ -450,6 +533,10 @@ void HandlingManager::RecalculateDerivedHandling(tHandlingData* handling, CVehic
 		pVehicle->m_nHandlingFlagsIntValue = handling->m_nHandlingFlags;
 		pVehicle->m_vecCentreOfMass = handling->m_vecCentreOfMass;
 		pVehicle->m_fBuoyancyConstant = handling->m_fBuoyancyConstant;
+
+		if (IsVehicleFlying(pVehicle)) {
+			pVehicle->bIsHandbrakeOn = false;
+		}
 	}
 }
 
@@ -459,6 +546,16 @@ void HandlingManager::OnVehicleStreamIn(CVehicle* pVehicle, uint16_t sampId)
 		return;
 
 	std::lock_guard<std::recursive_mutex> lock(m_handlingMutex);
+
+	// Apply custom door states if configured for this vehicle
+	auto doorIt = m_vehicleDoorStates.find(sampId);
+	if (doorIt != m_vehicleDoorStates.end() && doorIt->second != 0) {
+		for (uint8_t d = 0; d < 6; ++d) {
+			if (doorIt->second & (1 << d)) {
+				ApplyDoorState(pVehicle, d, true);
+			}
+		}
+	}
 
 	// 1. Check if there are pending attributes for this vehicle
 	auto pendingIt = m_pendingVehicleAttribs.find(sampId);
@@ -471,7 +568,7 @@ void HandlingManager::OnVehicleStreamIn(CVehicle* pVehicle, uint16_t sampId)
 			it = insertedIt;
 		}
 		tHandlingData* handling = it->second.get();
-		ApplyAttribEntries(handling, pendingIt->second);
+		ApplyAttribEntries(handling, pendingIt->second, pVehicle);
 		handling->m_transmissionData.InitGearRatios();
 		RecalculateDerivedHandling(handling, pVehicle);
 		m_pendingVehicleAttribs.erase(pendingIt);
@@ -570,9 +667,11 @@ void HandlingManager::ApplyModelToVehicles(uint16_t modelId, tHandlingData* hand
 		using T = std::decay_t<decltype(p)>;
 		if constexpr (!std::is_same_v<T, std::nullptr_t>) {
 			if (p) {
-				for (uint16_t id = 0; id < (std::min)(static_cast<uint16_t>(p->m_nCount), static_cast<uint16_t>(MAX_SAMP_VEHICLES)); ++id) {
+				for (uint16_t id = 1; id < MAX_SAMP_VEHICLES; ++id) {
 					auto* sampVeh = p->Get(id);
-					if (!sampVeh || !sampVeh->m_pGameVehicle)
+					if (!sampVeh)
+						continue;
+					if (!sampVeh->m_pGameVehicle)
 						continue;
 					CVehicle* gtaVeh = sampVeh->m_pGameVehicle;
 					if (!IsVehiclePointerValid(gtaVeh) || gtaVeh->m_nModelIndex != modelId)
@@ -603,9 +702,11 @@ void HandlingManager::RevertModelToOriginal(uint16_t modelId)
 		using T = std::decay_t<decltype(p)>;
 		if constexpr (!std::is_same_v<T, std::nullptr_t>) {
 			if (p) {
-				for (uint16_t id = 0; id < (std::min)(static_cast<uint16_t>(p->m_nCount), static_cast<uint16_t>(MAX_SAMP_VEHICLES)); ++id) {
+				for (uint16_t id = 1; id < MAX_SAMP_VEHICLES; ++id) {
 					auto* sampVeh = p->Get(id);
-					if (!sampVeh || !sampVeh->m_pGameVehicle)
+					if (!sampVeh)
+						continue;
+					if (!sampVeh->m_pGameVehicle)
 						continue;
 					CVehicle* gtaVeh = sampVeh->m_pGameVehicle;
 					if (!IsVehiclePointerValid(gtaVeh) || gtaVeh->m_nModelIndex != modelId)
@@ -664,17 +765,20 @@ void HandlingManager::RemovePlayerHandling(uint16_t playerId, CVehicle* pVehicle
 		return;
 
 	int modelId = pVehicle->m_nModelIndex;
-	auto* modelInfo = reinterpret_cast<CVehicleModelInfo*>(GetEngineModelInfo(modelId));
-	if (modelInfo) {
-		unsigned int handlingId = modelInfo->m_nHandlingId;
-		tHandlingData* fallback = static_cast<tHandlingData*>(&gHandlingDataMgr.m_aVehicleHandling[handlingId]);
-		auto modelIt = m_modelHandlings.find(modelId);
-		if (modelIt != m_modelHandlings.end()) {
-			fallback = modelIt->second.get();
+	auto vehIt = m_vehicleHandlings.find(vehicleId);
+	if (vehIt != m_vehicleHandlings.end()) {
+		RecalculateDerivedHandling(vehIt->second.get(), pVehicle);
+	} else {
+		auto* modelInfo = reinterpret_cast<CVehicleModelInfo*>(GetEngineModelInfo(modelId));
+		if (modelInfo) {
+			unsigned int handlingId = modelInfo->m_nHandlingId;
+			tHandlingData* fallback = static_cast<tHandlingData*>(&gHandlingDataMgr.m_aVehicleHandling[handlingId]);
+			auto modelIt = m_modelHandlings.find(modelId);
+			if (modelIt != m_modelHandlings.end()) {
+				fallback = modelIt->second.get();
+			}
+			RecalculateDerivedHandling(fallback, pVehicle);
 		}
-		pVehicle->m_pHandlingData = fallback;
-		pVehicle->m_fMass = fallback->m_fMass;
-		pVehicle->m_fTurnMass = fallback->m_fTurnMass;
 	}
 	m_playerAppliedHandlings.erase(it);
 }
@@ -769,11 +873,85 @@ void HandlingManager::ProcessVehicleMods(uint16_t sampVehicleId, const std::vect
 	}
 
 	tHandlingData* handling = it->second.get();
-	ApplyAttribEntries(handling, entries);
+	ApplyAttribEntries(handling, entries, gtaVehicle);
 	handling->m_transmissionData.InitGearRatios();
 
 	RecalculateDerivedHandling(handling, gtaVehicle);
-	ClientLog(std::format("[Client] ProcessVehicleMods: Applied {} attribs to vehicle {}", entries.size(), sampVehicleId));
+	ClientLog(std::format("[Client] ProcessVehicleMods: Applied {} attribs to vehicle {}. Mass={:.1f}, Submerged={}, Buoyancy={:.4f}, ModelFlags={:#x}",
+		entries.size(), sampVehicleId, handling->m_fMass, static_cast<int>(handling->m_nPercentSubmerged), handling->m_fBuoyancyConstant, static_cast<uint32_t>(handling->m_nModelFlags)));
+}
+
+void HandlingManager::ProcessVehicleDoorState(uint16_t sampVehicleId, uint8_t doorId, bool missing)
+{
+	std::lock_guard<std::recursive_mutex> lock(m_handlingMutex);
+
+	if (doorId == 0xFF) {
+		m_vehicleDoorStates[sampVehicleId] = missing ? 0x3F : 0x00;
+	} else if (doorId <= 5) {
+		if (missing) {
+			m_vehicleDoorStates[sampVehicleId] |= (1 << doorId);
+		} else {
+			m_vehicleDoorStates[sampVehicleId] &= ~(1 << doorId);
+		}
+	}
+
+	CVehicle* gtaVehicle = GetGameVehicleFromPool(sampVehicleId);
+	if (IsVehiclePointerValid(gtaVehicle)) {
+		ApplyDoorState(gtaVehicle, doorId, missing);
+		ClientLog(std::format("[Client] ProcessVehicleDoorState: Applied door {} (missing={}) to vehicle {}", doorId, missing, sampVehicleId));
+	} else {
+		ClientLog(std::format("[Client] ProcessVehicleDoorState: Vehicle {} not in pool, cached door {} (missing={})", sampVehicleId, doorId, missing));
+	}
+}
+
+void HandlingManager::ApplyDoorState(CVehicle* pVehicle, uint8_t doorId, bool missing)
+{
+	if (!IsVehiclePointerValid(pVehicle))
+		return;
+
+	// In GTA:SA, CAutomobile has subclass 0, MTRUCK is 1, QUAD is 2
+	if (pVehicle->m_nVehicleSubClass != 0 && pVehicle->m_nVehicleSubClass != 1 && pVehicle->m_nVehicleSubClass != 2)
+		return;
+
+	CAutomobile* autoVeh = reinterpret_cast<CAutomobile*>(pVehicle);
+
+	auto applySingleDoor = [&](uint8_t d) {
+		if (d > 5) return;
+		int nodeIdx = -1;
+		switch (d) {
+			case 0: nodeIdx = CAR_BONNET; break;     // 16
+			case 1: nodeIdx = CAR_BOOT; break;       // 17
+			case 2: nodeIdx = CAR_DOOR_LF; break;    // 10
+			case 3: nodeIdx = CAR_DOOR_RF; break;    // 8
+			case 4: nodeIdx = CAR_DOOR_LR; break;    // 11
+			case 5: nodeIdx = CAR_DOOR_RR; break;    // 9
+		}
+
+		eDoors gtaDoor = static_cast<eDoors>(d);
+		autoVeh->m_damageManager.SetDoorStatus(gtaDoor, missing ? DAMSTATE_NOTPRESENT : DAMSTATE_OK);
+
+		if (!missing) {
+			autoVeh->m_doors[d].m_fAngle = autoVeh->m_doors[d].m_fClosedAngle;
+			autoVeh->m_doors[d].m_fPrevAngle = autoVeh->m_doors[d].m_fClosedAngle;
+			autoVeh->m_doors[d].m_fAngVel = 0.0f;
+			autoVeh->m_doors[d].m_nDoorState = DOOR_NOTHING;
+		}
+
+		if (nodeIdx >= 0 && nodeIdx < CAR_NUM_NODES) {
+			RwFrame* frame = autoVeh->m_aCarNodes[nodeIdx];
+			if (frame) {
+				pVehicle->SetComponentVisibility(frame, missing ? 0 : 1);
+			}
+		}
+	};
+
+	if (doorId == 0xFF) {
+		for (uint8_t d = 0; d < 6; ++d) {
+			applySingleDoor(d);
+		}
+	} else if (doorId <= 5) {
+		applySingleDoor(doorId);
+	}
 }
 
 void HandlingManager::ResetVehicle(uint16_t sampVehicleId)
@@ -781,6 +959,7 @@ void HandlingManager::ResetVehicle(uint16_t sampVehicleId)
 	std::lock_guard<std::recursive_mutex> lock(m_handlingMutex);
 
 	m_pendingVehicleAttribs.erase(sampVehicleId);
+	m_vehicleFlying.erase(sampVehicleId);
 
 	auto it = m_vehicleHandlings.find(sampVehicleId);
 	if (it == m_vehicleHandlings.end())
@@ -946,7 +1125,24 @@ bool HandlingManager::ProcessAction(CustomVehAction action, RakNet::BitStream* b
 		}
 
 		ClientLog(std::format("[Client] ACTION_SET_VEHICLE_HANDLING: vehicleId={}, count={}", vehicleId, count));
-		QueueCommand({ PendingCommandType::SetVehicle, vehicleId, ParseAttribEntries(count, bs) });
+		auto entries = ParseAttribEntries(count, bs);
+		ProcessVehicleMods(vehicleId, entries);
+		return false;
+	}
+
+	case ACTION_SET_VEHICLE_DOOR_STATE: {
+		uint16_t vehicleId;
+		uint8_t doorId;
+		bool missing;
+		if (!bs->Read(vehicleId) || !bs->Read(doorId) || !bs->Read(missing)) {
+			ClientLog("[Client] ACTION_SET_VEHICLE_DOOR_STATE: Failed to read vehicleId/doorId/missing");
+			return false;
+		}
+
+		ClientLog(std::format("[Client] ACTION_SET_VEHICLE_DOOR_STATE: vehicleId={}, doorId={}, missing={}", vehicleId, doorId, missing));
+		MainThreadQueue::Instance().Push([vehicleId, doorId, missing]() {
+			HandlingManager::ProcessVehicleDoorState(vehicleId, doorId, missing);
+		});
 		return false;
 	}
 
@@ -957,7 +1153,7 @@ bool HandlingManager::ProcessAction(CustomVehAction action, RakNet::BitStream* b
 			return false;
 		}
 		ClientLog(std::format("[Client] ACTION_RESET_VEHICLE: vehicleId={}", vehicleId));
-		QueueCommand({ PendingCommandType::ResetVehicle, vehicleId, {} });
+		ResetVehicle(vehicleId);
 		return false;
 	}
 
@@ -973,7 +1169,8 @@ bool HandlingManager::ProcessAction(CustomVehAction action, RakNet::BitStream* b
 			return false;
 		}
 		ClientLog(std::format("[Client] ACTION_SET_MODEL_HANDLING: modelId={}, count={}", modelId, count));
-		QueueCommand({ PendingCommandType::SetModel, modelId, ParseAttribEntries(count, bs) });
+		auto entries = ParseAttribEntries(count, bs);
+		ProcessModelMods(modelId, entries);
 		return false;
 	}
 
@@ -984,7 +1181,7 @@ bool HandlingManager::ProcessAction(CustomVehAction action, RakNet::BitStream* b
 			return false;
 		}
 		ClientLog(std::format("[Client] ACTION_RESET_MODEL: modelId={}", modelId));
-		QueueCommand({ PendingCommandType::ResetModel, modelId, {} });
+		ResetModel(modelId);
 		return false;
 	}
 
@@ -1000,7 +1197,8 @@ bool HandlingManager::ProcessAction(CustomVehAction action, RakNet::BitStream* b
 			return false;
 		}
 		ClientLog(std::format("[Client] ACTION_SET_PLAYER_HANDLING: playerId={}, count={}", playerId, count));
-		QueueCommand({ PendingCommandType::SetPlayer, playerId, ParseAttribEntries(count, bs) });
+		auto entries = ParseAttribEntries(count, bs);
+		ProcessPlayerMods(playerId, entries);
 		return false;
 	}
 
@@ -1015,7 +1213,7 @@ bool HandlingManager::ProcessAction(CustomVehAction action, RakNet::BitStream* b
 			return false;
 		}
 		ClientLog(std::format("[Client] ACTION_RESET_PLAYER_HANDLING: playerId={}", playerId));
-		QueueCommand({ PendingCommandType::ResetPlayer, playerId, {} });
+		ResetPlayerHandling(playerId);
 		return false;
 	}
 
@@ -1117,6 +1315,18 @@ bool HandlingManager::ProcessAction(CustomVehAction action, RakNet::BitStream* b
 			ResetVehicleHandling(m_customHandlings.begin()->first);
 			RemoveVehicleFromCache(m_customHandlings.begin()->first);
 		}
+
+		// Restore door states and clear cache
+		for (const auto& [vehId, mask] : m_vehicleDoorStates) {
+			CVehicle* gtaVehicle = GetGameVehicleFromPool(vehId);
+			if (IsVehiclePointerValid(gtaVehicle)) {
+				ApplyDoorState(gtaVehicle, 0xFF, false);
+			}
+		}
+		m_vehicleDoorStates.clear();
+		m_vehicleFlying.clear();
+		m_vehicleFlyingByPtr.clear();
+
 		return false;
 	}
 	case ACTION_ASSET_BEGIN: {

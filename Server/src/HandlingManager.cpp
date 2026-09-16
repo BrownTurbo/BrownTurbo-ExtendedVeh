@@ -25,6 +25,7 @@ std::unordered_map<uint16_t, struct stVehicleHandlingEntry> vehicleHandlings;
 std::unordered_map<uint16_t, struct stHandlingEntry> playerHandlings; // key = playerid
 std::unordered_map<uint32_t, CustomVeh::Protocol::VehicleDefinition> customVehicleDefs; // key = modelId
 std::unordered_set<uint32_t> customVehicleModels;
+std::unordered_map<uint16_t, uint8_t> vehicleDoorStates;
 std::unordered_map<uint32_t, CustomVeh::Protocol::VehicleDefinition> stagedCustomVehicleDefs;
 
 std::unordered_set<uint16_t> usOutgoingVehicleMods;
@@ -375,6 +376,7 @@ void OnDestroyVehicle(int vehicleid)
 		ResetVehicleHandling(*pVeh, false);
 	}
 	vehicleHandlings.erase(vehicleid);
+	vehicleDoorStates.erase(static_cast<uint16_t>(vehicleid));
 	vehiclesIdMap.erase(vehicleid);
 	CustomVehicleBindingRegistry::Instance().Unbind(static_cast<uint16_t>(vehicleid));
 }
@@ -411,6 +413,24 @@ void OnPlayerConnect(IPlayer& player)
 	{
 		SendCustomVehicleDefToPlayer(player, kv.first);
 	}
+
+	for (const auto& [vehId, mask] : vehicleDoorStates)
+	{
+		if (mask != 0)
+		{
+			for (uint8_t d = 0; d < 6; d++)
+			{
+				if (mask & (1 << d))
+				{
+					struct CustomVehActionPacket p(ACTION_SET_VEHICLE_DOOR_STATE);
+					p.data.Write(vehId);
+					p.data.Write(d);
+					p.data.Write(true);
+					player.sendPacket(Span<uint8_t>(p.data.GetData(), p.data.GetNumberOfBitsUsed()), 0, true);
+				}
+			}
+		}
+	}
 }
 
 void OnPlayerDisconnect(IPlayer& player, PeerDisconnectReason reason)
@@ -429,8 +449,27 @@ void OnVehicleStreamIn(IVehicle& vehicle, IPlayer& player)
 		SendCustomVehicleDefToPlayer(player, modelid);
 	}
 
+	if (!gPlayers.HasExtendedVeh(forplayerid))
+		return;
+
+	auto doorIt = vehicleDoorStates.find(static_cast<uint16_t>(vehicleid));
+	if (doorIt != vehicleDoorStates.end() && doorIt->second != 0)
+	{
+		for (uint8_t d = 0; d < 6; d++)
+		{
+			if (doorIt->second & (1 << d))
+			{
+				struct CustomVehActionPacket p(ACTION_SET_VEHICLE_DOOR_STATE);
+				p.data.Write(static_cast<uint16_t>(vehicleid));
+				p.data.Write(d);
+				p.data.Write(true);
+				player.sendPacket(Span<uint8_t>(p.data.GetData(), p.data.GetNumberOfBitsUsed()), 0, true);
+			}
+		}
+	}
+
 	auto it = vehicleHandlings.find(vehicleid);
-	if (it == vehicleHandlings.end() || it->second.handlingModMap.empty() || !gPlayers.HasExtendedVeh(forplayerid))
+	if (it == vehicleHandlings.end() || it->second.handlingModMap.empty())
 		return;
 
 	struct CustomVehActionPacket p(ACTION_SET_VEHICLE_HANDLING);
@@ -491,6 +530,126 @@ void ResetVehicleHandling(IVehicle& vehicle, bool sendToPlayers)
 			player->sendPacket(Span<uint8_t>(p.data.GetData(), p.data.GetNumberOfBitsUsed()), 0, true);
 		}
 	}
+}
+
+/* VEHICLE DOOR FUNCTIONS */
+
+bool SetVehicleDoorMissing(uint16_t vehicleid, uint8_t doorid, bool missing)
+{
+	ExtendedVehCompo* compo = ExtendedVehCompo::get();
+	if (!compo || !compo->IsValidVehicle(vehicleid))
+		return false;
+
+	if (doorid == 0xFF)
+	{
+		return SetVehicleAllDoorsMissing(vehicleid, missing);
+	}
+
+	if (doorid > 5)
+		return false;
+
+	uint8_t& mask = vehicleDoorStates[vehicleid];
+	if (missing)
+		mask |= (1 << doorid);
+	else
+		mask &= ~(1 << doorid);
+
+	// Sync base 4 doors to standard SA-MP damage status (bonnet=0, boot=1, front_left=2, front_right=3)
+	if (doorid <= 3)
+	{
+		IVehicle* pVeh = compo->GetVehicleByID(vehicleid);
+		if (pVeh)
+		{
+			int panels = 0, doors = 0, lights = 0, tyres = 0;
+			pVeh->getDamageStatus(panels, doors, lights, tyres);
+			uint32_t shift = doorid * 8;
+			uint32_t doorByte = missing ? 3 : 0; // 3 = missing/detached in SA-MP
+			doors = (doors & ~(0xFF << shift)) | (doorByte << shift);
+			pVeh->setDamageStatus(panels, doors, static_cast<uint8_t>(lights), static_cast<uint8_t>(tyres));
+		}
+	}
+
+	// Broadcast packet to authorized players
+	ICore* core_ = compo->getCore();
+	if (core_)
+	{
+		struct CustomVehActionPacket p(ACTION_SET_VEHICLE_DOOR_STATE);
+		p.data.Write(vehicleid);
+		p.data.Write(doorid);
+		p.data.Write(missing);
+
+		for (IPlayer* player : core_->getPlayers().players())
+		{
+			if (player && gPlayers.HasExtendedVeh(player->getID()))
+			{
+				player->sendPacket(Span<uint8_t>(p.data.GetData(), p.data.GetNumberOfBitsUsed()), 0, true);
+			}
+		}
+	}
+
+	return true;
+}
+
+bool SetVehicleAllDoorsMissing(uint16_t vehicleid, bool missing)
+{
+	ExtendedVehCompo* compo = ExtendedVehCompo::get();
+	if (!compo || !compo->IsValidVehicle(vehicleid))
+		return false;
+
+	uint8_t& mask = vehicleDoorStates[vehicleid];
+	mask = missing ? 0x3F : 0x00;
+
+	// Sync base 4 doors to standard SA-MP damage status
+	IVehicle* pVeh = compo->GetVehicleByID(vehicleid);
+	if (pVeh)
+	{
+		int panels = 0, doors = 0, lights = 0, tyres = 0;
+		pVeh->getDamageStatus(panels, doors, lights, tyres);
+		uint32_t doorByte = missing ? 3 : 0;
+		doors = doorByte | (doorByte << 8) | (doorByte << 16) | (doorByte << 24);
+		pVeh->setDamageStatus(panels, doors, static_cast<uint8_t>(lights), static_cast<uint8_t>(tyres));
+	}
+
+	// Broadcast packet to authorized players
+	ICore* core_ = compo->getCore();
+	if (core_)
+	{
+		struct CustomVehActionPacket p(ACTION_SET_VEHICLE_DOOR_STATE);
+		p.data.Write(vehicleid);
+		p.data.Write(static_cast<uint8_t>(0xFF));
+		p.data.Write(missing);
+
+		for (IPlayer* player : core_->getPlayers().players())
+		{
+			if (player && gPlayers.HasExtendedVeh(player->getID()))
+			{
+				player->sendPacket(Span<uint8_t>(p.data.GetData(), p.data.GetNumberOfBitsUsed()), 0, true);
+			}
+		}
+	}
+
+	return true;
+}
+
+bool GetVehicleDoorMissing(uint16_t vehicleid, uint8_t doorid, bool& missing)
+{
+	ExtendedVehCompo* compo = ExtendedVehCompo::get();
+	if (!compo || !compo->IsValidVehicle(vehicleid))
+		return false;
+
+	if (doorid > 5)
+		return false;
+
+	auto it = vehicleDoorStates.find(vehicleid);
+	if (it != vehicleDoorStates.end())
+	{
+		missing = (it->second & (1 << doorid)) != 0;
+	}
+	else
+	{
+		missing = false;
+	}
+	return true;
 }
 
 /* SET HANDLING FUNCTIONS */

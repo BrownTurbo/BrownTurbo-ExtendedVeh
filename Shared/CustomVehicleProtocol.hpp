@@ -24,6 +24,7 @@ namespace CustomVeh::Protocol {
 		GetModelHandling = 22,
 		GetPlayerHandling = 23,
 		ResetAll = 24,
+		SetVehicleDoorState = 25,
 		CustomVehicleDefine = 40,
 		CustomVehicleBind = 41,
 		CustomVehicleUnbind = 42,

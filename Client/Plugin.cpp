@@ -1,8 +1,11 @@
 // SDK
 #include <plugin_sa.h>
 
+#include <game_sa/CCheat.h>
 #include <game_sa/CHandlingDataMgr.h>
 #include <game_sa/CModelInfo.h>
+#include <game_sa/CPad.h>
+#include <game_sa/CTimer.h>
 #include <game_sa/CTxdStore.h>
 #include <game_sa/CVisibilityPlugins.h>
 #include <game_sa/rw/rpworld.h>
@@ -607,11 +610,399 @@ void InitializeHooks()
 
 std::unique_ptr<c_plugin> Plugn;
 
+using game_loop_t = void (__cdecl*)();
+static game_loop_t orig_game_loop = nullptr;
+
+static void OnGameProcess()
+{
+	static uint32_t s_lastFrame = 0xFFFFFFFF;
+	if (CTimer::m_FrameCounter == s_lastFrame)
+		return;
+	s_lastFrame = CTimer::m_FrameCounter;
+
+	try {
+		MainThreadQueue::Instance().DrainOnMainThread();
+
+		try {
+			HandlingManager::ProcessPendingCommands();
+		} catch (const std::exception& e) {
+			ClientLog(std::format("[Client] Exception in ProcessPendingCommands: {}", e.what()));
+		} catch (...) {
+			ClientLog("[Client] Unknown exception in ProcessPendingCommands");
+		}
+
+		if (!ASIinitialized) {
+			return;
+		}
+
+		_customVehInstance.ProcessPendingDefinitions();
+		_customVehInstance.ProcessCompletedDownloads();
+		CustomVehicleBindingManager::Instance().Process();
+		_customVehInstance.ProcessPendingDestructions();
+		_customVehInstance.ProcessPendingClearAll();
+
+		static auto lastInitTry = std::chrono::steady_clock::now();
+		if (!HandlingManager::m_isServerAuthorized && rakhook::orig && rakhook::orig->IsConnected()) {
+			auto now = std::chrono::steady_clock::now();
+			if (std::chrono::duration_cast<std::chrono::milliseconds>(now - lastInitTry).count() >= 1500) {
+				lastInitTry = now;
+				HandlingManager::SendInitPacket();
+			}
+		}
+
+		// Update vehicle cache and model use counts
+		struct VehicleEntry {
+			CVehicle* gameVeh;
+			uint16_t sampId;
+			uint16_t gtaRef;
+		};
+		static std::vector<VehicleEntry> previousVehicles;
+		std::vector<VehicleEntry> currentVehicles;
+		currentVehicles.reserve(128);
+
+		auto pool = GetVehiclesPool();
+		if (!std::holds_alternative<std::nullptr_t>(pool)) {
+			std::visit([&](auto&& p) {
+				using T = std::decay_t<decltype(p)>;
+				if constexpr (!std::is_same_v<T, std::nullptr_t>) {
+					if (p) {
+						for (uint16_t id = 1; id < MAX_SAMP_VEHICLES; ++id) {
+							auto* sampVeh = p->Get(id);
+							if (sampVeh) {
+								if (sampVeh->m_pGameVehicle && IsVehiclePointerValid(sampVeh->m_pGameVehicle) && IsVehicleStreamedForLocalPlayer(sampVeh->m_pGameVehicle)) {
+									uint16_t gtaRef = static_cast<uint16_t>(CPools::GetVehicleRef(sampVeh->m_pGameVehicle));
+									currentVehicles.push_back({ sampVeh->m_pGameVehicle, id, gtaRef });
+								}
+							}
+						}
+					}
+				}
+			},
+				pool);
+		}
+
+		// Detect new vehicles
+		for (const auto& cur : currentVehicles) {
+			bool found = false;
+			for (const auto& old : previousVehicles) {
+				if (old.gameVeh == cur.gameVeh) {
+					found = true;
+					break;
+				}
+			}
+			if (!found) {
+				HandlingManager::CacheVehicleSAMPId(cur.gameVeh, cur.sampId);
+				HandlingManager::OnVehicleStreamIn(cur.gameVeh, cur.sampId);
+			}
+
+			if (IsVehiclePointerValid(cur.gameVeh)) {
+				if (cur.gameVeh->m_pHandlingData && (cur.gameVeh->m_pHandlingData->m_nModelFlags & 0x8000000) != 0) {
+					if (cur.gameVeh->bTouchingWater) {
+						cur.gameVeh->bIsDrowning = false;
+						cur.gameVeh->bSubmergedInWater = false;
+						if (cur.gameVeh->m_pHandlingData->m_fBuoyancyConstant > 0.0f) {
+							cur.gameVeh->m_fBuoyancyConstant = cur.gameVeh->m_pHandlingData->m_fBuoyancyConstant;
+						}
+					}
+				}
+
+				if (AudioExtender::GetVehicleAudio(static_cast<uint32_t>(cur.gameVeh->m_nModelIndex)).has_value()) {
+					std::optional<AudioExtender::CustomVehicleAudioState*> audioState = AudioExtender::GetOrCreateAudioState(*cur.gameVeh);
+					if (audioState) {
+						if (!AudioExtender::InitialiseCustomVehicleAudio(audioState.value()->engine, *cur.gameVeh)) {
+							AudioExtender::RemoveVehicleAudioState(cur.gtaRef);
+						}
+					}
+				}
+			}
+		}
+
+		// Detect vehicles that disappeared
+		for (const auto& old : previousVehicles) {
+			bool stillExists = false;
+			for (const auto& cur : currentVehicles) {
+				if (cur.gameVeh == old.gameVeh) {
+					stillExists = true;
+					break;
+				}
+			}
+			if (!stillExists) {
+				HandlingManager::RemoveVehicleFromCache(old.gameVeh);
+				AudioExtender::RemoveVehicleAudioState(old.gtaRef);
+			}
+		}
+
+		// Update previousVehicles for next frame
+		previousVehicles = std::move(currentVehicles);
+
+		// Vehicle destructor cleanup
+		HandlingManager::OnVehicleDestructor(nullptr);
+
+		// Vehicle enter / exit for local player
+		static CVehicle* s_prevLocalVehicle = nullptr;
+		static bool s_pluginEnabledWaterDrive = false;
+
+		auto* localPed = FindPlayerPed();
+		if (!localPed) {
+			s_prevLocalVehicle = nullptr;
+			if (s_pluginEnabledWaterDrive) {
+				CCheat::m_aCheatsActive[CHEAT_CARS_ON_WATER] = false;
+				s_pluginEnabledWaterDrive = false;
+			}
+			return;
+		}
+		CVehicle* curVehicle = localPed->m_pVehicle;
+
+		if (curVehicle != s_prevLocalVehicle) {
+			uint16_t localId = GetLocalPlayerId();
+			if (s_prevLocalVehicle && IsVehiclePointerValid(s_prevLocalVehicle))
+				HandlingManager::RemovePlayerHandling(localId, s_prevLocalVehicle);
+			if (curVehicle && IsVehiclePointerValid(curVehicle))
+				HandlingManager::ApplyPlayerHandling(localId, curVehicle);
+			s_prevLocalVehicle = curVehicle;
+		}
+
+		if (curVehicle && IsVehiclePointerValid(curVehicle) && curVehicle->m_pHandlingData) {
+			// Amphibious water driving for vehicles with MFLAG_IS_BOAT (0x8000000)
+			bool isBoat = (curVehicle->m_pHandlingData->m_nModelFlags & 0x8000000) != 0;
+			if (isBoat) {
+				CCheat::m_aCheatsActive[CHEAT_CARS_ON_WATER] = true;
+				s_pluginEnabledWaterDrive = true;
+				if (curVehicle->bTouchingWater) {
+					curVehicle->bEngineOn = true;
+					curVehicle->bIsDrowning = false;
+					curVehicle->bSubmergedInWater = false;
+				}
+			} else if (s_pluginEnabledWaterDrive) {
+				CCheat::m_aCheatsActive[CHEAT_CARS_ON_WATER] = false;
+				s_pluginEnabledWaterDrive = false;
+			}
+
+			// Vehicle flight (cars, boats, bikes) with auto-leveling & anti-inversion
+			bool isPlane = HandlingManager::IsVehicleFlying(curVehicle);
+			if (curVehicle->m_pHandlingData && (curVehicle->m_pHandlingData->m_nModelFlags & 0x4000000) != 0) {
+				isPlane = true;
+				if (curVehicle->m_nVehicleSubClass != VEHICLE_PLANE) {
+					curVehicle->m_pHandlingData->m_nModelFlags = static_cast<eVehicleHandlingModelFlags>(
+						curVehicle->m_pHandlingData->m_nModelFlags & ~(0x4000000 | 0x2000000)
+					);
+					HandlingManager::SetVehicleFlyingState(HandlingManager::GetVehicleSAMPId(curVehicle), true, curVehicle);
+				}
+			}
+
+			// Ensure legacy GTA cheats are disabled so they do not fight our custom physics or flip cars upside down
+			CCheat::m_aCheatsActive[CHEAT_CARS_FLY] = false;
+			CCheat::m_aCheatsActive[CHEAT_BOATS_FLY] = false;
+
+			static unsigned int s_lastFlightFrame = 0;
+			static float s_smoothSteerLR = 0.0f;
+			if (isPlane && curVehicle->m_matrix && curVehicle->m_pDriver == localPed) {
+				curVehicle->bIsHandbrakeOn = false;
+
+				if (CTimer::m_FrameCounter != s_lastFlightFrame) {
+					s_lastFlightFrame = CTimer::m_FrameCounter;
+
+					CVector forward = curVehicle->GetForward();
+					CVector up = curVehicle->GetUp();
+					CVector right = curVehicle->GetRight();
+					float timeStep = CTimer::ms_fTimeStep;
+					float fwdSpeed = curVehicle->m_vecMoveSpeed.Dot(forward);
+					bool onGround = (curVehicle->GetNumContactWheels() > 0);
+
+					CPad* pad = CPad::GetPad(0);
+					short steerUD = pad ? pad->GetSteeringUpDown() : 0;
+					if (steerUD == 0 && pad) steerUD = pad->GetPedWalkUpDown();
+					short steerLR = pad ? pad->GetSteeringLeftRight() : 0;
+					if (steerLR == 0 && pad) steerLR = pad->GetPedWalkLeftRight();
+
+					bool isClimbing = (steerUD < 0);
+					bool isDescending = (steerUD > 0) || (pad && pad->GetBrake() > 0 && !onGround);
+					bool isAccelerating = (pad && pad->GetAccelerate() > 0);
+
+					// 1. Aerodynamic lift & descent management
+					if (fwdSpeed > 0.06f && !onGround) {
+						float liftRatio = std::min(1.2f, fwdSpeed / 0.20f);
+						if (isDescending) {
+							// Active descent: reduce vertical speed so vehicle descends freely to land
+							curVehicle->m_vecMoveSpeed.z -= 0.0055f * timeStep;
+						} else if (isAccelerating) {
+							// Active acceleration: full cruise lift + forward pitch climb
+							float cruiseLift = 0.0085f * timeStep * liftRatio;
+							curVehicle->m_vecMoveSpeed.z += cruiseLift;
+							if (forward.z > 0.0f) {
+								curVehicle->m_vecMoveSpeed.z += forward.z * fwdSpeed * 0.08f * timeStep;
+							}
+						} else {
+							// Gliding / coasting (no gas): gentle descent slope towards ground
+							curVehicle->m_vecMoveSpeed.z += 0.0055f * timeStep * liftRatio;
+						}
+					} else if (onGround && fwdSpeed > 0.12f && (isClimbing || isAccelerating)) {
+						// Ground takeoff lift
+						curVehicle->m_vecMoveSpeed.z += 0.0065f * timeStep;
+					}
+
+					// 2. Flight input controls
+					if (pad) {
+						// Air thrust on Accelerate (W)
+						if (isAccelerating) {
+							if (fwdSpeed < 1.0f) {
+								curVehicle->m_vecMoveSpeed += forward * (0.0045f * timeStep);
+							}
+						}
+
+						// Air brake & descent on Brake / Reverse (S)
+						if (pad->GetBrake() > 0) {
+							if (fwdSpeed > 0.02f) {
+								curVehicle->m_vecMoveSpeed -= forward * (0.0040f * timeStep);
+							}
+							if (!onGround) {
+								curVehicle->m_vecMoveSpeed.z -= 0.0045f * timeStep;
+							}
+						}
+
+						// Ascend / Climb booster on Handbrake (Spacebar)
+						if (pad->GetHandBrake() > 0) {
+							curVehicle->m_vecMoveSpeed.z += 0.0075f * timeStep;
+							if (forward.z < 0.35f) {
+								curVehicle->m_vecTurnSpeed += right * (0.008f * timeStep);
+							}
+						}
+
+						// Steering / Yaw & banking (A / D or Left / Right) with progressive input smoothing
+						float targetSteer = (steerLR != 0) ? (steerLR / 128.0f) : 0.0f;
+						float steerLerp = std::min(0.35f, 0.20f * timeStep);
+						s_smoothSteerLR = s_smoothSteerLR * (1.0f - steerLerp) + targetSteer * steerLerp;
+
+						if (fabs(s_smoothSteerLR) > 0.01f) {
+							// Smooth, comfortable yaw turning
+							curVehicle->m_vecTurnSpeed -= up * (s_smoothSteerLR * 0.018f * timeStep);
+							// Gentle aerodynamic banking into turn (capped to ~14 deg)
+							if (fabs(right.z) < 0.24f) {
+								curVehicle->m_vecTurnSpeed += forward * (s_smoothSteerLR * 0.004f * timeStep);
+							}
+							// Subtle lateral turning force to smoothly guide trajectory
+							curVehicle->m_vecMoveSpeed -= right * (s_smoothSteerLR * 0.0015f * timeStep);
+						}
+
+						// Pitch control (Arrow Up = Pitch UP & Climb, Arrow Down = Pitch DOWN & Descend)
+						if (steerUD != 0) {
+							if (steerUD < 0) {
+								// Arrow Up: PITCH NOSE UP & CLIMB into the sky!
+								// Clamped to max +35 deg (forward.z < 0.55f)
+								if (forward.z < 0.55f) {
+									float factor = (-steerUD / 128.0f) * timeStep;
+									curVehicle->m_vecTurnSpeed += right * (0.018f * factor);
+									curVehicle->m_vecMoveSpeed.z += 0.0070f * factor;
+								}
+							} else if (steerUD > 0) {
+								// Arrow Down: PITCH NOSE DOWN & DESCEND to runway/ground!
+								// Allows comfortable descent up to -25 deg (forward.z > -0.42f)
+								if (forward.z > -0.42f) {
+									float factor = (steerUD / 128.0f) * timeStep;
+									curVehicle->m_vecTurnSpeed -= right * (0.016f * factor);
+									curVehicle->m_vecMoveSpeed.z -= 0.0070f * factor;
+								}
+							}
+						}
+					}
+
+					// 3. Aerodynamic heading alignment: redirect horizontal velocity along the car's heading
+					// Smoothly curves the flight trajectory without sharp snaps
+					float horizSpeed = sqrtf(curVehicle->m_vecMoveSpeed.x * curVehicle->m_vecMoveSpeed.x +
+					                         curVehicle->m_vecMoveSpeed.y * curVehicle->m_vecMoveSpeed.y);
+					if (horizSpeed > 0.04f) {
+						CVector fwdHoriz(forward.x, forward.y, 0.0f);
+						float fwdHorizLen = sqrtf(fwdHoriz.x * fwdHoriz.x + fwdHoriz.y * fwdHoriz.y);
+						if (fwdHorizLen > 0.001f) {
+							fwdHoriz /= fwdHorizLen;
+							CVector targetHorizVel = fwdHoriz * horizSpeed;
+							float alignRate = 0.035f * timeStep;
+							curVehicle->m_vecMoveSpeed.x = curVehicle->m_vecMoveSpeed.x * (1.0f - alignRate) + targetHorizVel.x * alignRate;
+							curVehicle->m_vecMoveSpeed.y = curVehicle->m_vecMoveSpeed.y * (1.0f - alignRate) + targetHorizVel.y * alignRate;
+						}
+					}
+
+					// 4. Auto-leveling & roll stabilization (Does NOT fight player's pitch input!)
+					CVector worldUp(0.0f, 0.0f, 1.0f);
+					if (up.z < 0.70f) {
+						// Emergency righting if vehicle is tilted past 45 degrees
+						CVector biasedUp = up + right * 0.15f;
+						CVector righting = biasedUp.Cross(worldUp);
+						curVehicle->m_vecTurnSpeed += righting * (0.080f * timeStep);
+					} else {
+						// Roll auto-leveling: actively restores wings to level horizon (correct positive feedback prevention)
+						curVehicle->m_vecTurnSpeed += forward * (right.z * 0.075f * timeStep);
+
+						// Pitch centering ONLY when player is not actively pressing pitch keys
+						if (steerUD == 0) {
+							curVehicle->m_vecTurnSpeed -= right * (forward.z * 0.020f * timeStep);
+						}
+					}
+
+					// 5. Hard angle clamping (Impossible to flip, loop backwards, or barrel roll)
+					float pitchVelocity = curVehicle->m_vecTurnSpeed.Dot(right);
+					if (forward.z >= 0.55f && pitchVelocity > 0.0f) {
+						curVehicle->m_vecTurnSpeed -= right * pitchVelocity; // Clamp max climb (+35 deg)
+					}
+					if (forward.z <= -0.42f && pitchVelocity < 0.0f) {
+						curVehicle->m_vecTurnSpeed -= right * pitchVelocity; // Clamp max dive (-25 deg)
+					}
+
+					float rollVelocity = curVehicle->m_vecTurnSpeed.Dot(forward);
+					if (right.z >= 0.28f && rollVelocity < 0.0f) {
+						curVehicle->m_vecTurnSpeed -= forward * rollVelocity; // Clamp left bank (~16 deg)
+					}
+					if (right.z <= -0.28f && rollVelocity > 0.0f) {
+						curVehicle->m_vecTurnSpeed -= forward * rollVelocity; // Clamp right bank (~16 deg)
+					}
+
+					// 6. Angular damping to eliminate tumbling / wobble and stabilize flight
+					curVehicle->m_vecTurnSpeed.x *= 0.88f;
+					curVehicle->m_vecTurnSpeed.y *= 0.88f;
+					curVehicle->m_vecTurnSpeed.z *= 0.88f;
+
+					// 7. Velocity limiter to prevent physics explosions
+					float speedSq = curVehicle->m_vecMoveSpeed.MagnitudeSqr();
+					if (speedSq > 1.30f * 1.30f) {
+						curVehicle->m_vecMoveSpeed *= (1.30f / sqrtf(speedSq));
+					}
+				}
+			} else {
+				s_smoothSteerLR = 0.0f;
+			}
+		} else {
+			if (s_pluginEnabledWaterDrive) {
+				CCheat::m_aCheatsActive[CHEAT_CARS_ON_WATER] = false;
+				s_pluginEnabledWaterDrive = false;
+			}
+		}
+	} catch (...) {
+		// Prevent unhandled exception termination
+	}
+}
+
+static void __cdecl hooked_game_loop()
+{
+	if (orig_game_loop)
+		orig_game_loop();
+
+	OnGameProcess();
+}
+
 BOOL APIENTRY DllMain(HMODULE hModule, DWORD dwReason, LPVOID lpReserved)
 {
 	switch (dwReason) {
 	case DLL_PROCESS_ATTACH: {
 		DisableThreadLibraryCalls(hModule);
+
+		MH_Initialize();
+		MH_STATUS mhStatus = MH_CreateHook(reinterpret_cast<void*>(0x53BEE0), reinterpret_cast<void*>(&hooked_game_loop), reinterpret_cast<void**>(&orig_game_loop));
+		if (mhStatus == MH_OK) {
+			MH_EnableHook(reinterpret_cast<void*>(0x53BEE0));
+			ClientLog("[Client] CGame::Process (0x53BEE0) hooked successfully via MinHook");
+		} else {
+			ClientLog(std::format("[Client] Failed to hook CGame::Process (0x53BEE0): {}", MH_StatusToString(mhStatus)));
+		}
 
 		Plugn = std::make_unique<c_plugin>(hModule);
 		static bool threadSpawned = false;
@@ -622,135 +1013,25 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD dwReason, LPVOID lpReserved)
 		Events::initGameEvent += []() {
 			colLoader->Initialize();
 		};
-		static CVehicle* s_prevLocalVehicle = nullptr;
+		Events::drawingEvent += []() {
+			OnGameProcess();
+		};
 		Events::gameProcessEvent += []() {
-			try {
-				MainThreadQueue::Instance().DrainOnMainThread();
-
-				if (!ASIinitialized) {
-					return;
-				}
-
-				Plugn->game_loop();
-				_customVehInstance.ProcessPendingDefinitions();
-				_customVehInstance.ProcessCompletedDownloads();
-				CustomVehicleBindingManager::Instance().Process();
-				_customVehInstance.ProcessPendingDestructions();
-				_customVehInstance.ProcessPendingClearAll();
-				HandlingManager::ProcessPendingCommands();
-
-				static auto lastInitTry = std::chrono::steady_clock::now();
-				if (!HandlingManager::m_isServerAuthorized && rakhook::orig && rakhook::orig->IsConnected()) {
-					auto now = std::chrono::steady_clock::now();
-					if (std::chrono::duration_cast<std::chrono::milliseconds>(now - lastInitTry).count() >= 1500) {
-						lastInitTry = now;
-						HandlingManager::SendInitPacket();
-					}
-				}
-
-				// Update vehicle cache and model use counts
-				struct VehicleEntry {
-					CVehicle* gameVeh;
-					uint16_t sampId;
-					uint16_t gtaRef;
-				};
-				static std::vector<VehicleEntry> previousVehicles;
-				std::vector<VehicleEntry> currentVehicles;
-				currentVehicles.reserve(128);
-
-				auto pool = GetVehiclesPool();
-				if (!std::holds_alternative<std::nullptr_t>(pool)) {
-					std::visit([&](auto&& p) {
-						using T = std::decay_t<decltype(p)>;
-						if constexpr (!std::is_same_v<T, std::nullptr_t>) {
-							if (p) {
-								int found = 0;
-								for (uint16_t id = 1; id < MAX_SAMP_VEHICLES && found < p->m_nCount; ++id) {
-									auto* sampVeh = p->Get(id);
-									if (sampVeh) {
-										++found;
-										if (sampVeh->m_pGameVehicle && IsVehiclePointerValid(sampVeh->m_pGameVehicle) && IsVehicleStreamedForLocalPlayer(sampVeh->m_pGameVehicle)) {
-											uint16_t gtaRef = static_cast<uint16_t>(CPools::GetVehicleRef(sampVeh->m_pGameVehicle));
-											currentVehicles.push_back({ sampVeh->m_pGameVehicle, id, gtaRef });
-										}
-									}
-								}
-							}
-						}
-					},
-						pool);
-				}
-
-				// Detect new vehicles
-				for (const auto& cur : currentVehicles) {
-					bool found = false;
-					for (const auto& old : previousVehicles) {
-						if (old.gameVeh == cur.gameVeh) {
-							found = true;
-							break;
-						}
-					}
-					if (!found) {
-						HandlingManager::CacheVehicleSAMPId(cur.gameVeh, cur.sampId);
-						HandlingManager::OnVehicleStreamIn(cur.gameVeh, cur.sampId);
-					}
-
-					if (IsVehiclePointerValid(cur.gameVeh)) {
-						if (AudioExtender::GetVehicleAudio(static_cast<uint32_t>(cur.gameVeh->m_nModelIndex)).has_value()) {
-							std::optional<AudioExtender::CustomVehicleAudioState*> audioState = AudioExtender::GetOrCreateAudioState(*cur.gameVeh);
-							if (audioState) {
-								if (!AudioExtender::InitialiseCustomVehicleAudio(audioState.value()->engine, *cur.gameVeh)) {
-									AudioExtender::RemoveVehicleAudioState(cur.gtaRef);
-								}
-							}
-						}
-					}
-				}
-
-				// Detect vehicles that disappeared
-				for (const auto& old : previousVehicles) {
-					bool stillExists = false;
-					for (const auto& cur : currentVehicles) {
-						if (cur.gameVeh == old.gameVeh) {
-							stillExists = true;
-							break;
-						}
-					}
-					if (!stillExists) {
-						HandlingManager::RemoveVehicleFromCache(old.gameVeh);
-						AudioExtender::RemoveVehicleAudioState(old.gtaRef);
-					}
-				}
-
-				// Update previousVehicles for next frame
-				previousVehicles = std::move(currentVehicles);
-
-				// Vehicle destructor cleanup
-				HandlingManager::OnVehicleDestructor(nullptr);
-
-				// Vehicle enter / exit for local player
-				auto* localPed = FindPlayerPed();
-				if (!localPed) {
-					s_prevLocalVehicle = nullptr;
-					return;
-				}
-				CVehicle* curVehicle = localPed->m_pVehicle;
-
-				if (curVehicle != s_prevLocalVehicle) {
-					uint16_t localId = GetLocalPlayerId();
-					if (s_prevLocalVehicle && IsVehiclePointerValid(s_prevLocalVehicle))
-						HandlingManager::RemovePlayerHandling(localId, s_prevLocalVehicle);
-					if (curVehicle && IsVehiclePointerValid(curVehicle))
-						HandlingManager::ApplyPlayerHandling(localId, curVehicle);
-					s_prevLocalVehicle = curVehicle;
-				}
-			} catch (...) {
-				// Prevent unhandled exception termination
-			}
+			OnGameProcess();
 		};
 		break;
 	}
 	case DLL_PROCESS_DETACH: {
+		CCheat::m_aCheatsActive[CHEAT_CARS_ON_WATER] = false;
+		CCheat::m_aCheatsActive[CHEAT_CARS_FLY] = false;
+		CCheat::m_aCheatsActive[CHEAT_BOATS_FLY] = false;
+
+		if (orig_game_loop) {
+			MH_DisableHook(reinterpret_cast<void*>(0x53BEE0));
+			MH_RemoveHook(reinterpret_cast<void*>(0x53BEE0));
+			orig_game_loop = nullptr;
+		}
+
 		rakhook::on_receive_rpc.clear();
 		rakhook::on_send_rpc.clear();
 		rakhook::on_receive_packet.clear();

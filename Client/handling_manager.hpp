@@ -41,6 +41,7 @@ inline constexpr CustomVehAction ACTION_GET_VEHICLE_HANDLING = CustomVehAction::
 inline constexpr CustomVehAction ACTION_GET_MODEL_HANDLING = CustomVehAction::GetModelHandling;
 inline constexpr CustomVehAction ACTION_GET_PLAYER_HANDLING = CustomVehAction::GetPlayerHandling;
 inline constexpr CustomVehAction ACTION_RESET_ALL = CustomVehAction::ResetAll;
+inline constexpr CustomVehAction ACTION_SET_VEHICLE_DOOR_STATE = CustomVehAction::SetVehicleDoorState;
 inline constexpr CustomVehAction ACTION_CUSTOM_VEHICLE_DEFINE = CustomVehAction::CustomVehicleDefine;
 inline constexpr CustomVehAction ACTION_CUSTOM_VEHICLE_BIND = CustomVehAction::CustomVehicleBind;
 inline constexpr CustomVehAction ACTION_CUSTOM_VEHICLE_UNBIND = CustomVehAction::CustomVehicleUnbind;
@@ -140,6 +141,13 @@ public:
 	static std::map<uint16_t, PlayerAppliedInfo> m_playerAppliedHandlings;
 
 	static std::map<uint16_t, std::vector<HandlingAttribEntry>> m_pendingVehicleAttribs;
+	static std::unordered_map<uint16_t, uint8_t> m_vehicleDoorStates; // key = sampVehicleId, value = bitmask of missing doors
+	static std::unordered_map<uint16_t, bool> m_vehicleFlying;
+	static std::unordered_map<CVehicle*, bool> m_vehicleFlyingByPtr;
+
+	static bool IsVehicleFlying(uint16_t sampVehicleId);
+	static bool IsVehicleFlying(CVehicle* pVehicle);
+	static void SetVehicleFlyingState(uint16_t sampVehicleId, bool flying, CVehicle* pVehicle = nullptr);
 
 	static bool m_isServerAuthorized; // declared, defined in .cpp
 	static std::recursive_mutex m_handlingMutex;
@@ -152,10 +160,12 @@ public:
 	static void ModifyMass(CVehicle* pVehicle, float mass);
 	static void ModifyTransmission(CVehicle* pVehicle, float maxSpeed, float acceleration, int gears);
 	static void ResetVehicleHandling(CVehicle* pVehicle);
+	static void ApplyDoorState(CVehicle* pVehicle, uint8_t doorId, bool missing);
 
 	// Network packet processors
 	static bool ProcessAction(CustomVehAction action, RakNet::BitStream* bs);
 	static void ProcessVehicleMods(uint16_t sampVehicleId, const std::vector<HandlingAttribEntry>& entries);
+	static void ProcessVehicleDoorState(uint16_t sampVehicleId, uint8_t doorId, bool missing);
 	static void ProcessModelMods(uint16_t modelId, const std::vector<HandlingAttribEntry>& entries);
 	static void ProcessPlayerMods(uint16_t playerId, const std::vector<HandlingAttribEntry>& entries);
 
@@ -209,7 +219,7 @@ private:
 
 	static void QueueCommand(PendingCommand cmd);
 	static std::vector<HandlingAttribEntry> ParseAttribEntries(uint8_t count, RakNet::BitStream* bs);
-	static void ApplyAttribEntries(tHandlingData* handling, const std::vector<HandlingAttribEntry>& entries);
+	static void ApplyAttribEntries(tHandlingData* handling, const std::vector<HandlingAttribEntry>& entries, CVehicle* pVehicle = nullptr);
 
 	static void IsolateVehicleHandling(CVehicle* pVehicle);
 

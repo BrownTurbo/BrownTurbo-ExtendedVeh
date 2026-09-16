@@ -46,6 +46,7 @@ extern std::unordered_map<uint16_t, struct stVehicleHandlingEntry> vehicleHandli
 extern std::unordered_map<uint16_t, struct stHandlingEntry> playerHandlings; // key = playerid
 extern std::unordered_map<uint32_t, CustomVeh::Protocol::VehicleDefinition> customVehicleDefs; // key = modelId
 extern std::unordered_set<uint32_t> customVehicleModels;
+extern std::unordered_map<uint16_t, uint8_t> vehicleDoorStates; // key = vehicleid, value = bitmask of missing doors (bits 0..5)
 
 stHandlingEntry* GetModelHandlingEntry(uint32_t modelid);
 void __WriteHandlingEntryToBitStream(NetworkBitStream* bs, const struct stHandlingEntry& entry);
@@ -61,6 +62,10 @@ void OnVehicleStreamIn(IVehicle& vehicle, IPlayer& player); // call from OnVehic
 
 bool ResetModelHandling(int modelid); // resets model handling to it's default one, NOTE: this resets any handling modifications for every vehicle of that model
 void ResetVehicleHandling(IVehicle& vehicle, bool sendToPlayers = true); // resets vehicle handling to it's model handling (and clears the modifications)
+
+bool SetVehicleDoorMissing(uint16_t vehicleid, uint8_t doorid, bool missing);
+bool GetVehicleDoorMissing(uint16_t vehicleid, uint8_t doorid, bool& missing);
+bool SetVehicleAllDoorsMissing(uint16_t vehicleid, bool missing);
 bool SetVehicleHandling(uint16_t vehicleid, CHandlingAttrib attrib, float value);
 bool SetVehicleHandling(uint16_t vehicleid, CHandlingAttrib attrib, unsigned int value);
 bool SetVehicleHandling(uint16_t vehicleid, CHandlingAttrib attrib, uint8_t value);
