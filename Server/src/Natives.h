@@ -109,69 +109,69 @@ inline void RegisterNativeHooks()
 }
 
 #undef PAWN_NATIVE_DEFN_
-#define PAWN_NATIVE_DEFN_(used_namespace, failret, func, params)               \
-                                                                               \
-	template <>                                                                \
-	cell AMX_NATIVE_CALL Native_##func::Call(AMX* amx, cell* args)             \
-	{                                                                          \
-		if (amx && args)                                                       \
-		{                                                                      \
-			AMX_HEADER* hdr = reinterpret_cast<AMX_HEADER*>(amx->base);       \
-			if (hdr && hdr->magic == 0xf1e0)                                   \
-			{                                                                  \
-				const uint32_t* args32 = reinterpret_cast<const uint32_t*>(args); \
-				uint32_t byte_count = args32[0];                               \
-				uint32_t num_args = byte_count / sizeof(uint32_t);             \
-				cell args64[64];                                               \
-				uint32_t count = (num_args < 63) ? num_args : 63;             \
-				args64[0] = static_cast<cell>(count * sizeof(cell));           \
-				for (uint32_t i = 1; i <= count; ++i)                          \
-				{                                                              \
+#define PAWN_NATIVE_DEFN_(used_namespace, failret, func, params)                     \
+                                                                                     \
+	template <>                                                                      \
+	cell AMX_NATIVE_CALL Native_##func::Call(AMX* amx, cell* args)                   \
+	{                                                                                \
+		if (amx && args)                                                             \
+		{                                                                            \
+			AMX_HEADER* hdr = reinterpret_cast<AMX_HEADER*>(amx->base);              \
+			if (hdr && hdr->magic == 0xf1e0)                                         \
+			{                                                                        \
+				const uint32_t* args32 = reinterpret_cast<const uint32_t*>(args);    \
+				uint32_t byte_count = args32[0];                                     \
+				uint32_t num_args = byte_count / sizeof(uint32_t);                   \
+				cell args64[64];                                                     \
+				uint32_t count = (num_args < 63) ? num_args : 63;                    \
+				args64[0] = static_cast<cell>(count * sizeof(cell));                 \
+				for (uint32_t i = 1; i <= count; ++i)                                \
+				{                                                                    \
 					args64[i] = static_cast<cell>(static_cast<uint64_t>(args32[i])); \
-				}                                                              \
-				return used_namespace::func.CallDoOuter<failret>(amx, args64); \
-			}                                                                  \
-		}                                                                      \
-		return used_namespace::func.CallDoOuter<failret>(amx, args);           \
-	}                                                                          \
-                                                                               \
-	template <>                                                                \
-	Native_##func::Native_##func##_()                                          \
-		: Base(#func, (AMX_NATIVE)&Call)                                       \
-	{                                                                          \
-	}                                                                          \
-                                                                               \
-	Native_##func used_namespace::func;                                        \
-                                                                               \
-	template <>                                                                \
-	PAWN_NATIVE__RETURN(params)                                                \
-	Native_##func::                                                            \
-		Do(PAWN_NATIVE__PARAMETERS(params)) const;                             \
-                                                                               \
-	template <typename RET, typename... TS>                                    \
-	typename pawn_natives::ReturnResolver<RET>::type NATIVE_##func(TS... args) \
-	{                                                                          \
-		try                                                                    \
-		{                                                                      \
-			PAWN_NATIVE__GET_RETURN(params)                                    \
-			(used_namespace::func.Do(args...));                                \
-		}                                                                      \
-		catch (std::exception & e)                                             \
-		{                                                                      \
-			char msg[1024];                                                    \
-			sprintf(msg, "Exception in _" #func ": \"%s\"", e.what());         \
-			LOG_NATIVE_ERROR(msg);                                             \
-		}                                                                      \
-		catch (...)                                                            \
-		{                                                                      \
-			LOG_NATIVE_ERROR("Unknown exception in _" #func);                  \
-		}                                                                      \
-		PAWN_NATIVE__DEFAULT_RETURN(params);                                   \
-	}                                                                          \
-                                                                               \
-	template <>                                                                \
-	PAWN_NATIVE__RETURN(params)                                                \
-	Native_##func::                                                            \
+				}                                                                    \
+				return used_namespace::func.CallDoOuter<failret>(amx, args64);       \
+			}                                                                        \
+		}                                                                            \
+		return used_namespace::func.CallDoOuter<failret>(amx, args);                 \
+	}                                                                                \
+                                                                                     \
+	template <>                                                                      \
+	Native_##func::Native_##func##_()                                                \
+		: Base(#func, (AMX_NATIVE) & Call)                                           \
+	{                                                                                \
+	}                                                                                \
+                                                                                     \
+	Native_##func used_namespace::func;                                              \
+                                                                                     \
+	template <>                                                                      \
+	PAWN_NATIVE__RETURN(params)                                                      \
+	Native_##func::                                                                  \
+		Do(PAWN_NATIVE__PARAMETERS(params)) const;                                   \
+                                                                                     \
+	template <typename RET, typename... TS>                                          \
+	typename pawn_natives::ReturnResolver<RET>::type NATIVE_##func(TS... args)       \
+	{                                                                                \
+		try                                                                          \
+		{                                                                            \
+			PAWN_NATIVE__GET_RETURN(params)                                          \
+			(used_namespace::func.Do(args...));                                      \
+		}                                                                            \
+		catch (std::exception & e)                                                   \
+		{                                                                            \
+			char msg[1024];                                                          \
+			sprintf(msg, "Exception in _" #func ": \"%s\"", e.what());               \
+			LOG_NATIVE_ERROR(msg);                                                   \
+		}                                                                            \
+		catch (...)                                                                  \
+		{                                                                            \
+			LOG_NATIVE_ERROR("Unknown exception in _" #func);                        \
+		}                                                                            \
+		PAWN_NATIVE__DEFAULT_RETURN(params);                                         \
+	}                                                                                \
+                                                                                     \
+	template <>                                                                      \
+	PAWN_NATIVE__RETURN(params)                                                      \
+	Native_##func::                                                                  \
 		Do(PAWN_NATIVE__PARAMETERS(params)) const
 
 inline uint32_t ResolveBaseVehicleModel(uint32_t modelId)
@@ -208,7 +208,8 @@ SCRIPT_API(GetHandlingAttribType, int(int attr))
 	CHandlingAttrib handlingAttr = static_cast<CHandlingAttrib>(attr);
 	CHandlingAttribType type = GetHandlingAttributeType(handlingAttr);
 	ExtendedVehCompo* compo = ExtendedVehCompo::get();
-	if (compo) {
+	if (compo)
+	{
 		ICore* core_ = compo->getCore();
 		if (core_)
 		{
@@ -413,8 +414,10 @@ SCRIPT_API(SetVehicleHandlingInt, bool(IVehicle& vehicle, CHandlingAttrib attrib
 
 	if (attrib == HANDL_TR_NDRIVETYPE)
 	{
-		if (value == 'f') value = 'F';
-		if (value == 'r') value = 'R';
+		if (value == 'f')
+			value = 'F';
+		if (value == 'r')
+			value = 'R';
 		if (value != 'F' && value != 'R' && value != '4')
 		{
 			if (core_)
@@ -424,9 +427,12 @@ SCRIPT_API(SetVehicleHandlingInt, bool(IVehicle& vehicle, CHandlingAttrib attrib
 	}
 	if (attrib == HANDL_TR_NENGINETYPE)
 	{
-		if (value == 'p') value = 'P';
-		if (value == 'd') value = 'D';
-		if (value == 'e') value = 'E';
+		if (value == 'p')
+			value = 'P';
+		if (value == 'd')
+			value = 'D';
+		if (value == 'e')
+			value = 'E';
 		if (value != 'P' && value != 'D' && value != 'E')
 		{
 			if (core_)
@@ -584,8 +590,10 @@ SCRIPT_API(SetModelHandlingInt, bool(int modelid, CHandlingAttrib attrib, int va
 
 	if (attrib == HANDL_TR_NDRIVETYPE)
 	{
-		if (value == 'f') value = 'F';
-		if (value == 'r') value = 'R';
+		if (value == 'f')
+			value = 'F';
+		if (value == 'r')
+			value = 'R';
 		if (value != 'F' && value != 'R' && value != '4')
 		{
 			if (core_)
@@ -595,9 +603,12 @@ SCRIPT_API(SetModelHandlingInt, bool(int modelid, CHandlingAttrib attrib, int va
 	}
 	if (attrib == HANDL_TR_NENGINETYPE)
 	{
-		if (value == 'p') value = 'P';
-		if (value == 'd') value = 'D';
-		if (value == 'e') value = 'E';
+		if (value == 'p')
+			value = 'P';
+		if (value == 'd')
+			value = 'D';
+		if (value == 'e')
+			value = 'E';
 		if (value != 'P' && value != 'D' && value != 'E')
 		{
 			if (core_)
@@ -1252,8 +1263,10 @@ SCRIPT_API(SetPlayerHandlingInt, bool(IPlayer& player, CHandlingAttrib attrib, i
 
 	if (attrib == HANDL_TR_NDRIVETYPE)
 	{
-		if (value == 'f') value = 'F';
-		if (value == 'r') value = 'R';
+		if (value == 'f')
+			value = 'F';
+		if (value == 'r')
+			value = 'R';
 		if (value != 'F' && value != 'R' && value != '4')
 		{
 			core_->logLn(LogLevel::Warning, "[ExtendedVeh] SetPlayerHandlingInt(player=%d, attr=%d): Drive type must be 'F', 'R', or '4' (got %d)", playerid, static_cast<int>(attrib), value);
@@ -1262,9 +1275,12 @@ SCRIPT_API(SetPlayerHandlingInt, bool(IPlayer& player, CHandlingAttrib attrib, i
 	}
 	if (attrib == HANDL_TR_NENGINETYPE)
 	{
-		if (value == 'p') value = 'P';
-		if (value == 'd') value = 'D';
-		if (value == 'e') value = 'E';
+		if (value == 'p')
+			value = 'P';
+		if (value == 'd')
+			value = 'D';
+		if (value == 'e')
+			value = 'E';
 		if (value != 'P' && value != 'D' && value != 'E')
 		{
 			core_->logLn(LogLevel::Warning, "[ExtendedVeh] SetPlayerHandlingInt(player=%d, attr=%d): Engine type must be 'P', 'D', or 'E' (got %d)", playerid, static_cast<int>(attrib), value);
@@ -1650,9 +1666,7 @@ SCRIPT_API(SetVehicleDoorMissing, bool(IVehicle& vehicle, int doorid, bool missi
 
 	uint32_t baseModel = ResolveVehicleBaseModel(vehicle);
 	CVehicleMgr::VehicleCategory cat = CVehicleMgr::GetVehicleModelCategory(baseModel);
-	if (cat == CVehicleMgr::VehicleCategory::Bike || cat == CVehicleMgr::VehicleCategory::Bmx ||
-	    cat == CVehicleMgr::VehicleCategory::Boat || cat == CVehicleMgr::VehicleCategory::Trailer ||
-	    cat == CVehicleMgr::VehicleCategory::Train)
+	if (cat == CVehicleMgr::VehicleCategory::Bike || cat == CVehicleMgr::VehicleCategory::Bmx || cat == CVehicleMgr::VehicleCategory::Boat || cat == CVehicleMgr::VehicleCategory::Trailer || cat == CVehicleMgr::VehicleCategory::Train)
 	{
 		if (core_)
 			core_->logLn(LogLevel::Warning, "[ExtendedVeh] SetVehicleDoorMissing: Vehicle %d (category '%s') has no doors",
@@ -1688,9 +1702,7 @@ SCRIPT_API(GetVehicleDoorMissing, bool(IVehicle& vehicle, int doorid, bool& miss
 
 	uint32_t baseModel = ResolveVehicleBaseModel(vehicle);
 	CVehicleMgr::VehicleCategory cat = CVehicleMgr::GetVehicleModelCategory(baseModel);
-	if (cat == CVehicleMgr::VehicleCategory::Bike || cat == CVehicleMgr::VehicleCategory::Bmx ||
-	    cat == CVehicleMgr::VehicleCategory::Boat || cat == CVehicleMgr::VehicleCategory::Trailer ||
-	    cat == CVehicleMgr::VehicleCategory::Train)
+	if (cat == CVehicleMgr::VehicleCategory::Bike || cat == CVehicleMgr::VehicleCategory::Bmx || cat == CVehicleMgr::VehicleCategory::Boat || cat == CVehicleMgr::VehicleCategory::Trailer || cat == CVehicleMgr::VehicleCategory::Train)
 	{
 		if (core_)
 			core_->logLn(LogLevel::Warning, "[ExtendedVeh] GetVehicleDoorMissing: Vehicle %d (category '%s') has no doors",
@@ -1725,9 +1737,7 @@ SCRIPT_API(SetVehicleAllDoorsMissing, bool(IVehicle& vehicle, bool missing))
 
 	uint32_t baseModel = ResolveVehicleBaseModel(vehicle);
 	CVehicleMgr::VehicleCategory cat = CVehicleMgr::GetVehicleModelCategory(baseModel);
-	if (cat == CVehicleMgr::VehicleCategory::Bike || cat == CVehicleMgr::VehicleCategory::Bmx ||
-	    cat == CVehicleMgr::VehicleCategory::Boat || cat == CVehicleMgr::VehicleCategory::Trailer ||
-	    cat == CVehicleMgr::VehicleCategory::Train)
+	if (cat == CVehicleMgr::VehicleCategory::Bike || cat == CVehicleMgr::VehicleCategory::Bmx || cat == CVehicleMgr::VehicleCategory::Boat || cat == CVehicleMgr::VehicleCategory::Trailer || cat == CVehicleMgr::VehicleCategory::Train)
 	{
 		if (core_)
 			core_->logLn(LogLevel::Warning, "[ExtendedVeh] SetVehicleAllDoorsMissing: Vehicle %d (category '%s') has no doors",
@@ -1740,4 +1750,3 @@ SCRIPT_API(SetVehicleAllDoorsMissing, bool(IVehicle& vehicle, bool missing))
 		core_->logLn(LogLevel::Debug, "[ExtendedVeh] SetVehicleAllDoorsMissing(veh=%d, missing=%d) -> %s", vehicleid, missing, ret ? "true" : "false");
 	return ret;
 }
-

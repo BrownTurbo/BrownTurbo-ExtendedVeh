@@ -148,7 +148,8 @@ inline uint32_t VEHICLE_MODEL_INDEX(uint32_t modelid)
 	return index.value();
 }
 
-enum class VehicleCategory {
+enum class VehicleCategory
+{
 	Automobile,
 	Bike,
 	Bmx,
@@ -166,17 +167,28 @@ inline const char* GetVehicleCategoryName(VehicleCategory cat) noexcept
 {
 	switch (cat)
 	{
-	case VehicleCategory::Automobile:   return "Automobile";
-	case VehicleCategory::Bike:         return "Motorcycle";
-	case VehicleCategory::Bmx:          return "Bicycle";
-	case VehicleCategory::Quad:         return "Quad";
-	case VehicleCategory::MonsterTruck: return "Monster Truck";
-	case VehicleCategory::Boat:         return "Boat";
-	case VehicleCategory::Plane:        return "Plane";
-	case VehicleCategory::Helicopter:   return "Helicopter";
-	case VehicleCategory::Train:        return "Train";
-	case VehicleCategory::Trailer:      return "Trailer";
-	default:                            return "Unknown";
+	case VehicleCategory::Automobile:
+		return "Automobile";
+	case VehicleCategory::Bike:
+		return "Motorcycle";
+	case VehicleCategory::Bmx:
+		return "Bicycle";
+	case VehicleCategory::Quad:
+		return "Quad";
+	case VehicleCategory::MonsterTruck:
+		return "Monster Truck";
+	case VehicleCategory::Boat:
+		return "Boat";
+	case VehicleCategory::Plane:
+		return "Plane";
+	case VehicleCategory::Helicopter:
+		return "Helicopter";
+	case VehicleCategory::Train:
+		return "Train";
+	case VehicleCategory::Trailer:
+		return "Trailer";
+	default:
+		return "Unknown";
 	}
 }
 
@@ -185,39 +197,85 @@ inline VehicleCategory GetVehicleModelCategory(uint32_t modelId) noexcept
 	switch (modelId)
 	{
 	// Planes (including RC Baron 464, Skimmer 460)
-	case 460: case 464: case 476: case 511: case 512:
-	case 513: case 519: case 520: case 553: case 577:
-	case 592: case 593:
+	case 460:
+	case 464:
+	case 476:
+	case 511:
+	case 512:
+	case 513:
+	case 519:
+	case 520:
+	case 553:
+	case 577:
+	case 592:
+	case 593:
 		return VehicleCategory::Plane;
 
 	// Helicopters (including RC Raider 465, RC Goblin 501, Leviathan 417, Sea Sparrow 447)
-	case 417: case 425: case 447: case 465: case 469:
-	case 487: case 488: case 497: case 501: case 548:
+	case 417:
+	case 425:
+	case 447:
+	case 465:
+	case 469:
+	case 487:
+	case 488:
+	case 497:
+	case 501:
+	case 548:
 	case 563:
 		return VehicleCategory::Helicopter;
 
 	// Boats
-	case 430: case 446: case 452: case 453: case 454:
-	case 472: case 473: case 484: case 493: case 595:
+	case 430:
+	case 446:
+	case 452:
+	case 453:
+	case 454:
+	case 472:
+	case 473:
+	case 484:
+	case 493:
+	case 595:
 		return VehicleCategory::Boat;
 
 	// Trains & Trams
-	case 449: case 537: case 538: case 569: case 570:
+	case 449:
+	case 537:
+	case 538:
+	case 569:
+	case 570:
 	case 590:
 		return VehicleCategory::Train;
 
 	// Trailers
-	case 435: case 450: case 584: case 591:
-	case 606: case 607: case 608: case 610: case 611:
+	case 435:
+	case 450:
+	case 584:
+	case 591:
+	case 606:
+	case 607:
+	case 608:
+	case 610:
+	case 611:
 		return VehicleCategory::Trailer;
 
 	// Bicycles
-	case 481: case 509: case 510:
+	case 481:
+	case 509:
+	case 510:
 		return VehicleCategory::Bmx;
 
 	// Bikes / Motorcycles
-	case 448: case 461: case 462: case 463: case 468:
-	case 521: case 522: case 523: case 581: case 586:
+	case 448:
+	case 461:
+	case 462:
+	case 463:
+	case 468:
+	case 521:
+	case 522:
+	case 523:
+	case 581:
+	case 586:
 		return VehicleCategory::Bike;
 
 	// Quads
@@ -225,7 +283,9 @@ inline VehicleCategory GetVehicleModelCategory(uint32_t modelId) noexcept
 		return VehicleCategory::Quad;
 
 	// Monster Trucks
-	case 444: case 556: case 557:
+	case 444:
+	case 556:
+	case 557:
 		return VehicleCategory::MonsterTruck;
 
 	default:
@@ -240,11 +300,7 @@ inline bool IsVehicleModelFlightCapable(uint32_t modelId) noexcept
 	VehicleCategory cat = GetVehicleModelCategory(modelId);
 	// Prohibited on: Planes, Helicopters, Trains, Trailers
 	// Allowed on: Automobiles, Bikes, Quads, Monster Trucks, Boats
-	return (cat != VehicleCategory::Plane &&
-	        cat != VehicleCategory::Helicopter &&
-	        cat != VehicleCategory::Train &&
-	        cat != VehicleCategory::Trailer &&
-	        cat != VehicleCategory::Unknown);
+	return (cat != VehicleCategory::Plane && cat != VehicleCategory::Helicopter && cat != VehicleCategory::Train && cat != VehicleCategory::Trailer && cat != VehicleCategory::Unknown);
 }
 
 inline bool IsVehicleModelWaterDriveCapable(uint32_t modelId) noexcept
@@ -253,13 +309,6 @@ inline bool IsVehicleModelWaterDriveCapable(uint32_t modelId) noexcept
 	// Prohibited on: Planes (including Skimmer), Helicopters (including Leviathan/SeaSparrow),
 	// Boats (already boats!), Trains, Trailers, Bikes, Motorcycles (BMX included).
 	// Allowed on: Automobiles, Quads, Monster Trucks.
-	return (cat != VehicleCategory::Plane &&
-	        cat != VehicleCategory::Helicopter &&
-	        cat != VehicleCategory::Boat &&
-	        cat != VehicleCategory::Train &&
-	        cat != VehicleCategory::Trailer &&
-	        cat != VehicleCategory::Bike &&
-	        cat != VehicleCategory::Bmx &&
-	        cat != VehicleCategory::Unknown);
+	return (cat != VehicleCategory::Plane && cat != VehicleCategory::Helicopter && cat != VehicleCategory::Boat && cat != VehicleCategory::Train && cat != VehicleCategory::Trailer && cat != VehicleCategory::Bike && cat != VehicleCategory::Bmx && cat != VehicleCategory::Unknown);
 }
 }

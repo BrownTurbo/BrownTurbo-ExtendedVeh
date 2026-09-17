@@ -50,7 +50,8 @@ CHandlingAttribType GetHandlingAttributeType(CHandlingAttrib attribute)
 	case HANDL_HANDLINGFLAGS:
 	case HANDL_MODELFLAGS:
 		return TYPE_FLAG;
-	default: {
+	default:
+	{
 		ExtendedVehCompo* compo = ExtendedVehCompo::get();
 		if (compo)
 		{
@@ -71,7 +72,8 @@ bool CanSetHandlingAttrib(CHandlingAttrib attribute)
 	{
 	case HANDL_UIDENTIFIER:
 	case HANDL_ANIMGROUP:
-	case HANDL_UIMONETARYVALUE: {
+	case HANDL_UIMONETARYVALUE:
+	{
 		ExtendedVehCompo* compo = ExtendedVehCompo::get();
 		if (compo)
 		{

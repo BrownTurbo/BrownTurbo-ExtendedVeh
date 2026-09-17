@@ -1,7 +1,6 @@
 // SDK
 #include <plugin_sa.h>
 
-#include <MinHook.h>
 #include <game_sa/CAutomobile.h>
 #include <game_sa/CBike.h>
 #include <game_sa/CCheat.h>
@@ -13,6 +12,7 @@
 #include <game_sa/CVisibilityPlugins.h>
 #include <game_sa/CWaterLevel.h>
 #include <game_sa/rw/rpworld.h>
+#include <MinHook.h>
 #include <shared/game/CVector.h>
 
 static inline void SetWaterDriveCheatActive(bool active)
@@ -22,7 +22,7 @@ static inline void SetWaterDriveCheatActive(bool active)
 }
 
 // Hook function pointers
-static void (__fastcall* g_origUpdateWheelMatrix)(CAutomobile* thisCar, void* edx, int nodeIndex, int flags) = nullptr;
+static void(__fastcall* g_origUpdateWheelMatrix)(CAutomobile* thisCar, void* edx, int nodeIndex, int flags) = nullptr;
 
 static void __fastcall Hooked_UpdateWheelMatrix(CAutomobile* thisCar, void* edx, int nodeIndex, int flags)
 {
@@ -32,9 +32,7 @@ static void __fastcall Hooked_UpdateWheelMatrix(CAutomobile* thisCar, void* edx,
 		return;
 	}
 
-	bool isCapable = (thisCar->m_nVehicleSubClass == VEHICLE_AUTOMOBILE ||
-	                  thisCar->m_nVehicleSubClass == VEHICLE_MTRUCK ||
-	                  thisCar->m_nVehicleSubClass == VEHICLE_QUAD);
+	bool isCapable = (thisCar->m_nVehicleSubClass == VEHICLE_AUTOMOBILE || thisCar->m_nVehicleSubClass == VEHICLE_MTRUCK || thisCar->m_nVehicleSubClass == VEHICLE_QUAD);
 	bool isBoat = isCapable && ((thisCar->m_pHandlingData->m_nModelFlags & 0x8000000) != 0);
 
 	if (isBoat) {
@@ -687,7 +685,7 @@ void InitializeHooks()
 
 std::unique_ptr<c_plugin> Plugn;
 
-using game_loop_t = void (__cdecl*)();
+using game_loop_t = void(__cdecl*)();
 static game_loop_t orig_game_loop = nullptr;
 
 static void OnGameProcess()
@@ -777,15 +775,12 @@ static void OnGameProcess()
 
 			if (IsVehiclePointerValid(cur.gameVeh)) {
 				// 1. Amphibious water driving for vehicles with MFLAG_IS_BOAT (0x8000000)
-				bool isWaterCapable = (cur.gameVeh->m_nVehicleSubClass == VEHICLE_AUTOMOBILE ||
-				                       cur.gameVeh->m_nVehicleSubClass == VEHICLE_MTRUCK ||
-				                       cur.gameVeh->m_nVehicleSubClass == VEHICLE_QUAD);
+				bool isWaterCapable = (cur.gameVeh->m_nVehicleSubClass == VEHICLE_AUTOMOBILE || cur.gameVeh->m_nVehicleSubClass == VEHICLE_MTRUCK || cur.gameVeh->m_nVehicleSubClass == VEHICLE_QUAD);
 				bool isBoat = isWaterCapable && cur.gameVeh->m_pHandlingData && ((cur.gameVeh->m_pHandlingData->m_nModelFlags & 0x8000000) != 0);
 
 				if (isBoat) {
 					cur.gameVeh->m_pHandlingData->m_nModelFlags = static_cast<eVehicleHandlingModelFlags>(
-						cur.gameVeh->m_pHandlingData->m_nModelFlags & ~(0x00200000 | 0x00020000)
-					);
+						cur.gameVeh->m_pHandlingData->m_nModelFlags & ~(0x00200000 | 0x00020000));
 
 					CVector pos = cur.gameVeh->GetPosition();
 					float waterZ = 0.0f;
@@ -811,25 +806,18 @@ static void OnGameProcess()
 				}
 
 				// 2. Vehicle flight sync for streamed vehicles
-				bool isFlightCapable = (cur.gameVeh->m_nVehicleSubClass == VEHICLE_AUTOMOBILE ||
-				                        cur.gameVeh->m_nVehicleSubClass == VEHICLE_MTRUCK ||
-				                        cur.gameVeh->m_nVehicleSubClass == VEHICLE_QUAD ||
-				                        cur.gameVeh->m_nVehicleSubClass == VEHICLE_BIKE ||
-				                        cur.gameVeh->m_nVehicleSubClass == VEHICLE_BMX ||
-				                        cur.gameVeh->m_nVehicleSubClass == VEHICLE_BOAT);
+				bool isFlightCapable = (cur.gameVeh->m_nVehicleSubClass == VEHICLE_AUTOMOBILE || cur.gameVeh->m_nVehicleSubClass == VEHICLE_MTRUCK || cur.gameVeh->m_nVehicleSubClass == VEHICLE_QUAD || cur.gameVeh->m_nVehicleSubClass == VEHICLE_BIKE || cur.gameVeh->m_nVehicleSubClass == VEHICLE_BMX || cur.gameVeh->m_nVehicleSubClass == VEHICLE_BOAT);
 
 				if (cur.gameVeh->m_pHandlingData && (cur.gameVeh->m_pHandlingData->m_nModelFlags & 0x4000000) != 0) {
 					if (isFlightCapable) {
 						HandlingManager::SetVehicleFlyingState(cur.sampId, true, cur.gameVeh);
 						if (cur.gameVeh->m_nVehicleSubClass != VEHICLE_PLANE) {
 							cur.gameVeh->m_pHandlingData->m_nModelFlags = static_cast<eVehicleHandlingModelFlags>(
-								cur.gameVeh->m_pHandlingData->m_nModelFlags & ~(0x4000000 | 0x2000000)
-							);
+								cur.gameVeh->m_pHandlingData->m_nModelFlags & ~(0x4000000 | 0x2000000));
 						}
 					} else {
 						cur.gameVeh->m_pHandlingData->m_nModelFlags = static_cast<eVehicleHandlingModelFlags>(
-							cur.gameVeh->m_pHandlingData->m_nModelFlags & ~(0x4000000 | 0x2000000)
-						);
+							cur.gameVeh->m_pHandlingData->m_nModelFlags & ~(0x4000000 | 0x2000000));
 					}
 				}
 
@@ -896,9 +884,7 @@ static void OnGameProcess()
 		}
 
 		if (curVehicle && IsVehiclePointerValid(curVehicle) && curVehicle->m_pHandlingData) {
-			bool isWaterCapable = (curVehicle->m_nVehicleSubClass == VEHICLE_AUTOMOBILE ||
-			                       curVehicle->m_nVehicleSubClass == VEHICLE_MTRUCK ||
-			                       curVehicle->m_nVehicleSubClass == VEHICLE_QUAD);
+			bool isWaterCapable = (curVehicle->m_nVehicleSubClass == VEHICLE_AUTOMOBILE || curVehicle->m_nVehicleSubClass == VEHICLE_MTRUCK || curVehicle->m_nVehicleSubClass == VEHICLE_QUAD);
 			bool isBoat = isWaterCapable && ((curVehicle->m_pHandlingData->m_nModelFlags & 0x8000000) != 0);
 
 			if (isBoat) {
@@ -921,17 +907,11 @@ static void OnGameProcess()
 
 				// Clear solid axle flags so GTA does not exclude rear wheels from boat mode rotation
 				curVehicle->m_pHandlingData->m_nModelFlags = static_cast<eVehicleHandlingModelFlags>(
-					curVehicle->m_pHandlingData->m_nModelFlags & ~(0x00200000 | 0x00020000)
-				);
+					curVehicle->m_pHandlingData->m_nModelFlags & ~(0x00200000 | 0x00020000));
 			}
 
 			// Vehicle flight (cars, boats, bikes) with auto-leveling & anti-inversion
-			bool isFlightCapable = (curVehicle->m_nVehicleSubClass == VEHICLE_AUTOMOBILE ||
-			                        curVehicle->m_nVehicleSubClass == VEHICLE_MTRUCK ||
-			                        curVehicle->m_nVehicleSubClass == VEHICLE_QUAD ||
-			                        curVehicle->m_nVehicleSubClass == VEHICLE_BIKE ||
-			                        curVehicle->m_nVehicleSubClass == VEHICLE_BMX ||
-			                        curVehicle->m_nVehicleSubClass == VEHICLE_BOAT);
+			bool isFlightCapable = (curVehicle->m_nVehicleSubClass == VEHICLE_AUTOMOBILE || curVehicle->m_nVehicleSubClass == VEHICLE_MTRUCK || curVehicle->m_nVehicleSubClass == VEHICLE_QUAD || curVehicle->m_nVehicleSubClass == VEHICLE_BIKE || curVehicle->m_nVehicleSubClass == VEHICLE_BMX || curVehicle->m_nVehicleSubClass == VEHICLE_BOAT);
 
 			bool isPlane = isFlightCapable && HandlingManager::IsVehicleFlying(curVehicle);
 			if (curVehicle->m_pHandlingData && (curVehicle->m_pHandlingData->m_nModelFlags & 0x4000000) != 0) {
@@ -939,14 +919,12 @@ static void OnGameProcess()
 					isPlane = true;
 					if (curVehicle->m_nVehicleSubClass != VEHICLE_PLANE) {
 						curVehicle->m_pHandlingData->m_nModelFlags = static_cast<eVehicleHandlingModelFlags>(
-							curVehicle->m_pHandlingData->m_nModelFlags & ~(0x4000000 | 0x2000000)
-						);
+							curVehicle->m_pHandlingData->m_nModelFlags & ~(0x4000000 | 0x2000000));
 						HandlingManager::SetVehicleFlyingState(HandlingManager::GetVehicleSAMPId(curVehicle), true, curVehicle);
 					}
 				} else {
 					curVehicle->m_pHandlingData->m_nModelFlags = static_cast<eVehicleHandlingModelFlags>(
-						curVehicle->m_pHandlingData->m_nModelFlags & ~(0x4000000 | 0x2000000)
-					);
+						curVehicle->m_pHandlingData->m_nModelFlags & ~(0x4000000 | 0x2000000));
 				}
 			}
 
@@ -971,9 +949,11 @@ static void OnGameProcess()
 
 					CPad* pad = CPad::GetPad(0);
 					short steerUD = pad ? pad->GetSteeringUpDown() : 0;
-					if (steerUD == 0 && pad) steerUD = pad->GetPedWalkUpDown();
+					if (steerUD == 0 && pad)
+						steerUD = pad->GetPedWalkUpDown();
 					short steerLR = pad ? pad->GetSteeringLeftRight() : 0;
-					if (steerLR == 0 && pad) steerLR = pad->GetPedWalkLeftRight();
+					if (steerLR == 0 && pad)
+						steerLR = pad->GetPedWalkLeftRight();
 
 					bool isClimbing = (steerUD < 0);
 					bool isDescending = (steerUD > 0) || (pad && pad->GetBrake() > 0 && !onGround);
@@ -1068,8 +1048,7 @@ static void OnGameProcess()
 
 					// 3. Aerodynamic heading alignment: redirect horizontal velocity along the car's heading
 					// Smoothly curves the flight trajectory without sharp snaps
-					float horizSpeed = sqrtf(curVehicle->m_vecMoveSpeed.x * curVehicle->m_vecMoveSpeed.x +
-					                         curVehicle->m_vecMoveSpeed.y * curVehicle->m_vecMoveSpeed.y);
+					float horizSpeed = sqrtf(curVehicle->m_vecMoveSpeed.x * curVehicle->m_vecMoveSpeed.x + curVehicle->m_vecMoveSpeed.y * curVehicle->m_vecMoveSpeed.y);
 					if (horizSpeed > 0.04f) {
 						CVector fwdHoriz(forward.x, forward.y, 0.0f);
 						float fwdHorizLen = sqrtf(fwdHoriz.x * fwdHoriz.x + fwdHoriz.y * fwdHoriz.y);

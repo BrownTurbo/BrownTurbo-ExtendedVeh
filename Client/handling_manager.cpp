@@ -8,10 +8,10 @@
 
 #include "utils.h"
 
+#include <game_sa/CAutomobile.h>
 #include "CustomVehicleBindingManager.h"
 #include "MainThreadQueue.h"
 #include "streamingextender.hpp"
-#include <game_sa/CAutomobile.h>
 #include <cstring>
 #include <deque>
 #include <map>
@@ -64,12 +64,7 @@ void HandlingManager::SetVehicleFlyingState(uint16_t sampVehicleId, bool flying,
 {
 	std::lock_guard<std::recursive_mutex> lock(m_handlingMutex);
 	if (pVehicle && flying) {
-		bool isFlightCapable = (pVehicle->m_nVehicleSubClass == VEHICLE_AUTOMOBILE ||
-		                        pVehicle->m_nVehicleSubClass == VEHICLE_MTRUCK ||
-		                        pVehicle->m_nVehicleSubClass == VEHICLE_QUAD ||
-		                        pVehicle->m_nVehicleSubClass == VEHICLE_BIKE ||
-		                        pVehicle->m_nVehicleSubClass == VEHICLE_BMX ||
-		                        pVehicle->m_nVehicleSubClass == VEHICLE_BOAT);
+		bool isFlightCapable = (pVehicle->m_nVehicleSubClass == VEHICLE_AUTOMOBILE || pVehicle->m_nVehicleSubClass == VEHICLE_MTRUCK || pVehicle->m_nVehicleSubClass == VEHICLE_QUAD || pVehicle->m_nVehicleSubClass == VEHICLE_BIKE || pVehicle->m_nVehicleSubClass == VEHICLE_BMX || pVehicle->m_nVehicleSubClass == VEHICLE_BOAT);
 		if (!isFlightCapable) {
 			flying = false;
 		}
@@ -187,19 +182,12 @@ void HandlingManager::ApplyAttribEntries(tHandlingData* handling, const std::vec
 				bool wantsFlight = (val & 0x4000000) != 0;
 				bool wantsWaterDrive = (val & 0x8000000) != 0;
 				if (pVehicle) {
-					bool isFlightCapable = (pVehicle->m_nVehicleSubClass == VEHICLE_AUTOMOBILE ||
-					                        pVehicle->m_nVehicleSubClass == VEHICLE_MTRUCK ||
-					                        pVehicle->m_nVehicleSubClass == VEHICLE_QUAD ||
-					                        pVehicle->m_nVehicleSubClass == VEHICLE_BIKE ||
-					                        pVehicle->m_nVehicleSubClass == VEHICLE_BMX ||
-					                        pVehicle->m_nVehicleSubClass == VEHICLE_BOAT);
+					bool isFlightCapable = (pVehicle->m_nVehicleSubClass == VEHICLE_AUTOMOBILE || pVehicle->m_nVehicleSubClass == VEHICLE_MTRUCK || pVehicle->m_nVehicleSubClass == VEHICLE_QUAD || pVehicle->m_nVehicleSubClass == VEHICLE_BIKE || pVehicle->m_nVehicleSubClass == VEHICLE_BMX || pVehicle->m_nVehicleSubClass == VEHICLE_BOAT);
 					if (wantsFlight && !isFlightCapable) {
 						wantsFlight = false;
 					}
 
-					bool isWaterCapable = (pVehicle->m_nVehicleSubClass == VEHICLE_AUTOMOBILE ||
-					                       pVehicle->m_nVehicleSubClass == VEHICLE_MTRUCK ||
-					                       pVehicle->m_nVehicleSubClass == VEHICLE_QUAD);
+					bool isWaterCapable = (pVehicle->m_nVehicleSubClass == VEHICLE_AUTOMOBILE || pVehicle->m_nVehicleSubClass == VEHICLE_MTRUCK || pVehicle->m_nVehicleSubClass == VEHICLE_QUAD);
 					if (wantsWaterDrive) {
 						if (!isWaterCapable) {
 							val &= ~0x8000000;
@@ -561,29 +549,20 @@ void HandlingManager::RecalculateDerivedHandling(tHandlingData* handling, CVehic
 	}
 
 	if (pVehicle && IsVehiclePointerValid(pVehicle)) {
-		bool isWaterCapable = (pVehicle->m_nVehicleSubClass == VEHICLE_AUTOMOBILE ||
-		                       pVehicle->m_nVehicleSubClass == VEHICLE_MTRUCK ||
-		                       pVehicle->m_nVehicleSubClass == VEHICLE_QUAD);
+		bool isWaterCapable = (pVehicle->m_nVehicleSubClass == VEHICLE_AUTOMOBILE || pVehicle->m_nVehicleSubClass == VEHICLE_MTRUCK || pVehicle->m_nVehicleSubClass == VEHICLE_QUAD);
 		if (!isWaterCapable) {
 			handling->m_nModelFlags = static_cast<eVehicleHandlingModelFlags>(
-				handling->m_nModelFlags & ~0x8000000
-			);
+				handling->m_nModelFlags & ~0x8000000);
 		}
 
-		bool isFlightCapable = (pVehicle->m_nVehicleSubClass == VEHICLE_AUTOMOBILE ||
-		                        pVehicle->m_nVehicleSubClass == VEHICLE_MTRUCK ||
-		                        pVehicle->m_nVehicleSubClass == VEHICLE_QUAD ||
-		                        pVehicle->m_nVehicleSubClass == VEHICLE_BIKE ||
-		                        pVehicle->m_nVehicleSubClass == VEHICLE_BMX ||
-		                        pVehicle->m_nVehicleSubClass == VEHICLE_BOAT);
+		bool isFlightCapable = (pVehicle->m_nVehicleSubClass == VEHICLE_AUTOMOBILE || pVehicle->m_nVehicleSubClass == VEHICLE_MTRUCK || pVehicle->m_nVehicleSubClass == VEHICLE_QUAD || pVehicle->m_nVehicleSubClass == VEHICLE_BIKE || pVehicle->m_nVehicleSubClass == VEHICLE_BMX || pVehicle->m_nVehicleSubClass == VEHICLE_BOAT);
 		if ((handling->m_nModelFlags & 0x4000000) != 0) {
 			if (isFlightCapable) {
 				SetVehicleFlyingState(GetVehicleSAMPId(pVehicle), true, pVehicle);
 			}
 			if (pVehicle->m_nVehicleSubClass != VEHICLE_PLANE) {
 				handling->m_nModelFlags = static_cast<eVehicleHandlingModelFlags>(
-					handling->m_nModelFlags & ~(0x4000000 | 0x2000000)
-				);
+					handling->m_nModelFlags & ~(0x4000000 | 0x2000000));
 			}
 		}
 
@@ -994,12 +973,12 @@ void HandlingManager::ApplyDoorState(CVehicle* pVehicle, uint8_t doorId, bool mi
 	};
 
 	static constexpr DoorInfo kDoors[6] = {
-		{ CAR_BONNET, BONNET },             // 0: Bonnet / Hood
-		{ CAR_BOOT, BOOT },                 // 1: Boot / Trunk
-		{ CAR_DOOR_LF, DOOR_FRONT_LEFT },   // 2: Front Left Door
-		{ CAR_DOOR_RF, DOOR_FRONT_RIGHT },  // 3: Front Right Door
-		{ CAR_DOOR_LR, DOOR_REAR_LEFT },    // 4: Rear Left Door
-		{ CAR_DOOR_RR, DOOR_REAR_RIGHT }    // 5: Rear Right Door
+		{ CAR_BONNET, BONNET }, // 0: Bonnet / Hood
+		{ CAR_BOOT, BOOT }, // 1: Boot / Trunk
+		{ CAR_DOOR_LF, DOOR_FRONT_LEFT }, // 2: Front Left Door
+		{ CAR_DOOR_RF, DOOR_FRONT_RIGHT }, // 3: Front Right Door
+		{ CAR_DOOR_LR, DOOR_REAR_LEFT }, // 4: Rear Left Door
+		{ CAR_DOOR_RR, DOOR_REAR_RIGHT } // 5: Rear Right Door
 	};
 
 	auto applySingleDoor = [&](uint8_t index) {
