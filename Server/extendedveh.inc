@@ -203,12 +203,17 @@ native bool:GetVehicleHandlingFloat(vehicleid, CHandlingAttrib:attribute, &Float
 native bool:GetVehicleHandlingInt(vehicleid, CHandlingAttrib:attribute, &result);
 
 // Water Driving & Amphibious Floating Natives
+// Allowed on: Automobiles, Quads, Monster Trucks
+// Prohibited on: Planes (including Skimmer), Helicopters (including Leviathan/SeaSparrow),
+//               Boats, Trains, Trailers, Bikes, Motorcycles (BMX included)
 native bool:SetVehicleWaterDrive(vehicleid, bool:enable, submergedPercent = 30);
 native bool:GetVehicleWaterDrive(vehicleid, &bool:enabled);
 native bool:SetModelWaterDrive(modelid, bool:enable, submergedPercent = 30);
 native bool:GetModelWaterDrive(modelid, &bool:enabled);
 
-// Flying Vehicle Natives (Cars, Boats, and Bikes)
+// Flying Vehicle Natives (Auto-leveling car/boat/bike flight)
+// Allowed on: Automobiles, Motorcycles/BMX, Quads, Monster Trucks, Boats
+// Prohibited on: Planes, Helicopters, Trains, Trailers (use native flight or rail physics)
 native bool:SetVehicleFlying(vehicleid, bool:enable);
 native bool:GetVehicleFlying(vehicleid, &bool:enabled);
 native bool:SetModelFlying(modelid, bool:enable);
@@ -238,6 +243,8 @@ native bool:InvalidateModelCache(customModelId, fileKind);
 native GetClientFileStoreStatus(playerid, customModelId, fileKind);
 
 // Vehicle Door Removal / Restoration Natives
+// Allowed on: Automobiles, Quads, Monster Trucks, Planes, Helicopters
+// Prohibited on: Bikes, Motorcycles, Bicycles, Boats, Trailers, Trains (vehicles without standard doors)
 native bool:SetVehicleDoorMissing(vehicleid, doorid, bool:missing);
 native bool:GetVehicleDoorMissing(vehicleid, doorid, &bool:missing);
 native bool:SetVehicleAllDoorsMissing(vehicleid, bool:missing);

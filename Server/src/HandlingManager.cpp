@@ -310,7 +310,10 @@ void ProcessTick()
 
 		for (IPlayer* player : core_->getPlayers().players())
 		{
-			if (player)
+			// Guard against use-after-free: gPlayers.Reset() is called in onPlayerDisconnect
+			// *before* HandlingMgr::OnPlayerDisconnect, so a freed/disconnecting IPlayer*
+			// will always have HasExtendedVeh() == false at this point.
+			if (player && gPlayers.HasExtendedVeh(player->getID()))
 				player->sendPacket(Span<uint8_t>(p.data.GetData(), p.data.GetNumberOfBitsUsed()), 0, true);
 		}
 	}
@@ -329,8 +332,42 @@ void ProcessTick()
 
 		for (IPlayer* player : core_->getPlayers().players())
 		{
-			if (player)
+			// Same guard as above — only send to confirmed-alive ExtendedVeh players.
+			if (player && gPlayers.HasExtendedVeh(player->getID()))
 				player->sendPacket(Span<uint8_t>(p.data.GetData(), p.data.GetNumberOfBitsUsed()), 0, true);
+		}
+	}
+}
+
+void BroadcastVehicleCorrection(uint16_t vehicleid)
+{
+	ExtendedVehCompo* compo = ExtendedVehCompo::get();
+	if (!compo)
+		return;
+	ICore* core_ = compo->getCore();
+	if (!core_)
+		return;
+
+	auto vIt = vehicleHandlings.find(vehicleid);
+	if (vIt != vehicleHandlings.end() && !vIt->second.handlingModMap.empty())
+	{
+		struct CustomVehActionPacket correction(ACTION_SET_VEHICLE_HANDLING);
+		correction.data.Write(vehicleid);
+		__WriteHandlingEntryToBitStream(&correction.data, vIt->second);
+		for (IPlayer* player : core_->getPlayers().players())
+		{
+			if (player && gPlayers.HasExtendedVeh(player->getID()))
+				player->sendPacket(Span<uint8_t>(correction.data.GetData(), correction.data.GetNumberOfBitsUsed()), 0, true);
+		}
+	}
+	else
+	{
+		struct CustomVehActionPacket correction(ACTION_RESET_VEHICLE);
+		correction.data.Write(vehicleid);
+		for (IPlayer* player : core_->getPlayers().players())
+		{
+			if (player && gPlayers.HasExtendedVeh(player->getID()))
+				player->sendPacket(Span<uint8_t>(correction.data.GetData(), correction.data.GetNumberOfBitsUsed()), 0, true);
 		}
 	}
 }
@@ -394,7 +431,7 @@ void OnPlayerConnect(IPlayer& player)
 			struct CustomVehActionPacket p(ACTION_SET_MODEL_HANDLING);
 			p.data.Write((uint16_t)(model + 400));
 			__WriteHandlingEntryToBitStream(&p.data, gBaseModelHandlings[model]);
-			player.sendPacket(Span<uint8_t>(p.data.GetData(), p.data.GetNumberOfBitsUsed()), 0, false);
+			player.sendPacket(Span<uint8_t>(p.data.GetData(), p.data.GetNumberOfBitsUsed()), 0, true);
 		}
 	}
 
@@ -405,7 +442,7 @@ void OnPlayerConnect(IPlayer& player)
 			struct CustomVehActionPacket p(ACTION_SET_MODEL_HANDLING);
 			p.data.Write((uint16_t)customModel);
 			__WriteHandlingEntryToBitStream(&p.data, entry);
-			player.sendPacket(Span<uint8_t>(p.data.GetData(), p.data.GetNumberOfBitsUsed()), 0, false);
+			player.sendPacket(Span<uint8_t>(p.data.GetData(), p.data.GetNumberOfBitsUsed()), 0, true);
 		}
 	}
 
@@ -429,6 +466,18 @@ void OnPlayerConnect(IPlayer& player)
 					player.sendPacket(Span<uint8_t>(p.data.GetData(), p.data.GetNumberOfBitsUsed()), 0, true);
 				}
 			}
+		}
+	}
+
+	// Synchronize all existing custom vehicle handlings to the connecting player
+	for (const auto& [vehId, entry] : vehicleHandlings)
+	{
+		if (!entry.handlingModMap.empty() && !entry.usesModelHandling)
+		{
+			struct CustomVehActionPacket p(ACTION_SET_VEHICLE_HANDLING);
+			p.data.Write(vehId);
+			__WriteHandlingEntryToBitStream(&p.data, entry);
+			player.sendPacket(Span<uint8_t>(p.data.GetData(), p.data.GetNumberOfBitsUsed()), 0, true);
 		}
 	}
 }
@@ -475,7 +524,7 @@ void OnVehicleStreamIn(IVehicle& vehicle, IPlayer& player)
 	struct CustomVehActionPacket p(ACTION_SET_VEHICLE_HANDLING);
 	p.data.Write((uint16_t)vehicleid);
 	__WriteHandlingEntryToBitStream(&p.data, it->second);
-	player.sendPacket(Span<uint8_t>(p.data.GetData(), p.data.GetNumberOfBitsUsed()), 0, false);
+	player.sendPacket(Span<uint8_t>(p.data.GetData(), p.data.GetNumberOfBitsUsed()), 0, true);
 }
 
 /*
@@ -527,7 +576,8 @@ void ResetVehicleHandling(IVehicle& vehicle, bool sendToPlayers)
 		ICore* core_ = compo->getCore();
 		for (IPlayer* player : core_->getPlayers().players())
 		{
-			player->sendPacket(Span<uint8_t>(p.data.GetData(), p.data.GetNumberOfBitsUsed()), 0, true);
+			if (player && gPlayers.HasExtendedVeh(player->getID()))
+				player->sendPacket(Span<uint8_t>(p.data.GetData(), p.data.GetNumberOfBitsUsed()), 0, true);
 		}
 	}
 }
@@ -863,7 +913,9 @@ bool ResetPlayerHandling(uint16_t playerid)
 		struct CustomVehActionPacket p(ACTION_RESET_PLAYER_HANDLING);
 		p.data.Write(playerid);
 		IPlayer* player = compo->GetPlayerByID(playerid);
-		if (player)
+		// Guard against use-after-free on disconnect: gPlayers.Reset(playerid) was called
+		// before OnPlayerDisconnect, so a disconnecting player will have HasExtendedVeh() == false.
+		if (player && gPlayers.HasExtendedVeh(playerid))
 		{
 			player->sendPacket(Span<uint8_t>(p.data.GetData(), p.data.GetNumberOfBitsUsed()), 0, true);
 		}

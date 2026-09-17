@@ -174,6 +174,33 @@ inline void RegisterNativeHooks()
 	Native_##func::                                                            \
 		Do(PAWN_NATIVE__PARAMETERS(params)) const
 
+inline uint32_t ResolveBaseVehicleModel(uint32_t modelId)
+{
+	if (CVehicleMgr::IsCustomVehicleModel(modelId))
+	{
+		auto it = HandlingMgr::customVehicleDefs.find(modelId);
+		if (it != HandlingMgr::customVehicleDefs.end())
+		{
+			if (CVehicleMgr::IsBaseVehicleModel(it->second.handlingBaseModel))
+				return it->second.handlingBaseModel;
+			if (CVehicleMgr::IsBaseVehicleModel(it->second.visualBaseModel))
+				return it->second.visualBaseModel;
+		}
+	}
+	return modelId;
+}
+
+inline uint32_t ResolveVehicleBaseModel(IVehicle& vehicle)
+{
+	int vehicleid = vehicle.getID();
+	auto customOpt = CustomVehicleBindingRegistry::Instance().Get(static_cast<uint16_t>(vehicleid));
+	if (customOpt.has_value())
+	{
+		return ResolveBaseVehicleModel(customOpt.value());
+	}
+	return ResolveBaseVehicleModel(static_cast<uint32_t>(vehicle.getModel()));
+}
+
 // Vehicle handling related funcs
 // native GetHandlingAttribType(attrib);
 SCRIPT_API(GetHandlingAttribType, int(int attr))
@@ -282,6 +309,24 @@ SCRIPT_API(SetVehicleHandlingFloat, bool(IVehicle& vehicle, CHandlingAttrib attr
 			core_->logLn(LogLevel::Warning, "[ExtendedVeh] SetVehicleHandlingFloat(veh=%d, attr=%d): Invalid float value (NaN or Inf)", vehicleid, static_cast<int>(attrib));
 		return false;
 	}
+	if ((attrib == HANDL_FMASS || attrib == HANDL_FTURNMASS) && value < 1.0f)
+	{
+		if (core_)
+			core_->logLn(LogLevel::Warning, "[ExtendedVeh] SetVehicleHandlingFloat(veh=%d, attr=%d): Mass/TurnMass must be >= 1.0 (got %f)", vehicleid, static_cast<int>(attrib), value);
+		return false;
+	}
+	if (attrib == HANDL_FBRAKEDECELERATION && value < 0.0f)
+	{
+		if (core_)
+			core_->logLn(LogLevel::Warning, "[ExtendedVeh] SetVehicleHandlingFloat(veh=%d, attr=%d): BrakeDeceleration must be >= 0.0 (got %f)", vehicleid, static_cast<int>(attrib), value);
+		return false;
+	}
+	if ((attrib == HANDL_FSUSPENSIONFORCELEVEL || attrib == HANDL_FSUSPENSIONDAMPINGLEVEL || attrib == HANDL_FTRACTIONMULTIPLIER) && value <= 0.0f)
+	{
+		if (core_)
+			core_->logLn(LogLevel::Warning, "[ExtendedVeh] SetVehicleHandlingFloat(veh=%d, attr=%d): Suspension force/damping and traction multiplier must be > 0.0 (got %f)", vehicleid, static_cast<int>(attrib), value);
+		return false;
+	}
 	if (!CanSetHandlingAttrib(attrib))
 	{
 		if (core_)
@@ -332,6 +377,77 @@ SCRIPT_API(SetVehicleHandlingInt, bool(IVehicle& vehicle, CHandlingAttrib attrib
 		return false;
 	}
 
+	if (attrib == HANDL_MODELFLAGS)
+	{
+		uint32_t baseModel = ResolveVehicleBaseModel(vehicle);
+		if ((static_cast<unsigned int>(value) & VEHICLE_HANDLING_MODEL_IS_PLANE) && !CVehicleMgr::IsVehicleModelFlightCapable(baseModel))
+		{
+			if (core_)
+				core_->logLn(LogLevel::Warning, "[ExtendedVeh] SetVehicleHandlingInt: Stripping VEHICLE_HANDLING_MODEL_IS_PLANE for vehicle %d (base %u, category '%s')",
+					vehicleid, baseModel, CVehicleMgr::GetVehicleCategoryName(CVehicleMgr::GetVehicleModelCategory(baseModel)));
+			value &= ~VEHICLE_HANDLING_MODEL_IS_PLANE;
+		}
+		if ((static_cast<unsigned int>(value) & VEHICLE_HANDLING_MODEL_IS_BOAT) && !CVehicleMgr::IsVehicleModelWaterDriveCapable(baseModel))
+		{
+			if (core_)
+				core_->logLn(LogLevel::Warning, "[ExtendedVeh] SetVehicleHandlingInt: Stripping VEHICLE_HANDLING_MODEL_IS_BOAT for vehicle %d (base %u, category '%s')",
+					vehicleid, baseModel, CVehicleMgr::GetVehicleCategoryName(CVehicleMgr::GetVehicleModelCategory(baseModel)));
+			value &= ~VEHICLE_HANDLING_MODEL_IS_BOAT;
+		}
+		CVehicleMgr::VehicleCategory cat = CVehicleMgr::GetVehicleModelCategory(baseModel);
+		if ((static_cast<unsigned int>(value) & VEHICLE_HANDLING_MODEL_IS_HELI) && cat != CVehicleMgr::VehicleCategory::Helicopter)
+		{
+			if (core_)
+				core_->logLn(LogLevel::Warning, "[ExtendedVeh] SetVehicleHandlingInt: Stripping VEHICLE_HANDLING_MODEL_IS_HELI for vehicle %d (base %u, category '%s')",
+					vehicleid, baseModel, CVehicleMgr::GetVehicleCategoryName(cat));
+			value &= ~VEHICLE_HANDLING_MODEL_IS_HELI;
+		}
+		if ((static_cast<unsigned int>(value) & VEHICLE_HANDLING_MODEL_IS_BIKE) && (cat != CVehicleMgr::VehicleCategory::Bike && cat != CVehicleMgr::VehicleCategory::Bmx))
+		{
+			if (core_)
+				core_->logLn(LogLevel::Warning, "[ExtendedVeh] SetVehicleHandlingInt: Stripping VEHICLE_HANDLING_MODEL_IS_BIKE for vehicle %d (base %u, category '%s')",
+					vehicleid, baseModel, CVehicleMgr::GetVehicleCategoryName(cat));
+			value &= ~VEHICLE_HANDLING_MODEL_IS_BIKE;
+		}
+	}
+
+	if (attrib == HANDL_TR_NDRIVETYPE)
+	{
+		if (value == 'f') value = 'F';
+		if (value == 'r') value = 'R';
+		if (value != 'F' && value != 'R' && value != '4')
+		{
+			if (core_)
+				core_->logLn(LogLevel::Warning, "[ExtendedVeh] SetVehicleHandlingInt(veh=%d, attr=%d): Drive type must be 'F', 'R', or '4' (got %d)", vehicleid, static_cast<int>(attrib), value);
+			return false;
+		}
+	}
+	if (attrib == HANDL_TR_NENGINETYPE)
+	{
+		if (value == 'p') value = 'P';
+		if (value == 'd') value = 'D';
+		if (value == 'e') value = 'E';
+		if (value != 'P' && value != 'D' && value != 'E')
+		{
+			if (core_)
+				core_->logLn(LogLevel::Warning, "[ExtendedVeh] SetVehicleHandlingInt(veh=%d, attr=%d): Engine type must be 'P', 'D', or 'E' (got %d)", vehicleid, static_cast<int>(attrib), value);
+			return false;
+		}
+	}
+
+	if (attrib == HANDL_TR_NNUMBEROFGEARS && (value < 1 || value > 5))
+	{
+		if (core_)
+			core_->logLn(LogLevel::Warning, "[ExtendedVeh] SetVehicleHandlingInt(veh=%d, attr=%d): Number of gears must be between 1 and 5 (got %d)", vehicleid, static_cast<int>(attrib), value);
+		return false;
+	}
+	if (attrib == HANDL_NPERCENTSUBMERGED && (value < 1 || value > 100))
+	{
+		if (core_)
+			core_->logLn(LogLevel::Warning, "[ExtendedVeh] SetVehicleHandlingInt(veh=%d, attr=%d): PercentSubmerged must be between 1 and 100 (got %d)", vehicleid, static_cast<int>(attrib), value);
+		return false;
+	}
+
 	bool ret = false;
 	if (attrType == TYPE_BYTE)
 		ret = HandlingMgr::SetVehicleHandling(static_cast<uint16_t>(vehicleid), attrib, (uint8_t)value);
@@ -363,6 +479,24 @@ SCRIPT_API(SetModelHandlingFloat, bool(int modelid, CHandlingAttrib attrib, floa
 	{
 		if (core_)
 			core_->logLn(LogLevel::Warning, "[ExtendedVeh] SetModelHandlingFloat(model=%d, attr=%d): Invalid float value (NaN or Inf)", modelid, static_cast<int>(attrib));
+		return false;
+	}
+	if ((attrib == HANDL_FMASS || attrib == HANDL_FTURNMASS) && value < 1.0f)
+	{
+		if (core_)
+			core_->logLn(LogLevel::Warning, "[ExtendedVeh] SetModelHandlingFloat(model=%d, attr=%d): Mass/TurnMass must be >= 1.0 (got %f)", modelid, static_cast<int>(attrib), value);
+		return false;
+	}
+	if (attrib == HANDL_FBRAKEDECELERATION && value < 0.0f)
+	{
+		if (core_)
+			core_->logLn(LogLevel::Warning, "[ExtendedVeh] SetModelHandlingFloat(model=%d, attr=%d): BrakeDeceleration must be >= 0.0 (got %f)", modelid, static_cast<int>(attrib), value);
+		return false;
+	}
+	if ((attrib == HANDL_FSUSPENSIONFORCELEVEL || attrib == HANDL_FSUSPENSIONDAMPINGLEVEL || attrib == HANDL_FTRACTIONMULTIPLIER) && value <= 0.0f)
+	{
+		if (core_)
+			core_->logLn(LogLevel::Warning, "[ExtendedVeh] SetModelHandlingFloat(model=%d, attr=%d): Suspension force/damping and traction multiplier must be > 0.0 (got %f)", modelid, static_cast<int>(attrib), value);
 		return false;
 	}
 	if (!CanSetHandlingAttrib(attrib))
@@ -411,6 +545,77 @@ SCRIPT_API(SetModelHandlingInt, bool(int modelid, CHandlingAttrib attrib, int va
 	{
 		if (core_)
 			core_->logLn(LogLevel::Warning, "[ExtendedVeh] SetModelHandlingInt(model=%d, attr=%d): Attribute type is not int/byte/flag", modelid, static_cast<int>(attrib));
+		return false;
+	}
+
+	if (attrib == HANDL_MODELFLAGS)
+	{
+		uint32_t baseModel = ResolveBaseVehicleModel(static_cast<uint32_t>(modelid));
+		if ((static_cast<unsigned int>(value) & VEHICLE_HANDLING_MODEL_IS_PLANE) && !CVehicleMgr::IsVehicleModelFlightCapable(baseModel))
+		{
+			if (core_)
+				core_->logLn(LogLevel::Warning, "[ExtendedVeh] SetModelHandlingInt: Stripping VEHICLE_HANDLING_MODEL_IS_PLANE for model %d (base %u, category '%s')",
+					modelid, baseModel, CVehicleMgr::GetVehicleCategoryName(CVehicleMgr::GetVehicleModelCategory(baseModel)));
+			value &= ~VEHICLE_HANDLING_MODEL_IS_PLANE;
+		}
+		if ((static_cast<unsigned int>(value) & VEHICLE_HANDLING_MODEL_IS_BOAT) && !CVehicleMgr::IsVehicleModelWaterDriveCapable(baseModel))
+		{
+			if (core_)
+				core_->logLn(LogLevel::Warning, "[ExtendedVeh] SetModelHandlingInt: Stripping VEHICLE_HANDLING_MODEL_IS_BOAT for model %d (base %u, category '%s')",
+					modelid, baseModel, CVehicleMgr::GetVehicleCategoryName(CVehicleMgr::GetVehicleModelCategory(baseModel)));
+			value &= ~VEHICLE_HANDLING_MODEL_IS_BOAT;
+		}
+		CVehicleMgr::VehicleCategory cat = CVehicleMgr::GetVehicleModelCategory(baseModel);
+		if ((static_cast<unsigned int>(value) & VEHICLE_HANDLING_MODEL_IS_HELI) && cat != CVehicleMgr::VehicleCategory::Helicopter)
+		{
+			if (core_)
+				core_->logLn(LogLevel::Warning, "[ExtendedVeh] SetModelHandlingInt: Stripping VEHICLE_HANDLING_MODEL_IS_HELI for model %d (base %u, category '%s')",
+					modelid, baseModel, CVehicleMgr::GetVehicleCategoryName(cat));
+			value &= ~VEHICLE_HANDLING_MODEL_IS_HELI;
+		}
+		if ((static_cast<unsigned int>(value) & VEHICLE_HANDLING_MODEL_IS_BIKE) && (cat != CVehicleMgr::VehicleCategory::Bike && cat != CVehicleMgr::VehicleCategory::Bmx))
+		{
+			if (core_)
+				core_->logLn(LogLevel::Warning, "[ExtendedVeh] SetModelHandlingInt: Stripping VEHICLE_HANDLING_MODEL_IS_BIKE for model %d (base %u, category '%s')",
+					modelid, baseModel, CVehicleMgr::GetVehicleCategoryName(cat));
+			value &= ~VEHICLE_HANDLING_MODEL_IS_BIKE;
+		}
+	}
+
+	if (attrib == HANDL_TR_NDRIVETYPE)
+	{
+		if (value == 'f') value = 'F';
+		if (value == 'r') value = 'R';
+		if (value != 'F' && value != 'R' && value != '4')
+		{
+			if (core_)
+				core_->logLn(LogLevel::Warning, "[ExtendedVeh] SetModelHandlingInt(model=%d, attr=%d): Drive type must be 'F', 'R', or '4' (got %d)", modelid, static_cast<int>(attrib), value);
+			return false;
+		}
+	}
+	if (attrib == HANDL_TR_NENGINETYPE)
+	{
+		if (value == 'p') value = 'P';
+		if (value == 'd') value = 'D';
+		if (value == 'e') value = 'E';
+		if (value != 'P' && value != 'D' && value != 'E')
+		{
+			if (core_)
+				core_->logLn(LogLevel::Warning, "[ExtendedVeh] SetModelHandlingInt(model=%d, attr=%d): Engine type must be 'P', 'D', or 'E' (got %d)", modelid, static_cast<int>(attrib), value);
+			return false;
+		}
+	}
+
+	if (attrib == HANDL_TR_NNUMBEROFGEARS && (value < 1 || value > 5))
+	{
+		if (core_)
+			core_->logLn(LogLevel::Warning, "[ExtendedVeh] SetModelHandlingInt(model=%d, attr=%d): Number of gears must be between 1 and 5 (got %d)", modelid, static_cast<int>(attrib), value);
+		return false;
+	}
+	if (attrib == HANDL_NPERCENTSUBMERGED && (value < 1 || value > 100))
+	{
+		if (core_)
+			core_->logLn(LogLevel::Warning, "[ExtendedVeh] SetModelHandlingInt(model=%d, attr=%d): PercentSubmerged must be between 1 and 100 (got %d)", modelid, static_cast<int>(attrib), value);
 		return false;
 	}
 
@@ -516,6 +721,17 @@ SCRIPT_API(SetVehicleWaterDrive, bool(IVehicle& vehicle, bool enable, int submer
 		return false;
 	}
 
+	uint32_t baseModel = ResolveVehicleBaseModel(vehicle);
+	if (enable && !CVehicleMgr::IsVehicleModelWaterDriveCapable(baseModel))
+	{
+		if (core_)
+			core_->logLn(LogLevel::Warning, "[ExtendedVeh] SetVehicleWaterDrive: Vehicle %d (model %d, base %u, category '%s') cannot be set to water drive mode",
+				vehicleid, vehicle.getModel(), baseModel, CVehicleMgr::GetVehicleCategoryName(CVehicleMgr::GetVehicleModelCategory(baseModel)));
+
+		HandlingMgr::BroadcastVehicleCorrection(static_cast<uint16_t>(vehicleid));
+		return false;
+	}
+
 	if (submergedPercent <= 0 || submergedPercent > 100)
 		submergedPercent = 30;
 
@@ -526,18 +742,24 @@ SCRIPT_API(SetVehicleWaterDrive, bool(IVehicle& vehicle, bool enable, int submer
 		HandlingMgr::GetModelHandling(static_cast<uint16_t>(modelid), HANDL_MODELFLAGS, modelFlags);
 	}
 
+	int modelid = vehicle.getModel();
 	if (enable)
 	{
 		modelFlags |= VEHICLE_HANDLING_MODEL_IS_BOAT;
+		modelFlags &= ~(0x00200000 | 0x00020000);
 		HandlingMgr::SetVehicleHandling(static_cast<uint16_t>(vehicleid), HANDL_MODELFLAGS, modelFlags);
 		HandlingMgr::SetVehicleHandling(static_cast<uint16_t>(vehicleid), HANDL_NPERCENTSUBMERGED, static_cast<uint8_t>(submergedPercent));
 	}
 	else
 	{
 		modelFlags &= ~VEHICLE_HANDLING_MODEL_IS_BOAT;
+		unsigned int defModelFlags = 0;
+		if (HandlingMgr::GetDefaultHandling(static_cast<uint16_t>(modelid), HANDL_MODELFLAGS, defModelFlags))
+		{
+			modelFlags |= (defModelFlags & (0x00200000 | 0x00020000));
+		}
 		HandlingMgr::SetVehicleHandling(static_cast<uint16_t>(vehicleid), HANDL_MODELFLAGS, modelFlags);
 		uint8_t defSub = 85;
-		int modelid = vehicle.getModel();
 		if (HandlingMgr::GetDefaultHandling(static_cast<uint16_t>(modelid), HANDL_NPERCENTSUBMERGED, defSub))
 			HandlingMgr::SetVehicleHandling(static_cast<uint16_t>(vehicleid), HANDL_NPERCENTSUBMERGED, defSub);
 	}
@@ -590,6 +812,15 @@ SCRIPT_API(SetModelWaterDrive, bool(int modelid, bool enable, int submergedPerce
 		return false;
 	}
 
+	uint32_t baseModel = ResolveBaseVehicleModel(static_cast<uint32_t>(modelid));
+	if (enable && !CVehicleMgr::IsVehicleModelWaterDriveCapable(baseModel))
+	{
+		if (core_)
+			core_->logLn(LogLevel::Warning, "[ExtendedVeh] SetModelWaterDrive: Model %d (base %u, category '%s') cannot be set to water drive mode",
+				modelid, baseModel, CVehicleMgr::GetVehicleCategoryName(CVehicleMgr::GetVehicleModelCategory(baseModel)));
+		return false;
+	}
+
 	if (submergedPercent <= 0 || submergedPercent > 100)
 		submergedPercent = 30;
 
@@ -599,12 +830,18 @@ SCRIPT_API(SetModelWaterDrive, bool(int modelid, bool enable, int submergedPerce
 	if (enable)
 	{
 		modelFlags |= VEHICLE_HANDLING_MODEL_IS_BOAT;
+		modelFlags &= ~(0x00200000 | 0x00020000);
 		HandlingMgr::SetModelHandling(static_cast<uint16_t>(modelid), HANDL_MODELFLAGS, modelFlags);
 		HandlingMgr::SetModelHandling(static_cast<uint16_t>(modelid), HANDL_NPERCENTSUBMERGED, static_cast<uint8_t>(submergedPercent));
 	}
 	else
 	{
 		modelFlags &= ~VEHICLE_HANDLING_MODEL_IS_BOAT;
+		unsigned int defModelFlags = 0;
+		if (HandlingMgr::GetDefaultHandling(static_cast<uint16_t>(modelid), HANDL_MODELFLAGS, defModelFlags))
+		{
+			modelFlags |= (defModelFlags & (0x00200000 | 0x00020000));
+		}
 		HandlingMgr::SetModelHandling(static_cast<uint16_t>(modelid), HANDL_MODELFLAGS, modelFlags);
 		uint8_t defSub = 85;
 		if (HandlingMgr::GetDefaultHandling(static_cast<uint16_t>(modelid), HANDL_NPERCENTSUBMERGED, defSub))
@@ -648,6 +885,17 @@ SCRIPT_API(SetVehicleFlying, bool(IVehicle& vehicle, bool enable))
 	{
 		if (core_)
 			core_->logLn(LogLevel::Warning, "[ExtendedVeh] SetVehicleFlying: Invalid vehicle ID %d", vehicleid);
+		return false;
+	}
+
+	uint32_t baseModel = ResolveVehicleBaseModel(vehicle);
+	if (enable && !CVehicleMgr::IsVehicleModelFlightCapable(baseModel))
+	{
+		if (core_)
+			core_->logLn(LogLevel::Warning, "[ExtendedVeh] SetVehicleFlying: Vehicle %d (model %d, base %u, category '%s') cannot be set to flying mode",
+				vehicleid, vehicle.getModel(), baseModel, CVehicleMgr::GetVehicleCategoryName(CVehicleMgr::GetVehicleModelCategory(baseModel)));
+
+		HandlingMgr::BroadcastVehicleCorrection(static_cast<uint16_t>(vehicleid));
 		return false;
 	}
 
@@ -715,6 +963,15 @@ SCRIPT_API(SetModelFlying, bool(int modelid, bool enable))
 	{
 		if (core_)
 			core_->logLn(LogLevel::Warning, "[ExtendedVeh] SetModelFlying: Invalid model ID %d", modelid);
+		return false;
+	}
+
+	uint32_t baseModel = ResolveBaseVehicleModel(static_cast<uint32_t>(modelid));
+	if (enable && !CVehicleMgr::IsVehicleModelFlightCapable(baseModel))
+	{
+		if (core_)
+			core_->logLn(LogLevel::Warning, "[ExtendedVeh] SetModelFlying: Model %d (base %u, category '%s') cannot be set to flying mode",
+				modelid, baseModel, CVehicleMgr::GetVehicleCategoryName(CVehicleMgr::GetVehicleModelCategory(baseModel)));
 		return false;
 	}
 
@@ -918,6 +1175,21 @@ SCRIPT_API(SetPlayerHandlingFloat, bool(IPlayer& player, CHandlingAttrib attrib,
 		core_->logLn(LogLevel::Warning, "[ExtendedVeh] SetPlayerHandlingFloat(player=%d, attr=%d): Invalid float value (NaN or Inf)", playerid, static_cast<int>(attrib));
 		return false;
 	}
+	if ((attrib == HANDL_FMASS || attrib == HANDL_FTURNMASS) && value < 1.0f)
+	{
+		core_->logLn(LogLevel::Warning, "[ExtendedVeh] SetPlayerHandlingFloat(player=%d, attr=%d): Mass/TurnMass must be >= 1.0 (got %f)", playerid, static_cast<int>(attrib), value);
+		return false;
+	}
+	if (attrib == HANDL_FBRAKEDECELERATION && value < 0.0f)
+	{
+		core_->logLn(LogLevel::Warning, "[ExtendedVeh] SetPlayerHandlingFloat(player=%d, attr=%d): BrakeDeceleration must be >= 0.0 (got %f)", playerid, static_cast<int>(attrib), value);
+		return false;
+	}
+	if ((attrib == HANDL_FSUSPENSIONFORCELEVEL || attrib == HANDL_FSUSPENSIONDAMPINGLEVEL || attrib == HANDL_FTRACTIONMULTIPLIER) && value <= 0.0f)
+	{
+		core_->logLn(LogLevel::Warning, "[ExtendedVeh] SetPlayerHandlingFloat(player=%d, attr=%d): Suspension force/damping and traction multiplier must be > 0.0 (got %f)", playerid, static_cast<int>(attrib), value);
+		return false;
+	}
 	if (!CanSetHandlingAttrib(attrib))
 	{
 		core_->logLn(LogLevel::Warning, "[ExtendedVeh] SetPlayerHandlingFloat(player=%d, attr=%d): Attribute is read-only", playerid, static_cast<int>(attrib));
@@ -975,6 +1247,39 @@ SCRIPT_API(SetPlayerHandlingInt, bool(IPlayer& player, CHandlingAttrib attrib, i
 	if (attrType != TYPE_BYTE && attrType != TYPE_UINT && attrType != TYPE_FLAG)
 	{
 		core_->logLn(LogLevel::Warning, "[ExtendedVeh] SetPlayerHandlingInt(player=%d, attr=%d): Attribute is not int/byte/flag type", playerid, static_cast<int>(attrib));
+		return false;
+	}
+
+	if (attrib == HANDL_TR_NDRIVETYPE)
+	{
+		if (value == 'f') value = 'F';
+		if (value == 'r') value = 'R';
+		if (value != 'F' && value != 'R' && value != '4')
+		{
+			core_->logLn(LogLevel::Warning, "[ExtendedVeh] SetPlayerHandlingInt(player=%d, attr=%d): Drive type must be 'F', 'R', or '4' (got %d)", playerid, static_cast<int>(attrib), value);
+			return false;
+		}
+	}
+	if (attrib == HANDL_TR_NENGINETYPE)
+	{
+		if (value == 'p') value = 'P';
+		if (value == 'd') value = 'D';
+		if (value == 'e') value = 'E';
+		if (value != 'P' && value != 'D' && value != 'E')
+		{
+			core_->logLn(LogLevel::Warning, "[ExtendedVeh] SetPlayerHandlingInt(player=%d, attr=%d): Engine type must be 'P', 'D', or 'E' (got %d)", playerid, static_cast<int>(attrib), value);
+			return false;
+		}
+	}
+
+	if (attrib == HANDL_TR_NNUMBEROFGEARS && (value < 1 || value > 5))
+	{
+		core_->logLn(LogLevel::Warning, "[ExtendedVeh] SetPlayerHandlingInt(player=%d, attr=%d): Number of gears must be between 1 and 5 (got %d)", playerid, static_cast<int>(attrib), value);
+		return false;
+	}
+	if (attrib == HANDL_NPERCENTSUBMERGED && (value < 1 || value > 100))
+	{
+		core_->logLn(LogLevel::Warning, "[ExtendedVeh] SetPlayerHandlingInt(player=%d, attr=%d): PercentSubmerged must be between 1 and 100 (got %d)", playerid, static_cast<int>(attrib), value);
 		return false;
 	}
 
@@ -1255,6 +1560,15 @@ SCRIPT_API(BindVehicleModel, bool(IVehicle& vehicle, int customModelId))
 			core_->logLn(LogLevel::Warning, "[ExtendedVeh] BindVehicleModel: Invalid customModelId %d", customModelId);
 		return false;
 	}
+	if (CVehicleMgr::IsCustomVehicleModel(customModelId))
+	{
+		if (HandlingMgr::customVehicleDefs.find(customModelId) == HandlingMgr::customVehicleDefs.end())
+		{
+			if (core_)
+				core_->logLn(LogLevel::Warning, "[ExtendedVeh] BindVehicleModel: Custom vehicle model %d has not been committed yet via CommitCustomVehicleDef", customModelId);
+			return false;
+		}
+	}
 	if (!compo)
 		return false;
 	CustomVehicleBindingRegistry::Instance().Bind(static_cast<uint16_t>(vehicleid), static_cast<uint32_t>(customModelId));
@@ -1334,6 +1648,24 @@ SCRIPT_API(SetVehicleDoorMissing, bool(IVehicle& vehicle, int doorid, bool missi
 		return false;
 	}
 
+	uint32_t baseModel = ResolveVehicleBaseModel(vehicle);
+	CVehicleMgr::VehicleCategory cat = CVehicleMgr::GetVehicleModelCategory(baseModel);
+	if (cat == CVehicleMgr::VehicleCategory::Bike || cat == CVehicleMgr::VehicleCategory::Bmx ||
+	    cat == CVehicleMgr::VehicleCategory::Boat || cat == CVehicleMgr::VehicleCategory::Trailer ||
+	    cat == CVehicleMgr::VehicleCategory::Train)
+	{
+		if (core_)
+			core_->logLn(LogLevel::Warning, "[ExtendedVeh] SetVehicleDoorMissing: Vehicle %d (category '%s') has no doors",
+				vehicleid, CVehicleMgr::GetVehicleCategoryName(cat));
+		return false;
+	}
+	if (doorid < 0 || (doorid > 5 && doorid != 0xFF))
+	{
+		if (core_)
+			core_->logLn(LogLevel::Warning, "[ExtendedVeh] SetVehicleDoorMissing: Invalid door ID %d (must be 0-5 or 255)", doorid);
+		return false;
+	}
+
 	bool ret = HandlingMgr::SetVehicleDoorMissing(static_cast<uint16_t>(vehicleid), static_cast<uint8_t>(doorid), missing);
 	if (core_)
 		core_->logLn(LogLevel::Debug, "[ExtendedVeh] SetVehicleDoorMissing(veh=%d, door=%d, missing=%d) -> %s", vehicleid, doorid, missing, ret ? "true" : "false");
@@ -1354,6 +1686,24 @@ SCRIPT_API(GetVehicleDoorMissing, bool(IVehicle& vehicle, int doorid, bool& miss
 		return false;
 	}
 
+	uint32_t baseModel = ResolveVehicleBaseModel(vehicle);
+	CVehicleMgr::VehicleCategory cat = CVehicleMgr::GetVehicleModelCategory(baseModel);
+	if (cat == CVehicleMgr::VehicleCategory::Bike || cat == CVehicleMgr::VehicleCategory::Bmx ||
+	    cat == CVehicleMgr::VehicleCategory::Boat || cat == CVehicleMgr::VehicleCategory::Trailer ||
+	    cat == CVehicleMgr::VehicleCategory::Train)
+	{
+		if (core_)
+			core_->logLn(LogLevel::Warning, "[ExtendedVeh] GetVehicleDoorMissing: Vehicle %d (category '%s') has no doors",
+				vehicleid, CVehicleMgr::GetVehicleCategoryName(cat));
+		return false;
+	}
+	if (doorid < 0 || doorid > 5)
+	{
+		if (core_)
+			core_->logLn(LogLevel::Warning, "[ExtendedVeh] GetVehicleDoorMissing: Invalid door ID %d (must be 0-5)", doorid);
+		return false;
+	}
+
 	bool ret = HandlingMgr::GetVehicleDoorMissing(static_cast<uint16_t>(vehicleid), static_cast<uint8_t>(doorid), missing);
 	if (core_)
 		core_->logLn(LogLevel::Debug, "[ExtendedVeh] GetVehicleDoorMissing(veh=%d, door=%d) -> missing=%d, ret=%s", vehicleid, doorid, missing, ret ? "true" : "false");
@@ -1370,6 +1720,18 @@ SCRIPT_API(SetVehicleAllDoorsMissing, bool(IVehicle& vehicle, bool missing))
 	{
 		if (core_)
 			core_->logLn(LogLevel::Warning, "[ExtendedVeh] SetVehicleAllDoorsMissing: Invalid vehicle ID %d", vehicleid);
+		return false;
+	}
+
+	uint32_t baseModel = ResolveVehicleBaseModel(vehicle);
+	CVehicleMgr::VehicleCategory cat = CVehicleMgr::GetVehicleModelCategory(baseModel);
+	if (cat == CVehicleMgr::VehicleCategory::Bike || cat == CVehicleMgr::VehicleCategory::Bmx ||
+	    cat == CVehicleMgr::VehicleCategory::Boat || cat == CVehicleMgr::VehicleCategory::Trailer ||
+	    cat == CVehicleMgr::VehicleCategory::Train)
+	{
+		if (core_)
+			core_->logLn(LogLevel::Warning, "[ExtendedVeh] SetVehicleAllDoorsMissing: Vehicle %d (category '%s') has no doors",
+				vehicleid, CVehicleMgr::GetVehicleCategoryName(cat));
 		return false;
 	}
 

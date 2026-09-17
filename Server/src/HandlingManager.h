@@ -52,6 +52,7 @@ stHandlingEntry* GetModelHandlingEntry(uint32_t modelid);
 void __WriteHandlingEntryToBitStream(NetworkBitStream* bs, const struct stHandlingEntry& entry);
 
 void ProcessTick();
+void BroadcastVehicleCorrection(uint16_t vehicleid);
 
 void InitializeModelHandlings();
 void OnCreateVehicle(int vehicleid);

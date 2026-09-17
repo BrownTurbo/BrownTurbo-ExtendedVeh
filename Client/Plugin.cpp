@@ -1,6 +1,9 @@
 // SDK
 #include <plugin_sa.h>
 
+#include <MinHook.h>
+#include <game_sa/CAutomobile.h>
+#include <game_sa/CBike.h>
 #include <game_sa/CCheat.h>
 #include <game_sa/CHandlingDataMgr.h>
 #include <game_sa/CModelInfo.h>
@@ -8,8 +11,82 @@
 #include <game_sa/CTimer.h>
 #include <game_sa/CTxdStore.h>
 #include <game_sa/CVisibilityPlugins.h>
+#include <game_sa/CWaterLevel.h>
 #include <game_sa/rw/rpworld.h>
 #include <shared/game/CVector.h>
+
+static inline void SetWaterDriveCheatActive(bool active)
+{
+	CCheat::m_aCheatsActive[CHEAT_CARS_ON_WATER] = active;
+	*reinterpret_cast<bool*>(0x969152) = active;
+}
+
+// Hook function pointers
+static void (__fastcall* g_origUpdateWheelMatrix)(CAutomobile* thisCar, void* edx, int nodeIndex, int flags) = nullptr;
+
+static void __fastcall Hooked_UpdateWheelMatrix(CAutomobile* thisCar, void* edx, int nodeIndex, int flags)
+{
+	if (!thisCar || !IsVehiclePointerValid(thisCar) || !thisCar->m_pHandlingData) {
+		if (g_origUpdateWheelMatrix)
+			g_origUpdateWheelMatrix(thisCar, edx, nodeIndex, flags);
+		return;
+	}
+
+	bool isCapable = (thisCar->m_nVehicleSubClass == VEHICLE_AUTOMOBILE ||
+	                  thisCar->m_nVehicleSubClass == VEHICLE_MTRUCK ||
+	                  thisCar->m_nVehicleSubClass == VEHICLE_QUAD);
+	bool isBoat = isCapable && ((thisCar->m_pHandlingData->m_nModelFlags & 0x8000000) != 0);
+
+	if (isBoat) {
+		CVector pos = thisCar->GetPosition();
+		float waterZ = 0.0f;
+		bool inWater = thisCar->bTouchingWater || thisCar->bSubmergedInWater;
+		if (!inWater && CWaterLevel::GetWaterLevelNoWaves(pos.x, pos.y, pos.z, &waterZ)) {
+			if (pos.z <= (waterZ + 1.2f)) {
+				inWater = true;
+			}
+		}
+
+		bool wasWaterCheat = *reinterpret_cast<bool*>(0x969152);
+
+		if (inWater) {
+			*reinterpret_cast<bool*>(0x969152) = true;
+
+			float savedComp[4];
+			for (int i = 0; i < 4; ++i) {
+				savedComp[i] = thisCar->m_fWheelsSuspensionCompressionPrev[i];
+				thisCar->m_fWheelsSuspensionCompressionPrev[i] = 0.5f; // < 1.0f ensures GTA SA (0x6AA74B) rotates wheel into boat mode
+			}
+
+			bool wasDrowning = thisCar->bIsDrowning;
+			thisCar->bIsDrowning = false;
+
+			auto savedFlags = thisCar->m_pHandlingData->m_nModelFlags;
+			thisCar->m_pHandlingData->m_nModelFlags = static_cast<eVehicleHandlingModelFlags>(
+				savedFlags & ~(0x00200000 | 0x00020000) // Clear solid axle flags so all wheels rotate
+			);
+
+			g_origUpdateWheelMatrix(thisCar, edx, nodeIndex, flags);
+
+			thisCar->m_pHandlingData->m_nModelFlags = savedFlags;
+			thisCar->bIsDrowning = wasDrowning;
+			for (int i = 0; i < 4; ++i) {
+				thisCar->m_fWheelsSuspensionCompressionPrev[i] = savedComp[i];
+			}
+			*reinterpret_cast<bool*>(0x969152) = wasWaterCheat;
+			return;
+		} else {
+			// On land, keep wheels vertical even if local player has water drive cheat active for physics
+			*reinterpret_cast<bool*>(0x969152) = false;
+			g_origUpdateWheelMatrix(thisCar, edx, nodeIndex, flags);
+			*reinterpret_cast<bool*>(0x969152) = wasWaterCheat;
+			return;
+		}
+	}
+
+	if (g_origUpdateWheelMatrix)
+		g_origUpdateWheelMatrix(thisCar, edx, nodeIndex, flags);
+}
 
 #include <windows.h>
 #include <iostream>
@@ -681,7 +758,10 @@ static void OnGameProcess()
 				pool);
 		}
 
-		// Detect new vehicles
+		CPed* localPed = FindPlayerPed();
+		bool anyBoatVehicleNeedsWaterDrive = false;
+
+		// Detect new vehicles and synchronize state for all streamed vehicles
 		for (const auto& cur : currentVehicles) {
 			bool found = false;
 			for (const auto& old : previousVehicles) {
@@ -696,14 +776,65 @@ static void OnGameProcess()
 			}
 
 			if (IsVehiclePointerValid(cur.gameVeh)) {
-				if (cur.gameVeh->m_pHandlingData && (cur.gameVeh->m_pHandlingData->m_nModelFlags & 0x8000000) != 0) {
-					if (cur.gameVeh->bTouchingWater) {
+				// 1. Amphibious water driving for vehicles with MFLAG_IS_BOAT (0x8000000)
+				bool isWaterCapable = (cur.gameVeh->m_nVehicleSubClass == VEHICLE_AUTOMOBILE ||
+				                       cur.gameVeh->m_nVehicleSubClass == VEHICLE_MTRUCK ||
+				                       cur.gameVeh->m_nVehicleSubClass == VEHICLE_QUAD);
+				bool isBoat = isWaterCapable && cur.gameVeh->m_pHandlingData && ((cur.gameVeh->m_pHandlingData->m_nModelFlags & 0x8000000) != 0);
+
+				if (isBoat) {
+					cur.gameVeh->m_pHandlingData->m_nModelFlags = static_cast<eVehicleHandlingModelFlags>(
+						cur.gameVeh->m_pHandlingData->m_nModelFlags & ~(0x00200000 | 0x00020000)
+					);
+
+					CVector pos = cur.gameVeh->GetPosition();
+					float waterZ = 0.0f;
+					bool inWater = cur.gameVeh->bTouchingWater || cur.gameVeh->bSubmergedInWater;
+					if (!inWater && CWaterLevel::GetWaterLevelNoWaves(pos.x, pos.y, pos.z, &waterZ)) {
+						if (pos.z <= (waterZ + 1.2f)) {
+							inWater = true;
+						}
+					}
+
+					if (inWater) {
+						anyBoatVehicleNeedsWaterDrive = true;
+						cur.gameVeh->bEngineOn = true;
 						cur.gameVeh->bIsDrowning = false;
 						cur.gameVeh->bSubmergedInWater = false;
+						if (cur.gameVeh->m_pDriver != localPed) {
+							cur.gameVeh->bIsHandbrakeOn = false;
+						}
 						if (cur.gameVeh->m_pHandlingData->m_fBuoyancyConstant > 0.0f) {
 							cur.gameVeh->m_fBuoyancyConstant = cur.gameVeh->m_pHandlingData->m_fBuoyancyConstant;
 						}
 					}
+				}
+
+				// 2. Vehicle flight sync for streamed vehicles
+				bool isFlightCapable = (cur.gameVeh->m_nVehicleSubClass == VEHICLE_AUTOMOBILE ||
+				                        cur.gameVeh->m_nVehicleSubClass == VEHICLE_MTRUCK ||
+				                        cur.gameVeh->m_nVehicleSubClass == VEHICLE_QUAD ||
+				                        cur.gameVeh->m_nVehicleSubClass == VEHICLE_BIKE ||
+				                        cur.gameVeh->m_nVehicleSubClass == VEHICLE_BMX ||
+				                        cur.gameVeh->m_nVehicleSubClass == VEHICLE_BOAT);
+
+				if (cur.gameVeh->m_pHandlingData && (cur.gameVeh->m_pHandlingData->m_nModelFlags & 0x4000000) != 0) {
+					if (isFlightCapable) {
+						HandlingManager::SetVehicleFlyingState(cur.sampId, true, cur.gameVeh);
+						if (cur.gameVeh->m_nVehicleSubClass != VEHICLE_PLANE) {
+							cur.gameVeh->m_pHandlingData->m_nModelFlags = static_cast<eVehicleHandlingModelFlags>(
+								cur.gameVeh->m_pHandlingData->m_nModelFlags & ~(0x4000000 | 0x2000000)
+							);
+						}
+					} else {
+						cur.gameVeh->m_pHandlingData->m_nModelFlags = static_cast<eVehicleHandlingModelFlags>(
+							cur.gameVeh->m_pHandlingData->m_nModelFlags & ~(0x4000000 | 0x2000000)
+						);
+					}
+				}
+
+				if (HandlingManager::IsVehicleFlying(cur.gameVeh)) {
+					cur.gameVeh->bIsHandbrakeOn = false;
 				}
 
 				if (AudioExtender::GetVehicleAudio(static_cast<uint32_t>(cur.gameVeh->m_nModelIndex)).has_value()) {
@@ -742,16 +873,18 @@ static void OnGameProcess()
 		static CVehicle* s_prevLocalVehicle = nullptr;
 		static bool s_pluginEnabledWaterDrive = false;
 
-		auto* localPed = FindPlayerPed();
 		if (!localPed) {
 			s_prevLocalVehicle = nullptr;
 			if (s_pluginEnabledWaterDrive) {
-				CCheat::m_aCheatsActive[CHEAT_CARS_ON_WATER] = false;
+				SetWaterDriveCheatActive(false);
 				s_pluginEnabledWaterDrive = false;
 			}
 			return;
 		}
 		CVehicle* curVehicle = localPed->m_pVehicle;
+		if (!curVehicle) {
+			localPed->CantBeKnockedOffBike = 0;
+		}
 
 		if (curVehicle != s_prevLocalVehicle) {
 			uint16_t localId = GetLocalPlayerId();
@@ -763,30 +896,57 @@ static void OnGameProcess()
 		}
 
 		if (curVehicle && IsVehiclePointerValid(curVehicle) && curVehicle->m_pHandlingData) {
-			// Amphibious water driving for vehicles with MFLAG_IS_BOAT (0x8000000)
-			bool isBoat = (curVehicle->m_pHandlingData->m_nModelFlags & 0x8000000) != 0;
+			bool isWaterCapable = (curVehicle->m_nVehicleSubClass == VEHICLE_AUTOMOBILE ||
+			                       curVehicle->m_nVehicleSubClass == VEHICLE_MTRUCK ||
+			                       curVehicle->m_nVehicleSubClass == VEHICLE_QUAD);
+			bool isBoat = isWaterCapable && ((curVehicle->m_pHandlingData->m_nModelFlags & 0x8000000) != 0);
+
 			if (isBoat) {
-				CCheat::m_aCheatsActive[CHEAT_CARS_ON_WATER] = true;
-				s_pluginEnabledWaterDrive = true;
-				if (curVehicle->bTouchingWater) {
+				anyBoatVehicleNeedsWaterDrive = true;
+				if (curVehicle->bTouchingWater || curVehicle->bSubmergedInWater) {
 					curVehicle->bEngineOn = true;
 					curVehicle->bIsDrowning = false;
 					curVehicle->bSubmergedInWater = false;
 				}
-			} else if (s_pluginEnabledWaterDrive) {
-				CCheat::m_aCheatsActive[CHEAT_CARS_ON_WATER] = false;
-				s_pluginEnabledWaterDrive = false;
+
+				if (curVehicle->m_pDriver == localPed) {
+					// Release forced water handbrake unless player is actively pressing handbrake key
+					CPad* pad = CPad::GetPad(0);
+					bool playerHandbrake = pad && (pad->GetHandBrake() > 0);
+					curVehicle->bIsHandbrakeOn = playerHandbrake;
+				} else {
+					// Passenger should not lock handbrake on the driver's vehicle
+					curVehicle->bIsHandbrakeOn = false;
+				}
+
+				// Clear solid axle flags so GTA does not exclude rear wheels from boat mode rotation
+				curVehicle->m_pHandlingData->m_nModelFlags = static_cast<eVehicleHandlingModelFlags>(
+					curVehicle->m_pHandlingData->m_nModelFlags & ~(0x00200000 | 0x00020000)
+				);
 			}
 
 			// Vehicle flight (cars, boats, bikes) with auto-leveling & anti-inversion
-			bool isPlane = HandlingManager::IsVehicleFlying(curVehicle);
+			bool isFlightCapable = (curVehicle->m_nVehicleSubClass == VEHICLE_AUTOMOBILE ||
+			                        curVehicle->m_nVehicleSubClass == VEHICLE_MTRUCK ||
+			                        curVehicle->m_nVehicleSubClass == VEHICLE_QUAD ||
+			                        curVehicle->m_nVehicleSubClass == VEHICLE_BIKE ||
+			                        curVehicle->m_nVehicleSubClass == VEHICLE_BMX ||
+			                        curVehicle->m_nVehicleSubClass == VEHICLE_BOAT);
+
+			bool isPlane = isFlightCapable && HandlingManager::IsVehicleFlying(curVehicle);
 			if (curVehicle->m_pHandlingData && (curVehicle->m_pHandlingData->m_nModelFlags & 0x4000000) != 0) {
-				isPlane = true;
-				if (curVehicle->m_nVehicleSubClass != VEHICLE_PLANE) {
+				if (isFlightCapable) {
+					isPlane = true;
+					if (curVehicle->m_nVehicleSubClass != VEHICLE_PLANE) {
+						curVehicle->m_pHandlingData->m_nModelFlags = static_cast<eVehicleHandlingModelFlags>(
+							curVehicle->m_pHandlingData->m_nModelFlags & ~(0x4000000 | 0x2000000)
+						);
+						HandlingManager::SetVehicleFlyingState(HandlingManager::GetVehicleSAMPId(curVehicle), true, curVehicle);
+					}
+				} else {
 					curVehicle->m_pHandlingData->m_nModelFlags = static_cast<eVehicleHandlingModelFlags>(
 						curVehicle->m_pHandlingData->m_nModelFlags & ~(0x4000000 | 0x2000000)
 					);
-					HandlingManager::SetVehicleFlyingState(HandlingManager::GetVehicleSAMPId(curVehicle), true, curVehicle);
 				}
 			}
 
@@ -970,9 +1130,15 @@ static void OnGameProcess()
 			} else {
 				s_smoothSteerLR = 0.0f;
 			}
+		}
+
+		// Activate water drive cheat if ANY boat vehicle is in water, or local player is in an amphibious vehicle
+		if (anyBoatVehicleNeedsWaterDrive) {
+			SetWaterDriveCheatActive(true);
+			s_pluginEnabledWaterDrive = true;
 		} else {
 			if (s_pluginEnabledWaterDrive) {
-				CCheat::m_aCheatsActive[CHEAT_CARS_ON_WATER] = false;
+				SetWaterDriveCheatActive(false);
 				s_pluginEnabledWaterDrive = false;
 			}
 		}
@@ -1004,6 +1170,14 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD dwReason, LPVOID lpReserved)
 			ClientLog(std::format("[Client] Failed to hook CGame::Process (0x53BEE0): {}", MH_StatusToString(mhStatus)));
 		}
 
+		MH_STATUS whlStatus = MH_CreateHook(reinterpret_cast<void*>(0x6AA290), reinterpret_cast<void*>(&Hooked_UpdateWheelMatrix), reinterpret_cast<void**>(&g_origUpdateWheelMatrix));
+		if (whlStatus == MH_OK) {
+			MH_EnableHook(reinterpret_cast<void*>(0x6AA290));
+			ClientLog("[Client] CAutomobile::UpdateWheelMatrix (0x6AA290) hooked successfully via MinHook");
+		} else {
+			ClientLog(std::format("[Client] Failed to hook CAutomobile::UpdateWheelMatrix (0x6AA290): {}", MH_StatusToString(whlStatus)));
+		}
+
 		Plugn = std::make_unique<c_plugin>(hModule);
 		static bool threadSpawned = false;
 		if (!threadSpawned) {
@@ -1022,7 +1196,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD dwReason, LPVOID lpReserved)
 		break;
 	}
 	case DLL_PROCESS_DETACH: {
-		CCheat::m_aCheatsActive[CHEAT_CARS_ON_WATER] = false;
+		SetWaterDriveCheatActive(false);
 		CCheat::m_aCheatsActive[CHEAT_CARS_FLY] = false;
 		CCheat::m_aCheatsActive[CHEAT_BOATS_FLY] = false;
 
@@ -1030,6 +1204,12 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD dwReason, LPVOID lpReserved)
 			MH_DisableHook(reinterpret_cast<void*>(0x53BEE0));
 			MH_RemoveHook(reinterpret_cast<void*>(0x53BEE0));
 			orig_game_loop = nullptr;
+		}
+
+		if (g_origUpdateWheelMatrix) {
+			MH_DisableHook(reinterpret_cast<void*>(0x6AA290));
+			MH_RemoveHook(reinterpret_cast<void*>(0x6AA290));
+			g_origUpdateWheelMatrix = nullptr;
 		}
 
 		rakhook::on_receive_rpc.clear();

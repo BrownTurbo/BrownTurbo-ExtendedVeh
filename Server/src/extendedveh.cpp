@@ -324,6 +324,15 @@ void ExtendedVehCompo::onVehicleStreamIn(IVehicle& vehicle, IPlayer& player)
 	}
 }
 
+void ExtendedVehCompo::onPlayerEnterVehicle(IPlayer& player, IVehicle& vehicle, bool passenger)
+{
+	core_->logLn(LogLevel::Debug, "[ExtendedVeh] OnPlayerEnterVehicle(veh=%d, player=%d, passenger=%d)",
+		vehicle.getID(), player.getID(), passenger);
+
+	// Ensure entering players (especially passengers) receive the vehicle's latest handling
+	HandlingMgr::OnVehicleStreamIn(vehicle, player);
+}
+
 void ExtendedVehCompo::onPoolEntryCreated(IVehicle& vehicle)
 {
 	HandlingMgr::OnCreateVehicle(vehicle.getID());
