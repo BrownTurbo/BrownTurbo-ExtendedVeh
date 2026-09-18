@@ -502,32 +502,32 @@ CollisionLoader::InspectFile(
 
 bool CollisionLoader::LoadCollisionFromMemory(uint8_t* data, size_t size, CVehicleModelInfo* modelInfo)
 {
-	if (!data || size < 8)
+	if (!data || size < 32 || !modelInfo)
 		return false;
 
-	uint8_t* colData = nullptr;
+	FileBuffer fileBuf;
+	fileBuf.bytes.assign(data, data + size);
 
-	// A standard .col archive starts with "COLL" and a 4-byte total size.
-	// We must skip these 8 bytes to reach the actual COL2/COL3 model chunk.
-	if (memcmp(data, "COLL", 4) == 0) {
-		colData = data + 8;
-	}
-	// If the file is already a raw exported chunk without the archive wrapper
-	else if (memcmp(data, "COL2", 4) == 0 || memcmp(data, "COL3", 4) == 0) {
-		colData = data;
-	} else {
-		return false; // Unknown/Invalid magic header
+	Statistics stats;
+	std::vector<RecordInfo> records;
+	std::string err;
+	if (ParseFile(fileBuf, stats, records, err) != Result::Success || records.empty()) {
+		return false;
 	}
 
-	// Allocate a new collision model instance if the vehicle doesn't have one
+	const RecordInfo* pRecord = &records[0];
+	if (records.size() > 1) {
+		const RecordInfo* matched = SelectRecord(records, -1, modelInfo->m_szGameName);
+		if (matched)
+			pRecord = matched;
+	}
+
 	if (!modelInfo->m_pColModel) {
 		modelInfo->m_pColModel = new CColModel();
 	}
+	modelInfo->bDoWeOwnTheColModel = 1;
 
-	// Directly parse the chunk into our specific model, ignoring the embedded ID
-	CFileLoader::LoadCollisionModel(colData, *modelInfo->m_pColModel);
-
-	return true;
+	return LoadRecordIntoGta(fileBuf, *pRecord, *modelInfo->m_pColModel, stats, err) == Result::Success;
 }
 
 const RecordInfo*

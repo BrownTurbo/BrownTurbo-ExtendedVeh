@@ -706,11 +706,23 @@ void HandlingManager::OnVehicleStreamIn(CVehicle* pVehicle, uint16_t sampId)
 
 	// 3. Check if vehicle has model handling override
 	uint16_t modelId = static_cast<uint16_t>(pVehicle->m_nModelIndex);
+	auto* binding = CustomVehicleBindingManager::Instance().Find(sampId);
+	if (binding && binding->customModelId > 0) {
+		modelId = static_cast<uint16_t>(binding->customModelId);
+	}
 	auto modelIt = m_modelHandlings.find(modelId);
 	if (modelIt != m_modelHandlings.end()) {
 		RecalculateDerivedHandling(modelIt->second.get(), pVehicle);
 		ClientLog(std::format("[Client] OnVehicleStreamIn: Reapplied model handling for vehicle {} (model {})", sampId, modelId));
 		return;
+	} else if (binding && binding->customModelId > 0) {
+		auto* customModel = StreamingExtender::GetCustomModel(binding->customModelId);
+		if (customModel) {
+			tHandlingData* customBaseHandling = static_cast<tHandlingData*>(&gHandlingDataMgr.m_aVehicleHandling[customModel->m_nHandlingId]);
+			RecalculateDerivedHandling(customBaseHandling, pVehicle);
+			ClientLog(std::format("[Client] OnVehicleStreamIn: Reapplied custom base handling for vehicle {} (custom model {})", sampId, modelId));
+			return;
+		}
 	}
 }
 
@@ -765,7 +777,12 @@ void HandlingManager::ResetVehicleHandling(CVehicle* pVehicle)
 
 	auto it = m_customHandlings.find(pVehicle);
 	if (it != m_customHandlings.end()) {
-		unsigned int modelIndex = pVehicle->m_nModelIndex;
+		uint16_t vehicleId = GetVehicleSAMPId(pVehicle);
+		uint32_t modelIndex = pVehicle->m_nModelIndex;
+		auto* binding = CustomVehicleBindingManager::Instance().Find(vehicleId);
+		if (binding && binding->customModelId > 0) {
+			modelIndex = binding->customModelId;
+		}
 
 		auto* vehicleModelInfo = reinterpret_cast<CVehicleModelInfo*>(GetEngineModelInfo(modelIndex));
 		if (vehicleModelInfo) {
@@ -783,18 +800,38 @@ void HandlingManager::ApplyModelToVehicles(uint16_t modelId, tHandlingData* hand
 	if (std::holds_alternative<std::nullptr_t>(pool))
 		return;
 
+	if (!handling) {
+		auto modelIt = m_modelHandlings.find(modelId);
+		if (modelIt != m_modelHandlings.end()) {
+			handling = modelIt->second.get();
+		} else {
+			auto* modelInfo = reinterpret_cast<CVehicleModelInfo*>(GetEngineModelInfo(modelId));
+			if (modelInfo) {
+				handling = static_cast<tHandlingData*>(&gHandlingDataMgr.m_aVehicleHandling[modelInfo->m_nHandlingId]);
+			}
+		}
+	}
+	if (!handling)
+		return;
+
 	std::visit([&](auto&& p) {
 		using T = std::decay_t<decltype(p)>;
 		if constexpr (!std::is_same_v<T, std::nullptr_t>) {
 			if (p) {
 				for (uint16_t id = 1; id < MAX_SAMP_VEHICLES; ++id) {
 					auto* sampVeh = p->Get(id);
-					if (!sampVeh)
-						continue;
-					if (!sampVeh->m_pGameVehicle)
+					if (!sampVeh || !sampVeh->m_pGameVehicle)
 						continue;
 					CVehicle* gtaVeh = sampVeh->m_pGameVehicle;
-					if (!IsVehiclePointerValid(gtaVeh) || gtaVeh->m_nModelIndex != modelId)
+					if (!IsVehiclePointerValid(gtaVeh))
+						continue;
+
+					uint32_t currentVehModel = gtaVeh->m_nModelIndex;
+					auto* binding = CustomVehicleBindingManager::Instance().Find(id);
+					if (binding && binding->customModelId > 0) {
+						currentVehModel = binding->customModelId;
+					}
+					if (currentVehModel != modelId)
 						continue;
 
 					if (m_vehicleHandlings.find(id) == m_vehicleHandlings.end() && m_playerAppliedHandlings.find(id) == m_playerAppliedHandlings.end() && m_customHandlings.find(gtaVeh) == m_customHandlings.end()) {
@@ -824,12 +861,18 @@ void HandlingManager::RevertModelToOriginal(uint16_t modelId)
 			if (p) {
 				for (uint16_t id = 1; id < MAX_SAMP_VEHICLES; ++id) {
 					auto* sampVeh = p->Get(id);
-					if (!sampVeh)
-						continue;
-					if (!sampVeh->m_pGameVehicle)
+					if (!sampVeh || !sampVeh->m_pGameVehicle)
 						continue;
 					CVehicle* gtaVeh = sampVeh->m_pGameVehicle;
-					if (!IsVehiclePointerValid(gtaVeh) || gtaVeh->m_nModelIndex != modelId)
+					if (!IsVehiclePointerValid(gtaVeh))
+						continue;
+
+					uint32_t currentVehModel = gtaVeh->m_nModelIndex;
+					auto* binding = CustomVehicleBindingManager::Instance().Find(id);
+					if (binding && binding->customModelId > 0) {
+						currentVehModel = binding->customModelId;
+					}
+					if (currentVehModel != modelId)
 						continue;
 
 					if (m_vehicleHandlings.find(id) == m_vehicleHandlings.end() && m_playerAppliedHandlings.find(id) == m_playerAppliedHandlings.end() && m_customHandlings.find(gtaVeh) == m_customHandlings.end()) {
@@ -1194,6 +1237,10 @@ void HandlingManager::OnVehicleDestructor(CVehicle* pVehicle)
 		auto customIt = m_customHandlings.find(pVehicle);
 		if (customIt != m_customHandlings.end() && pVehicle->m_pHandlingData == customIt->second.get()) {
 			uint32_t modelIdx = pVehicle->m_nModelIndex;
+			auto* binding = CustomVehicleBindingManager::Instance().Find(vehicleId);
+			if (binding && binding->customModelId > 0) {
+				modelIdx = binding->customModelId;
+			}
 			auto* modelInfo = reinterpret_cast<CVehicleModelInfo*>(GetEngineModelInfo(modelIdx));
 			if (modelInfo) {
 				pVehicle->m_pHandlingData = static_cast<tHandlingData*>(&gHandlingDataMgr.m_aVehicleHandling[modelInfo->m_nHandlingId]);

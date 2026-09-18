@@ -27,7 +27,42 @@ private:
 	static inline std::unordered_map<uint32_t, CVehicleModelInfo*> s_customModels;
 	inline static void (*s_destructionRequeueCallback)(uint32_t) = nullptr;
 
+	using RemoveTxdSlotFn = void(__cdecl*)(int);
+	static inline safetyhook::InlineHook s_removeTxdSlotHook;
+	static inline bool s_hooksInstalled = false;
+
+	static void __cdecl Hooked_RemoveTxdSlot(int index)
+	{
+		if (index < 0)
+			return;
+		auto* pool = CTxdStore::ms_pTxdPool;
+		if (!pool || index >= pool->m_nSize || pool->IsFreeSlotAtIndex(index) || pool->GetAt(index) == nullptr) {
+			return;
+		}
+		s_removeTxdSlotHook.original<RemoveTxdSlotFn>()(index);
+	}
+
 public:
+	static void InstallHooks()
+	{
+		if (s_hooksInstalled)
+			return;
+
+		void* addr = reinterpret_cast<void*>(0x731CD0);
+		s_removeTxdSlotHook = safetyhook::create_inline(addr, reinterpret_cast<void*>(&Hooked_RemoveTxdSlot));
+		if (s_removeTxdSlotHook) {
+			s_hooksInstalled = true;
+		}
+	}
+
+	static void RestoreHooks()
+	{
+		if (!s_hooksInstalled)
+			return;
+
+		s_removeTxdSlotHook.reset();
+		s_hooksInstalled = false;
+	}
 	static CVehicleModelInfo* CreateCustomModel(const CustomVeh::Protocol::VehicleDefinition& def)
 	{
 		auto it = s_customModels.find(def.customModelId);
@@ -47,7 +82,12 @@ public:
 		memcpy(newModel, vBaseInfo, sizeof(CVehicleModelInfo));
 		newModel->m_pRwClump = nullptr;
 		newModel->m_pRwObject = nullptr;
+		newModel->m_pVehicleStruct = nullptr;
+		newModel->m_nTxdIndex = -1;
+		newModel->m_pColModel = nullptr;
+		newModel->m_nRefCount = 0;
 		newModel->SetIsLod(0);
+		newModel->bDoWeOwnTheColModel = 0;
 
 		CBaseModelInfo* handlingBase = GetEngineModelInfo(def.handlingBaseModel);
 		if (handlingBase) {
@@ -63,8 +103,7 @@ public:
 		if (!pInfo || !pClump)
 			return false;
 		if (pInfo->m_pRwClump) {
-			RpClumpDestroy(pInfo->m_pRwClump);
-			pInfo->m_pRwClump = nullptr;
+			pInfo->DeleteRwObject();
 		}
 		CVisibilityPlugins::SetupVehicleVariables(pClump);
 		pInfo->SetClump(pClump);
@@ -106,15 +145,18 @@ public:
 
 		CVehicleModelInfo* pInfo = it->second;
 		if (pInfo) {
-			if (pInfo->m_pRwClump) {
-				RpClumpDestroy(pInfo->m_pRwClump);
-				pInfo->m_pRwClump = nullptr;
-			}
-			if (pInfo->m_pColModel) {
+			pInfo->DeleteRwObject();
+			if (pInfo->bDoWeOwnTheColModel && pInfo->m_pColModel) {
+				delete pInfo->m_pColModel;
 				pInfo->m_pColModel = nullptr;
+				pInfo->bDoWeOwnTheColModel = 0;
 			}
-			if (pInfo->m_nTxdIndex != -1) {
-				CTxdStore::RemoveTxdSlot(pInfo->m_nTxdIndex);
+			pInfo->m_pColModel = nullptr;
+			if (pInfo->m_nTxdIndex >= 0) {
+				auto* pool = CTxdStore::ms_pTxdPool;
+				if (pool && pInfo->m_nTxdIndex < pool->m_nSize && !pool->IsFreeSlotAtIndex(pInfo->m_nTxdIndex) && pool->GetAt(pInfo->m_nTxdIndex) != nullptr) {
+					CTxdStore::RemoveTxdSlot(pInfo->m_nTxdIndex);
+				}
 				pInfo->m_nTxdIndex = -1;
 			}
 			delete pInfo;
@@ -127,13 +169,18 @@ public:
 	{
 		for (auto& [id, pInfo] : s_customModels) {
 			if (pInfo) {
-				if (pInfo->m_pRwClump) {
-					RpClumpDestroy(pInfo->m_pRwClump);
-					pInfo->m_pRwClump = nullptr;
+				pInfo->DeleteRwObject();
+				if (pInfo->bDoWeOwnTheColModel && pInfo->m_pColModel) {
+					delete pInfo->m_pColModel;
+					pInfo->m_pColModel = nullptr;
+					pInfo->bDoWeOwnTheColModel = 0;
 				}
 				pInfo->m_pColModel = nullptr;
-				if (pInfo->m_nTxdIndex != -1) {
-					CTxdStore::RemoveTxdSlot(pInfo->m_nTxdIndex);
+				if (pInfo->m_nTxdIndex >= 0) {
+					auto* pool = CTxdStore::ms_pTxdPool;
+					if (pool && pInfo->m_nTxdIndex < pool->m_nSize && !pool->IsFreeSlotAtIndex(pInfo->m_nTxdIndex) && pool->GetAt(pInfo->m_nTxdIndex) != nullptr) {
+						CTxdStore::RemoveTxdSlot(pInfo->m_nTxdIndex);
+					}
 					pInfo->m_nTxdIndex = -1;
 				}
 				delete pInfo;

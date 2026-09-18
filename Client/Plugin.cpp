@@ -105,6 +105,14 @@ static void(__cdecl* g_origRegisterCoronaTexture)(
 	unsigned char fadeState, float fadeSpeed, bool onlyFromBelow, bool reflectionDelay)
 	= nullptr;
 
+static void(__cdecl* g_origRegisterCoronaType)(
+	unsigned int id, CEntity* attachTo, unsigned char red, unsigned char green, unsigned char blue,
+	unsigned char alpha, CVector const& posn, float radius, float farClip, eCoronaType coronaType,
+	eCoronaFlareType flaretype, bool enableReflection, bool checkObstacles, int _param_not_used,
+	float angle, bool longDistance, float nearClip, unsigned char fadeState, float fadeSpeed,
+	bool onlyFromBelow, bool reflectionDelay)
+	= nullptr;
+
 static void(__cdecl* g_origStoreCarLightShadow)(
 	CVehicle* vehicle, int id, RwTexture* texture, CVector* posn,
 	float frontX, float frontY, float sideX, float sideY,
@@ -254,7 +262,7 @@ static void __cdecl Hooked_RegisterCoronaTexture(
 
 				g_origRegisterCoronaTexture(subId1, attachTo, red, green, blue, alpha, posL, barRadius, farClip, texture, flaretype, enableReflection, checkObstacles, _param_not_used, angle, longDistance, nearClip, fadeState, fadeSpeed, onlyFromBelow, reflectionDelay);
 				g_origRegisterCoronaTexture(subId2, attachTo, red, green, blue, alpha, posR, barRadius, farClip, texture, flaretype, enableReflection, checkObstacles, _param_not_used, angle, longDistance, nearClip, fadeState, fadeSpeed, onlyFromBelow, reflectionDelay);
-			} else if (lightSize == 3) { // LIGHTS_TALL: vertically elongated tall column
+			} else if (lightSize == 3) { // LIGHTS_TALL: vertically elongated tall column extending upwards along the pillar
 				float barRadius = radius * 0.75f;
 				g_origRegisterCoronaTexture(id, attachTo, red, green, blue, alpha, posn, barRadius, farClip, texture, flaretype, enableReflection, checkObstacles, _param_not_used, angle, longDistance, nearClip, fadeState, fadeSpeed, onlyFromBelow, reflectionDelay);
 
@@ -266,20 +274,126 @@ static void __cdecl Hooked_RegisterCoronaTexture(
 				}
 
 				float offsetDist = radius * 0.55f;
-				CVector posUp = posn + dirUp * offsetDist;
-				CVector posDn = posn - dirUp * offsetDist;
+				CVector posUp1 = posn + dirUp * (offsetDist * 0.7f);
+				CVector posUp2 = posn + dirUp * (offsetDist * 1.4f);
 
 				uint32_t subId1 = id ^ 0x24000001;
 				uint32_t subId2 = id ^ 0x48000001;
 
-				g_origRegisterCoronaTexture(subId1, attachTo, red, green, blue, alpha, posUp, barRadius, farClip, texture, flaretype, enableReflection, checkObstacles, _param_not_used, angle, longDistance, nearClip, fadeState, fadeSpeed, onlyFromBelow, reflectionDelay);
-				g_origRegisterCoronaTexture(subId2, attachTo, red, green, blue, alpha, posDn, barRadius, farClip, texture, flaretype, enableReflection, checkObstacles, _param_not_used, angle, longDistance, nearClip, fadeState, fadeSpeed, onlyFromBelow, reflectionDelay);
+				g_origRegisterCoronaTexture(subId1, attachTo, red, green, blue, alpha, posUp1, barRadius, farClip, texture, flaretype, enableReflection, checkObstacles, _param_not_used, angle, longDistance, nearClip, fadeState, fadeSpeed, onlyFromBelow, reflectionDelay);
+				g_origRegisterCoronaTexture(subId2, attachTo, red, green, blue, alpha, posUp2, barRadius, farClip, texture, flaretype, enableReflection, checkObstacles, _param_not_used, angle, longDistance, nearClip, fadeState, fadeSpeed, onlyFromBelow, reflectionDelay);
 			} else {
 				// LIGHTS_SMALL (1), LIGHTS_BIG (2), or default:
 				g_origRegisterCoronaTexture(id, attachTo, red, green, blue, alpha, posn, radius, farClip, texture, flaretype, enableReflection, checkObstacles, _param_not_used, angle, longDistance, nearClip, fadeState, fadeSpeed, onlyFromBelow, reflectionDelay);
 			}
 		} else {
 			g_origRegisterCoronaTexture(id, attachTo, red, green, blue, alpha, posn, radius, farClip, texture, flaretype, enableReflection, checkObstacles, _param_not_used, angle, longDistance, nearClip, fadeState, fadeSpeed, onlyFromBelow, reflectionDelay);
+		}
+	}
+}
+
+static void __cdecl Hooked_RegisterCoronaType(
+	unsigned int id, CEntity* attachTo, unsigned char red, unsigned char green, unsigned char blue,
+	unsigned char alpha, CVector const& posn, float radius, float farClip, eCoronaType coronaType,
+	eCoronaFlareType flaretype, bool enableReflection, bool checkObstacles, int _param_not_used,
+	float angle, bool longDistance, float nearClip, unsigned char fadeState, float fadeSpeed,
+	bool onlyFromBelow, bool reflectionDelay)
+{
+	CVehicle* pVeh = nullptr;
+	bool isFront = false;
+	bool isRear = false;
+
+	if (s_pCurrentHeadLightVehicle) {
+		pVeh = s_pCurrentHeadLightVehicle;
+		isFront = true;
+	} else if (s_pCurrentTailLightVehicle) {
+		pVeh = s_pCurrentTailLightVehicle;
+		isRear = true;
+	} else if (attachTo) {
+		uint8_t entityType = (*reinterpret_cast<const uint8_t*>(reinterpret_cast<const char*>(attachTo) + 0x36)) & 0x7;
+		if (entityType == 2) {
+			pVeh = reinterpret_cast<CVehicle*>(attachTo);
+			if (red > 100 && green < 80 && blue < 80) {
+				isRear = true;
+			} else {
+				isFront = true;
+			}
+		}
+	}
+
+	float scale = 1.0f;
+	uint8_t lightSize = 0;
+	if (pVeh && pVeh->m_pHandlingData) {
+		lightSize = isFront
+			? static_cast<uint8_t>(pVeh->m_pHandlingData->m_nFrontLights)
+			: static_cast<uint8_t>(pVeh->m_pHandlingData->m_nRearLights);
+		LightScaleConfig cfg = GetVehicleLightScaleConfig(lightSize, isRear);
+		scale = cfg.coronaScale;
+
+		static uint32_t s_lastLogType = 0;
+		uint32_t now = GetTickCount();
+		if (scale != 1.0f && (now - s_lastLogType > 2000)) {
+			s_lastLogType = now;
+			ClientLog(std::format("[Client] Corona[Type] scaled: isFront={}, isRear={}, size={}, scale={:.2f}, radius={:.2f}->{:.2f}",
+				isFront, isRear, static_cast<int>(lightSize), scale, radius, radius * scale));
+		}
+	}
+
+	radius *= scale;
+	if (scale > 1.0f) {
+		farClip *= (1.0f + (scale - 1.0f) * 0.5f);
+		if (isRear) {
+			alpha = static_cast<unsigned char>(std::min(255, static_cast<int>(alpha * 1.6f)));
+			if (red < 200)
+				red = 220;
+		}
+	} else if (scale < 1.0f) {
+		farClip *= scale;
+	}
+
+	if (g_origRegisterCoronaType) {
+		if (isRear && pVeh) {
+			if (lightSize == 0) { // LIGHTS_LONG: horizontally elongated wide bar
+				float barRadius = radius * 0.75f;
+				g_origRegisterCoronaType(id, attachTo, red, green, blue, alpha, posn, barRadius, farClip, coronaType, flaretype, enableReflection, checkObstacles, _param_not_used, angle, longDistance, nearClip, fadeState, fadeSpeed, onlyFromBelow, reflectionDelay);
+
+				CVector dirRight(1.0f, 0.0f, 0.0f);
+				if (!attachTo && pVeh->m_matrix) {
+					dirRight = pVeh->m_matrix->right;
+				}
+
+				float offsetDist = radius * 0.55f;
+				CVector posL = posn - dirRight * offsetDist;
+				CVector posR = posn + dirRight * offsetDist;
+
+				uint32_t subId1 = id ^ 0x24000001;
+				uint32_t subId2 = id ^ 0x48000001;
+
+				g_origRegisterCoronaType(subId1, attachTo, red, green, blue, alpha, posL, barRadius, farClip, coronaType, flaretype, enableReflection, checkObstacles, _param_not_used, angle, longDistance, nearClip, fadeState, fadeSpeed, onlyFromBelow, reflectionDelay);
+				g_origRegisterCoronaType(subId2, attachTo, red, green, blue, alpha, posR, barRadius, farClip, coronaType, flaretype, enableReflection, checkObstacles, _param_not_used, angle, longDistance, nearClip, fadeState, fadeSpeed, onlyFromBelow, reflectionDelay);
+			} else if (lightSize == 3) { // LIGHTS_TALL: vertically elongated tall column extending upwards
+				float barRadius = radius * 0.75f;
+				g_origRegisterCoronaType(id, attachTo, red, green, blue, alpha, posn, barRadius, farClip, coronaType, flaretype, enableReflection, checkObstacles, _param_not_used, angle, longDistance, nearClip, fadeState, fadeSpeed, onlyFromBelow, reflectionDelay);
+
+				CVector dirUp(0.0f, 0.0f, 1.0f);
+				if (!attachTo && pVeh->m_matrix) {
+					dirUp = pVeh->m_matrix->at;
+				}
+
+				float offsetDist = radius * 0.55f;
+				CVector posUp1 = posn + dirUp * (offsetDist * 0.7f);
+				CVector posUp2 = posn + dirUp * (offsetDist * 1.4f);
+
+				uint32_t subId1 = id ^ 0x24000001;
+				uint32_t subId2 = id ^ 0x48000001;
+
+				g_origRegisterCoronaType(subId1, attachTo, red, green, blue, alpha, posUp1, barRadius, farClip, coronaType, flaretype, enableReflection, checkObstacles, _param_not_used, angle, longDistance, nearClip, fadeState, fadeSpeed, onlyFromBelow, reflectionDelay);
+				g_origRegisterCoronaType(subId2, attachTo, red, green, blue, alpha, posUp2, barRadius, farClip, coronaType, flaretype, enableReflection, checkObstacles, _param_not_used, angle, longDistance, nearClip, fadeState, fadeSpeed, onlyFromBelow, reflectionDelay);
+			} else {
+				g_origRegisterCoronaType(id, attachTo, red, green, blue, alpha, posn, radius, farClip, coronaType, flaretype, enableReflection, checkObstacles, _param_not_used, angle, longDistance, nearClip, fadeState, fadeSpeed, onlyFromBelow, reflectionDelay);
+			}
+		} else {
+			g_origRegisterCoronaType(id, attachTo, red, green, blue, alpha, posn, radius, farClip, coronaType, flaretype, enableReflection, checkObstacles, _param_not_used, angle, longDistance, nearClip, fadeState, fadeSpeed, onlyFromBelow, reflectionDelay);
 		}
 	}
 }
@@ -642,13 +756,26 @@ private:
 			return;
 		}
 
-		int txdSlot = CTxdStore::AddTxdSlot(std::format("custom_veh_{}", pending->def.customModelId).c_str());
+		std::string txdName = std::format("custom_veh_{}", pending->def.customModelId);
+		int txdSlot = CTxdStore::FindTxdSlot(txdName.c_str());
+		if (txdSlot < 0) {
+			txdSlot = CTxdStore::AddTxdSlot(txdName.c_str());
+		} else {
+			CTxdStore::RemoveTxd(txdSlot);
+		}
+
+		if (txdSlot < 0) {
+			StreamingExtender::DestroyCustomModel(pending->def.customModelId);
+			SendMsg(0xFF0000, std::format("[CustomVeh] Failed to allocate TXD slot for model {}", pending->def.customModelId).c_str());
+			return;
+		}
+
+		newModel->m_nTxdIndex = txdSlot;
 
 		RwMemory txdMem { pending->txd.data(), static_cast<RwUInt32>(pending->txd.size()) };
 		RwStream* txdStream = RwStreamOpen(rwSTREAMMEMORY, rwSTREAMREAD, &txdMem);
 
 		if (!txdStream) {
-			CTxdStore::RemoveTxdSlot(txdSlot);
 			StreamingExtender::DestroyCustomModel(pending->def.customModelId);
 			SendMsg(0xFF0000, std::format("[CustomVeh] Failed to open TXD stream for model {}", pending->def.customModelId).c_str());
 			return;
@@ -656,7 +783,6 @@ private:
 
 		if (!CTxdStore::LoadTxd(txdSlot, txdStream)) {
 			RwStreamClose(txdStream, nullptr);
-			CTxdStore::RemoveTxdSlot(txdSlot);
 			StreamingExtender::DestroyCustomModel(pending->def.customModelId);
 			SendMsg(0xFF0000, std::format("[CustomVeh] Failed to load TXD for model {}", pending->def.customModelId).c_str());
 			return;
@@ -665,7 +791,6 @@ private:
 		RwStreamClose(txdStream, nullptr);
 
 		CTxdStore::AddRef(txdSlot);
-		newModel->m_nTxdIndex = txdSlot;
 
 		CTxdStore::PushCurrentTxd();
 		CTxdStore::SetCurrentTxd(txdSlot);
@@ -674,11 +799,13 @@ private:
 		RwStream* dffStream = RwStreamOpen(rwSTREAMMEMORY, rwSTREAMREAD, &dffMem);
 		if (dffStream != nullptr) {
 			RpClump* pClump = RpClumpStreamRead(dffStream);
+			RwStreamClose(dffStream, nullptr);
 			if (pClump) {
 				if (!StreamingExtender::FinalizeClump(newModel, pClump)) {
-					CTxdStore::RemoveTxdSlot(txdSlot);
+					CTxdStore::PopCurrentTxd();
 					StreamingExtender::DestroyCustomModel(pending->def.customModelId);
 					SendMsg(0xFF0000, std::format("[CustomVeh] Failed to finalize clump for model {}", pending->def.customModelId).c_str());
+					return;
 				}
 				if (pending->colState == AssetState::Ready && (pending->def.flags & CustomVeh::Protocol::HasCol) != 0) {
 					if (pending->col.empty() && !pending->colPath.empty()) {
@@ -700,15 +827,16 @@ private:
 					}
 				}
 			} else {
-				CTxdStore::RemoveTxdSlot(txdSlot);
+				CTxdStore::PopCurrentTxd();
 				StreamingExtender::DestroyCustomModel(pending->def.customModelId);
 				SendMsg(0xFF0000, std::format("[CustomVeh] Failed to parse DFF for model {}", pending->def.customModelId).c_str());
+				return;
 			}
-			RwStreamClose(dffStream, nullptr);
 		} else {
-			CTxdStore::RemoveTxdSlot(txdSlot);
+			CTxdStore::PopCurrentTxd();
 			StreamingExtender::DestroyCustomModel(pending->def.customModelId);
 			SendMsg(0xFF0000, std::format("[CustomVeh] Failed to open DFF stream for model {}", pending->def.customModelId).c_str());
+			return;
 		}
 
 		CTxdStore::PopCurrentTxd();
@@ -726,6 +854,7 @@ public:
 			if (!m_runtimeInitialized) {
 				fs::create_directories(GetSampCacheRoot());
 				AudioExtender::InstallHooks();
+				StreamingExtender::InstallHooks();
 				TransferConfig::Instance().Load();
 				ModelCache::Instance().Sweep();
 				m_runtimeInitialized = true;
@@ -736,6 +865,7 @@ public:
 			ModelTransferClient::Instance().CancelAll("client shutdown");
 			ModelTransferClient::Instance().Shutdown();
 			AudioExtender::RestoreHooks();
+			StreamingExtender::RestoreHooks();
 			StreamingExtender::ClearAllCustomModels();
 			m_runtimeInitialized = false;
 		});
@@ -1431,6 +1561,14 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD dwReason, LPVOID lpReserved)
 			ClientLog(std::format("[Client] Failed to hook CCoronas::RegisterCorona[Texture] (0x6FC180): {}", MH_StatusToString(rcTexStatus)));
 		}
 
+		MH_STATUS rcTypeStatus = MH_CreateHook(reinterpret_cast<void*>(0x6FC580), reinterpret_cast<void*>(&Hooked_RegisterCoronaType), reinterpret_cast<void**>(&g_origRegisterCoronaType));
+		if (rcTypeStatus == MH_OK) {
+			MH_EnableHook(reinterpret_cast<void*>(0x6FC580));
+			ClientLog("[Client] CCoronas::RegisterCorona[Type] (0x6FC580) hooked successfully via MinHook");
+		} else {
+			ClientLog(std::format("[Client] Failed to hook CCoronas::RegisterCorona[Type] (0x6FC580): {}", MH_StatusToString(rcTypeStatus)));
+		}
+
 		MH_STATUS clsStatus = MH_CreateHook(reinterpret_cast<void*>(0x70C500), reinterpret_cast<void*>(&Hooked_StoreCarLightShadow), reinterpret_cast<void**>(&g_origStoreCarLightShadow));
 		if (clsStatus == MH_OK) {
 			MH_EnableHook(reinterpret_cast<void*>(0x70C500));
@@ -1489,6 +1627,12 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD dwReason, LPVOID lpReserved)
 			MH_DisableHook(reinterpret_cast<void*>(0x6FC180));
 			MH_RemoveHook(reinterpret_cast<void*>(0x6FC180));
 			g_origRegisterCoronaTexture = nullptr;
+		}
+
+		if (g_origRegisterCoronaType) {
+			MH_DisableHook(reinterpret_cast<void*>(0x6FC580));
+			MH_RemoveHook(reinterpret_cast<void*>(0x6FC580));
+			g_origRegisterCoronaType = nullptr;
 		}
 
 		if (g_origStoreCarLightShadow) {

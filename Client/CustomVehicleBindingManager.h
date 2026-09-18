@@ -4,6 +4,8 @@
 #include <string>
 #include <unordered_map>
 
+class CVehicle;
+
 class CustomVehicleBindingManager {
 public:
 	struct Binding {
@@ -13,6 +15,7 @@ public:
 		uint32_t gtaModelId {};
 		int originalModelId { -1 };
 
+		CVehicle* appliedGameVehicle { nullptr };
 		bool modelApplied {};
 	};
 
@@ -29,6 +32,8 @@ public:
 	void Process();
 
 	Binding* Find(uint16_t vehicleId);
+
+	bool IsModelInUse(uint32_t customModelId);
 
 private:
 	std::mutex m_mutex;
