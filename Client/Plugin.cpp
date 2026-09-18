@@ -11,9 +11,17 @@
 #include <game_sa/CTxdStore.h>
 #include <game_sa/CVisibilityPlugins.h>
 #include <game_sa/CWaterLevel.h>
+#include <game_sa/CVehicle.h>
+#include <game_sa/CCoronas.h>
+#include <game_sa/CShadows.h>
 #include <game_sa/rw/rpworld.h>
 #include <MinHook.h>
 #include <shared/game/CVector.h>
+#include <algorithm>
+#include <format>
+#include <string>
+
+#include "utils.h"
 
 static inline void SetWaterDriveCheatActive(bool active)
 {
@@ -84,6 +92,243 @@ static void __fastcall Hooked_UpdateWheelMatrix(CAutomobile* thisCar, void* edx,
 
 	if (g_origUpdateWheelMatrix)
 		g_origUpdateWheelMatrix(thisCar, edx, nodeIndex, flags);
+}
+
+// Vehicle Headlights / Taillights Dynamic Scaling Hooks
+static bool(__fastcall* g_origDoHeadLightEffect)(CVehicle* thisVehicle, void* edx, int dummyId, CMatrix& vehicleMatrix, unsigned char lightId, unsigned char lightState) = nullptr;
+static bool(__fastcall* g_origDoTailLightEffect)(CVehicle* thisVehicle, void* edx, int lightId, CMatrix& matrix, unsigned char arg2, unsigned char arg3, unsigned int arg4, unsigned char arg5) = nullptr;
+
+static void(__cdecl* g_origRegisterCoronaTexture)(
+	unsigned int id, CEntity* attachTo, unsigned char red, unsigned char green, unsigned char blue,
+	unsigned char alpha, CVector const& posn, float radius, float farClip, RwTexture* texture, eCoronaFlareType flaretype,
+	bool enableReflection, bool checkObstacles, int _param_not_used, float angle, bool longDistance, float nearClip,
+	unsigned char fadeState, float fadeSpeed, bool onlyFromBelow, bool reflectionDelay) = nullptr;
+
+static void(__cdecl* g_origStoreCarLightShadow)(
+	CVehicle* vehicle, int id, RwTexture* texture, CVector* posn,
+	float frontX, float frontY, float sideX, float sideY,
+	unsigned char red, unsigned char green, unsigned char blue,
+	float maxViewAngle) = nullptr;
+
+static CVehicle* s_pCurrentHeadLightVehicle = nullptr;
+static CVehicle* s_pCurrentTailLightVehicle = nullptr;
+
+struct LightScaleConfig {
+	float coronaScale;
+	float shadowFrontScale;
+	float shadowSideScale;
+};
+
+static inline LightScaleConfig GetVehicleLightScaleConfig(uint8_t lightSize, bool isRear = false)
+{
+	if (isRear) {
+		switch (lightSize) {
+		case 1: // LIGHTS_SMALL: tiny pinpoint dot
+			return { 0.35f, 0.50f, 0.50f };
+		case 0: // LIGHTS_LONG: wide horizontal light bar
+			return { 1.30f, 1.00f, 1.80f };
+		case 2: // LIGHTS_BIG: massive round glowing red aura
+			return { 3.50f, 2.00f, 2.00f };
+		case 3: // LIGHTS_TALL: vertically elongated tall light strip
+			return { 1.30f, 2.00f, 1.00f };
+		default:
+			return { 1.0f, 1.0f, 1.0f };
+		}
+	}
+
+	switch (lightSize) {
+	case 1: // LIGHTS_SMALL
+		return { 0.40f, 0.45f, 0.45f };
+	case 0: // LIGHTS_LONG
+		return { 1.0f, 1.0f, 1.0f };
+	case 2: // LIGHTS_BIG
+		return { 2.40f, 1.80f, 1.80f };
+	case 3: // LIGHTS_TALL
+		return { 3.20f, 2.40f, 1.25f };
+	default:
+		return { 1.0f, 1.0f, 1.0f };
+	}
+}
+
+static bool __fastcall Hooked_DoHeadLightEffect(CVehicle* thisVehicle, void* edx, int dummyId, CMatrix& vehicleMatrix, unsigned char lightId, unsigned char lightState)
+{
+	s_pCurrentHeadLightVehicle = thisVehicle;
+	bool res = g_origDoHeadLightEffect ? g_origDoHeadLightEffect(thisVehicle, edx, dummyId, vehicleMatrix, lightId, lightState) : false;
+	s_pCurrentHeadLightVehicle = nullptr;
+	return res;
+}
+
+static bool __fastcall Hooked_DoTailLightEffect(CVehicle* thisVehicle, void* edx, int lightId, CMatrix& matrix, unsigned char arg2, unsigned char arg3, unsigned int arg4, unsigned char arg5)
+{
+	s_pCurrentTailLightVehicle = thisVehicle;
+	// In GTA SA, arg4 is bSkipCorona (1 skips corona registration for running lights, 0 draws it).
+	// arg5 is bCalculateColor (1 calculates red brightness and color, 0 drops it).
+	// Setting arg4 = 0 and arg5 = 1 forces taillights to render their red glowing lens coronas at night!
+	arg4 = 0;
+	arg5 = 1;
+	bool res = g_origDoTailLightEffect ? g_origDoTailLightEffect(thisVehicle, edx, lightId, matrix, arg2, arg3, arg4, arg5) : false;
+	s_pCurrentTailLightVehicle = nullptr;
+	return res;
+}
+
+static void __cdecl Hooked_RegisterCoronaTexture(
+	unsigned int id, CEntity* attachTo, unsigned char red, unsigned char green, unsigned char blue,
+	unsigned char alpha, CVector const& posn, float radius, float farClip, RwTexture* texture, eCoronaFlareType flaretype,
+	bool enableReflection, bool checkObstacles, int _param_not_used, float angle, bool longDistance, float nearClip,
+	unsigned char fadeState, float fadeSpeed, bool onlyFromBelow, bool reflectionDelay)
+{
+	CVehicle* pVeh = nullptr;
+	bool isFront = false;
+	bool isRear = false;
+
+	if (s_pCurrentHeadLightVehicle) {
+		pVeh = s_pCurrentHeadLightVehicle;
+		isFront = true;
+	} else if (s_pCurrentTailLightVehicle) {
+		pVeh = s_pCurrentTailLightVehicle;
+		isRear = true;
+	} else if (attachTo) {
+		// In GTA SA CEntity, byte offset 0x36 contains m_nType (lower 3 bits). 2 == ENTITY_TYPE_VEHICLE
+		uint8_t entityType = (*reinterpret_cast<const uint8_t*>(reinterpret_cast<const char*>(attachTo) + 0x36)) & 0x7;
+		if (entityType == 2) {
+			pVeh = reinterpret_cast<CVehicle*>(attachTo);
+			if (red > 100 && green < 80 && blue < 80) {
+				isRear = true;
+			} else {
+				isFront = true;
+			}
+		}
+	}
+
+	float scale = 1.0f;
+	uint8_t lightSize = 0;
+	if (pVeh && pVeh->m_pHandlingData) {
+		lightSize = isFront
+			? static_cast<uint8_t>(pVeh->m_pHandlingData->m_nFrontLights)
+			: static_cast<uint8_t>(pVeh->m_pHandlingData->m_nRearLights);
+		LightScaleConfig cfg = GetVehicleLightScaleConfig(lightSize, isRear);
+		scale = cfg.coronaScale;
+
+		static uint32_t s_lastLog = 0;
+		uint32_t now = GetTickCount();
+		if (scale != 1.0f && (now - s_lastLog > 2000)) {
+			s_lastLog = now;
+			ClientLog(std::format("[Client] Corona scaled: isFront={}, isRear={}, size={}, scale={:.2f}, radius={:.2f}->{:.2f}",
+				isFront, isRear, static_cast<int>(lightSize), scale, radius, radius * scale));
+		}
+	}
+
+	radius *= scale;
+	if (scale > 1.0f) {
+		farClip *= (1.0f + (scale - 1.0f) * 0.5f);
+		if (isRear) {
+			alpha = static_cast<unsigned char>(std::min(255, static_cast<int>(alpha * 1.6f)));
+			if (red < 200) red = 220;
+		}
+	} else if (scale < 1.0f) {
+		farClip *= scale;
+	}
+
+	if (g_origRegisterCoronaTexture) {
+		if (isRear && pVeh) {
+			if (lightSize == 0) { // LIGHTS_LONG: horizontally elongated wide bar
+				float barRadius = radius * 0.75f;
+				g_origRegisterCoronaTexture(id, attachTo, red, green, blue, alpha, posn, barRadius, farClip, texture, flaretype, enableReflection, checkObstacles, _param_not_used, angle, longDistance, nearClip, fadeState, fadeSpeed, onlyFromBelow, reflectionDelay);
+
+				// In local coordinates (when attachTo != nullptr), X is vehicle width (Right/Left).
+				// In world coordinates (when attachTo == nullptr), use vehicle matrix right vector.
+				CVector dirRight(1.0f, 0.0f, 0.0f);
+				if (!attachTo && pVeh->m_matrix) {
+					dirRight = pVeh->m_matrix->right;
+				}
+
+				float offsetDist = radius * 0.55f;
+				CVector posL = posn - dirRight * offsetDist;
+				CVector posR = posn + dirRight * offsetDist;
+
+				uint32_t subId1 = id ^ 0x24000001;
+				uint32_t subId2 = id ^ 0x48000001;
+
+				g_origRegisterCoronaTexture(subId1, attachTo, red, green, blue, alpha, posL, barRadius, farClip, texture, flaretype, enableReflection, checkObstacles, _param_not_used, angle, longDistance, nearClip, fadeState, fadeSpeed, onlyFromBelow, reflectionDelay);
+				g_origRegisterCoronaTexture(subId2, attachTo, red, green, blue, alpha, posR, barRadius, farClip, texture, flaretype, enableReflection, checkObstacles, _param_not_used, angle, longDistance, nearClip, fadeState, fadeSpeed, onlyFromBelow, reflectionDelay);
+			} else if (lightSize == 3) { // LIGHTS_TALL: vertically elongated tall column
+				float barRadius = radius * 0.75f;
+				g_origRegisterCoronaTexture(id, attachTo, red, green, blue, alpha, posn, barRadius, farClip, texture, flaretype, enableReflection, checkObstacles, _param_not_used, angle, longDistance, nearClip, fadeState, fadeSpeed, onlyFromBelow, reflectionDelay);
+
+				// In local coordinates (when attachTo != nullptr), Z is vehicle height (Up/Down).
+				// In world coordinates (when attachTo == nullptr), use vehicle matrix at (up) vector.
+				CVector dirUp(0.0f, 0.0f, 1.0f);
+				if (!attachTo && pVeh->m_matrix) {
+					dirUp = pVeh->m_matrix->at;
+				}
+
+				float offsetDist = radius * 0.55f;
+				CVector posUp = posn + dirUp * offsetDist;
+				CVector posDn = posn - dirUp * offsetDist;
+
+				uint32_t subId1 = id ^ 0x24000001;
+				uint32_t subId2 = id ^ 0x48000001;
+
+				g_origRegisterCoronaTexture(subId1, attachTo, red, green, blue, alpha, posUp, barRadius, farClip, texture, flaretype, enableReflection, checkObstacles, _param_not_used, angle, longDistance, nearClip, fadeState, fadeSpeed, onlyFromBelow, reflectionDelay);
+				g_origRegisterCoronaTexture(subId2, attachTo, red, green, blue, alpha, posDn, barRadius, farClip, texture, flaretype, enableReflection, checkObstacles, _param_not_used, angle, longDistance, nearClip, fadeState, fadeSpeed, onlyFromBelow, reflectionDelay);
+			} else {
+				// LIGHTS_SMALL (1), LIGHTS_BIG (2), or default:
+				g_origRegisterCoronaTexture(id, attachTo, red, green, blue, alpha, posn, radius, farClip, texture, flaretype, enableReflection, checkObstacles, _param_not_used, angle, longDistance, nearClip, fadeState, fadeSpeed, onlyFromBelow, reflectionDelay);
+			}
+		} else {
+			g_origRegisterCoronaTexture(id, attachTo, red, green, blue, alpha, posn, radius, farClip, texture, flaretype, enableReflection, checkObstacles, _param_not_used, angle, longDistance, nearClip, fadeState, fadeSpeed, onlyFromBelow, reflectionDelay);
+		}
+	}
+}
+
+static void __cdecl Hooked_StoreCarLightShadow(
+	CVehicle* vehicle, int id, RwTexture* texture, CVector* posn,
+	float frontX, float frontY, float sideX, float sideY,
+	unsigned char red, unsigned char green, unsigned char blue,
+	float maxViewAngle)
+{
+	CVehicle* pVeh = vehicle;
+	if (!pVeh) {
+		if (s_pCurrentHeadLightVehicle) pVeh = s_pCurrentHeadLightVehicle;
+		else if (s_pCurrentTailLightVehicle) pVeh = s_pCurrentTailLightVehicle;
+	}
+
+	CVector modifiedPosn = posn ? *posn : CVector(0.0f, 0.0f, 0.0f);
+
+	if (pVeh && pVeh->m_pHandlingData) {
+		bool isFront = (s_pCurrentHeadLightVehicle != nullptr) || !(red > 100 && green < 50 && blue < 50);
+		uint8_t lightSize = isFront
+			? static_cast<uint8_t>(pVeh->m_pHandlingData->m_nFrontLights)
+			: static_cast<uint8_t>(pVeh->m_pHandlingData->m_nRearLights);
+
+		LightScaleConfig cfg = GetVehicleLightScaleConfig(lightSize, !isFront);
+
+		// Because posn is the center of the shadow quad, scaling frontX/frontY expands the shadow symmetrically
+		// both forward and backward. To prevent the light from spilling backward under the vehicle chassis,
+		// shift the center forward by front * (scale - 1.0f). This keeps the back edge firmly pinned at the bumper!
+		float shiftFactor = cfg.shadowFrontScale - 1.0f;
+		if (posn) {
+			modifiedPosn.x += frontX * shiftFactor;
+			modifiedPosn.y += frontY * shiftFactor;
+		}
+
+		frontX *= cfg.shadowFrontScale;
+		frontY *= cfg.shadowFrontScale;
+		sideX *= cfg.shadowSideScale;
+		sideY *= cfg.shadowSideScale;
+
+		static uint32_t s_lastShadowLog = 0;
+		uint32_t now = GetTickCount();
+		if ((cfg.shadowFrontScale != 1.0f || cfg.shadowSideScale != 1.0f) && (now - s_lastShadowLog > 2000)) {
+			s_lastShadowLog = now;
+			ClientLog(std::format("[Client] CarLightShadow scaled: isFront={}, size={}, frontScale={:.2f}, sideScale={:.2f}",
+				isFront, static_cast<int>(lightSize), cfg.shadowFrontScale, cfg.shadowSideScale));
+		}
+	}
+
+	if (g_origStoreCarLightShadow) {
+		g_origStoreCarLightShadow(vehicle, id, texture, posn ? &modifiedPosn : nullptr, frontX, frontY, sideX, sideY, red, green, blue, maxViewAngle);
+	}
 }
 
 #include <windows.h>
@@ -1157,6 +1402,38 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD dwReason, LPVOID lpReserved)
 			ClientLog(std::format("[Client] Failed to hook CAutomobile::UpdateWheelMatrix (0x6AA290): {}", MH_StatusToString(whlStatus)));
 		}
 
+		MH_STATUS hlStatus = MH_CreateHook(reinterpret_cast<void*>(0x6E0A50), reinterpret_cast<void*>(&Hooked_DoHeadLightEffect), reinterpret_cast<void**>(&g_origDoHeadLightEffect));
+		if (hlStatus == MH_OK) {
+			MH_EnableHook(reinterpret_cast<void*>(0x6E0A50));
+			ClientLog("[Client] CVehicle::DoHeadLightEffect (0x6E0A50) hooked successfully via MinHook");
+		} else {
+			ClientLog(std::format("[Client] Failed to hook CVehicle::DoHeadLightEffect (0x6E0A50): {}", MH_StatusToString(hlStatus)));
+		}
+
+		MH_STATUS tlStatus = MH_CreateHook(reinterpret_cast<void*>(0x6E1780), reinterpret_cast<void*>(&Hooked_DoTailLightEffect), reinterpret_cast<void**>(&g_origDoTailLightEffect));
+		if (tlStatus == MH_OK) {
+			MH_EnableHook(reinterpret_cast<void*>(0x6E1780));
+			ClientLog("[Client] CVehicle::DoTailLightEffect (0x6E1780) hooked successfully via MinHook");
+		} else {
+			ClientLog(std::format("[Client] Failed to hook CVehicle::DoTailLightEffect (0x6E1780): {}", MH_StatusToString(tlStatus)));
+		}
+
+		MH_STATUS rcTexStatus = MH_CreateHook(reinterpret_cast<void*>(0x6FC180), reinterpret_cast<void*>(&Hooked_RegisterCoronaTexture), reinterpret_cast<void**>(&g_origRegisterCoronaTexture));
+		if (rcTexStatus == MH_OK) {
+			MH_EnableHook(reinterpret_cast<void*>(0x6FC180));
+			ClientLog("[Client] CCoronas::RegisterCorona[Texture] (0x6FC180) hooked successfully via MinHook");
+		} else {
+			ClientLog(std::format("[Client] Failed to hook CCoronas::RegisterCorona[Texture] (0x6FC180): {}", MH_StatusToString(rcTexStatus)));
+		}
+
+		MH_STATUS clsStatus = MH_CreateHook(reinterpret_cast<void*>(0x70C500), reinterpret_cast<void*>(&Hooked_StoreCarLightShadow), reinterpret_cast<void**>(&g_origStoreCarLightShadow));
+		if (clsStatus == MH_OK) {
+			MH_EnableHook(reinterpret_cast<void*>(0x70C500));
+			ClientLog("[Client] CShadows::StoreCarLightShadow (0x70C500) hooked successfully via MinHook");
+		} else {
+			ClientLog(std::format("[Client] Failed to hook CShadows::StoreCarLightShadow (0x70C500): {}", MH_StatusToString(clsStatus)));
+		}
+
 		Plugn = std::make_unique<c_plugin>(hModule);
 		static bool threadSpawned = false;
 		if (!threadSpawned) {
@@ -1189,6 +1466,30 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD dwReason, LPVOID lpReserved)
 			MH_DisableHook(reinterpret_cast<void*>(0x6AA290));
 			MH_RemoveHook(reinterpret_cast<void*>(0x6AA290));
 			g_origUpdateWheelMatrix = nullptr;
+		}
+
+		if (g_origDoHeadLightEffect) {
+			MH_DisableHook(reinterpret_cast<void*>(0x6E0A50));
+			MH_RemoveHook(reinterpret_cast<void*>(0x6E0A50));
+			g_origDoHeadLightEffect = nullptr;
+		}
+
+		if (g_origDoTailLightEffect) {
+			MH_DisableHook(reinterpret_cast<void*>(0x6E1780));
+			MH_RemoveHook(reinterpret_cast<void*>(0x6E1780));
+			g_origDoTailLightEffect = nullptr;
+		}
+
+		if (g_origRegisterCoronaTexture) {
+			MH_DisableHook(reinterpret_cast<void*>(0x6FC180));
+			MH_RemoveHook(reinterpret_cast<void*>(0x6FC180));
+			g_origRegisterCoronaTexture = nullptr;
+		}
+
+		if (g_origStoreCarLightShadow) {
+			MH_DisableHook(reinterpret_cast<void*>(0x70C500));
+			MH_RemoveHook(reinterpret_cast<void*>(0x70C500));
+			g_origStoreCarLightShadow = nullptr;
 		}
 
 		rakhook::on_receive_rpc.clear();

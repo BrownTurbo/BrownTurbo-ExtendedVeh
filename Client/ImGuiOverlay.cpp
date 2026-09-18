@@ -2,8 +2,8 @@
 
 HWND hWnd;
 WNDPROC oWndProc = nullptr;
-VTableHookManager* g_vmtHooks = nullptr;
-_Present oPresent = nullptr;
+void* g_targetEndScene = nullptr;
+void* g_targetReset = nullptr;
 _EndScene oEndScene = nullptr;
 _Reset oReset = nullptr;
 std::atomic<bool> g_shutdownRequested = false;
@@ -127,19 +127,17 @@ HRESULT __stdcall hkReset(IDirect3DDevice9* pDevice, D3DPRESENT_PARAMETERS* pp)
 	return result;
 }
 
-HRESULT __stdcall hkPresent(IDirect3DDevice9* pDevice, const RECT* pSourceRect, const RECT* pDestRect, HWND hDestWindowOverride, const RGNDATA* pDirtyRegion)
-{
-	return oPresent(pDevice, pSourceRect, pDestRect, hDestWindowOverride, pDirtyRegion);
-}
-
 LRESULT CALLBACK hkWndProc(HWND hwnd, UINT u_msg, WPARAM w_param, LPARAM l_param)
 {
-	if (imGuiOn && ImGui_ImplWin32_WndProcHandler(hwnd, u_msg, w_param, l_param)) {
-		return true;
-	}
-
 	if (u_msg == WM_KEYDOWN && static_cast<int>(w_param) == TransferConfig::Instance().toggleKey)
 		g_windowVisible = !g_windowVisible;
+
+	if (g_windowVisible && imGuiOn && ImGui_ImplWin32_WndProcHandler(hwnd, u_msg, w_param, l_param)) {
+		if (oWndProc) {
+			CallWindowProcA(oWndProc, hwnd, u_msg, w_param, l_param);
+		}
+		return true;
+	}
 
 	if (oWndProc) {
 		return CallWindowProcA(oWndProc, hwnd, u_msg, w_param, l_param);
@@ -196,17 +194,26 @@ HRESULT __stdcall hkEndScene(IDirect3DDevice9* pDevice)
 		imGuiOn = true;
 	}
 
-	if (imGuiOn) {
+	if (imGuiOn && g_windowVisible) {
+		IDirect3DStateBlock9* stateBlock = nullptr;
+		if (pDevice->CreateStateBlock(D3DSBT_ALL, &stateBlock) == D3D_OK && stateBlock) {
+			stateBlock->Capture();
+		}
+
 		ImGui_ImplDX9_NewFrame();
 		ImGui_ImplWin32_NewFrame();
 		ImGui::NewFrame();
 
-		if (g_windowVisible)
-			RenderTransferWindow();
+		RenderTransferWindow();
 
 		ImGui::EndFrame();
 		ImGui::Render();
 		ImGui_ImplDX9_RenderDrawData(ImGui::GetDrawData());
+
+		if (stateBlock) {
+			stateBlock->Apply();
+			stateBlock->Release();
+		}
 	}
 	return oEndScene ? oEndScene(pDevice) : D3DERR_INVALIDCALL;
 }
@@ -221,12 +228,26 @@ void BackgroundInitializationWorker()
 	}
 
 	if (deviceAddr != 0) {
+		MH_Initialize();
 		void** vTableDevice = *(void***)(deviceAddr);
-		g_vmtHooks = new VTableHookManager(vTableDevice, D3D_VFUNCTIONS);
-		oPresent = (_Present)g_vmtHooks->Hook(PRESENT_INDEX, (void*)hkPresent);
-		oEndScene = (_EndScene)g_vmtHooks->Hook(ENDSCENE_INDEX, (void*)hkEndScene);
-		oReset = (_Reset)g_vmtHooks->Hook(RESET_INDEX, (void*)hkReset);
-		ClientLog("[Client] Direct3D 9 hooks installed successfully (hkEndScene/hkPresent/hkReset)");
+		g_targetEndScene = vTableDevice[ENDSCENE_INDEX];
+		g_targetReset = vTableDevice[RESET_INDEX];
+
+		MH_STATUS statusES = MH_CreateHook(g_targetEndScene, reinterpret_cast<void*>(&hkEndScene), reinterpret_cast<void**>(&oEndScene));
+		if (statusES == MH_OK) {
+			MH_EnableHook(g_targetEndScene);
+		} else {
+			ClientLog(std::format("[Client] Failed to hook EndScene via MinHook: {}", MH_StatusToString(statusES)));
+		}
+
+		MH_STATUS statusReset = MH_CreateHook(g_targetReset, reinterpret_cast<void*>(&hkReset), reinterpret_cast<void**>(&oReset));
+		if (statusReset == MH_OK) {
+			MH_EnableHook(g_targetReset);
+		} else {
+			ClientLog(std::format("[Client] Failed to hook Reset via MinHook: {}", MH_StatusToString(statusReset)));
+		}
+
+		ClientLog("[Client] Direct3D 9 hooks installed successfully via MinHook (hkEndScene/hkReset)");
 	} else {
 		ClientLog("[Client] Failed to hook Direct3D 9: DEVICE_PTR was 0 after timeout");
 	}
@@ -247,12 +268,18 @@ void c_plugin::shutdown_for_unload()
 	if (g_initializationThread.joinable())
 		g_initializationThread.join();
 
-	if (g_vmtHooks) {
-		g_vmtHooks->Unhook(PRESENT_INDEX);
-		g_vmtHooks->Unhook(RESET_INDEX);
-		g_vmtHooks->Unhook(ENDSCENE_INDEX);
-		delete g_vmtHooks;
-		g_vmtHooks = nullptr;
+	if (g_targetEndScene) {
+		MH_DisableHook(g_targetEndScene);
+		MH_RemoveHook(g_targetEndScene);
+		g_targetEndScene = nullptr;
+		oEndScene = nullptr;
+	}
+
+	if (g_targetReset) {
+		MH_DisableHook(g_targetReset);
+		MH_RemoveHook(g_targetReset);
+		g_targetReset = nullptr;
+		oReset = nullptr;
 	}
 
 	if (hWnd && g_wndProcHooked && oWndProc) {
