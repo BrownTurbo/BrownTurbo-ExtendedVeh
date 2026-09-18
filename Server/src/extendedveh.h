@@ -79,6 +79,7 @@ public:
 
 	void onVehicleStreamIn(IVehicle& vehicle, IPlayer& player) override;
 	void onPlayerEnterVehicle(IPlayer& player, IVehicle& vehicle, bool passenger) override;
+	bool onVehiclePaintJob(IPlayer& player, IVehicle& vehicle, int paintJob) override;
 
 	void onPoolEntryCreated(IVehicle& vehicle) override;
 

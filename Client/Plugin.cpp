@@ -2,10 +2,12 @@
 #include <plugin_sa.h>
 
 #include <game_sa/CAutomobile.h>
+#include <game_sa/CAudioEngine.h>
 #include <game_sa/CBike.h>
 #include <game_sa/CCheat.h>
 #include <game_sa/CCoronas.h>
 #include <game_sa/CHandlingDataMgr.h>
+#include <game_sa/Fx_c.h>
 #include <game_sa/CModelInfo.h>
 #include <game_sa/CPad.h>
 #include <game_sa/CShadows.h>
@@ -18,10 +20,34 @@
 #include <MinHook.h>
 #include <algorithm>
 #include <format>
+#include <intrin.h>
 #include <shared/game/CVector.h>
 #include <string>
 
 #include "utils.h"
+#include "CustomVehicleBindingManager.h"
+#include "streamingextender.hpp"
+
+struct DummySwapGuard {
+	CVehicleModelInfo* m_baseModel;
+	CVehicleModelInfo::CVehicleStructure* m_savedStruct;
+
+	DummySwapGuard(CVehicleModelInfo* baseModel, CVehicleModelInfo* customModel)
+		: m_baseModel(baseModel), m_savedStruct(nullptr)
+	{
+		if (m_baseModel && customModel && customModel->m_pVehicleStruct) {
+			m_savedStruct = m_baseModel->m_pVehicleStruct;
+			m_baseModel->m_pVehicleStruct = customModel->m_pVehicleStruct;
+		}
+	}
+
+	~DummySwapGuard()
+	{
+		if (m_baseModel && m_savedStruct) {
+			m_baseModel->m_pVehicleStruct = m_savedStruct;
+		}
+	}
+};
 
 static inline void SetWaterDriveCheatActive(bool active)
 {
@@ -92,6 +118,44 @@ static void __fastcall Hooked_UpdateWheelMatrix(CAutomobile* thisCar, void* edx,
 
 	if (g_origUpdateWheelMatrix)
 		g_origUpdateWheelMatrix(thisCar, edx, nodeIndex, flags);
+
+	if (nodeIndex >= CAR_WHEEL_RF && nodeIndex <= CAR_WHEEL_LB && thisCar->m_aCarNodes[nodeIndex]) {
+		auto* binding = CustomVehicleBindingManager::Instance().FindByVehicle(thisCar);
+		if (binding) {
+			bool isFront = (nodeIndex == CAR_WHEEL_RF || nodeIndex == CAR_WHEEL_LF);
+			bool isRight = (nodeIndex == CAR_WHEEL_RF || nodeIndex == CAR_WHEEL_RM || nodeIndex == CAR_WHEEL_RB);
+			float scale = isFront ? binding->frontWheelScale : binding->rearWheelScale;
+			float camber = isFront ? binding->frontCamber : binding->rearCamber;
+			float trackWidth = isFront ? binding->frontTrackWidth : binding->rearTrackWidth;
+
+			RwFrame* wheelFrame = thisCar->m_aCarNodes[nodeIndex];
+			if (wheelFrame) {
+				bool modified = false;
+
+				if (trackWidth != 0.0f) {
+					wheelFrame->modelling.pos.x += isRight ? trackWidth : -trackWidth;
+					modified = true;
+				}
+
+				if (camber != 0.0f) {
+					float angle = isRight ? camber : -camber;
+					RwV3d yAxis = { 0.0f, 1.0f, 0.0f };
+					RwMatrixRotate(&wheelFrame->modelling, &yAxis, angle, rwCOMBINEPRECONCAT);
+					modified = true;
+				}
+
+				if (scale != 1.0f && scale > 0.01f) {
+					RwV3d scaleVec = { scale, scale, scale };
+					RwMatrixScale(&wheelFrame->modelling, &scaleVec, rwCOMBINEPRECONCAT);
+					modified = true;
+				}
+
+				if (modified) {
+					RwFrameUpdateObjects(wheelFrame);
+				}
+			}
+		}
+	}
 }
 
 // Vehicle Headlights / Taillights Dynamic Scaling Hooks
@@ -129,8 +193,48 @@ struct LightScaleConfig {
 	float shadowSideScale;
 };
 
-static inline LightScaleConfig GetVehicleLightScaleConfig(uint8_t lightSize, bool isRear = false)
+static inline bool IsTwoWheeler(const CVehicle* pVeh)
 {
+	if (!pVeh)
+		return false;
+	return pVeh->m_nVehicleSubClass == VEHICLE_BIKE ||
+	       pVeh->m_nVehicleSubClass == VEHICLE_BMX ||
+	       pVeh->m_nVehicleSubClass == VEHICLE_QUAD;
+}
+
+static inline LightScaleConfig GetVehicleLightScaleConfig(uint8_t lightSize, bool isRear = false, bool isTwoWheeler = false)
+{
+	if (isTwoWheeler) {
+		if (isRear) {
+			switch (lightSize) {
+			case 1: // LIGHTS_SMALL: compact sharp LED tail dot
+				return { 0.35f, 0.60f, 0.50f };
+			case 0: // LIGHTS_LONG: sleek, refined horizontal tail glow (contained within bike tail width)
+				return { 0.70f, 0.70f, 0.75f };
+			case 2: // LIGHTS_BIG: bold classic round cruiser/cafe-racer tail lamp
+				return { 1.30f, 1.10f, 1.00f };
+			case 3: // LIGHTS_TALL: vertical fender LED strip (contained on fender, no sky towering)
+				return { 0.85f, 1.10f, 0.60f };
+			default:
+				return { 0.70f, 0.70f, 0.70f };
+			}
+		}
+
+		// Front lights on two-wheelers:
+		switch (lightSize) {
+		case 1: // LIGHTS_SMALL: pinpoint projector / modern laser LED dot
+			return { 0.35f, 1.25f, 0.45f };
+		case 0: // LIGHTS_LONG: sleek horizontal sports bike headlight
+			return { 0.85f, 1.35f, 1.10f };
+		case 2: // LIGHTS_BIG: classic round 7" chopper / cafe racer headlight
+			return { 1.80f, 2.10f, 1.30f };
+		case 3: // LIGHTS_TALL: vertical dual-projector streetfighter headlight (KTM / MT-09 style)
+			return { 0.95f, 2.20f, 0.75f };
+		default:
+			return { 0.85f, 1.00f, 0.80f };
+		}
+	}
+
 	if (isRear) {
 		switch (lightSize) {
 		case 1: // LIGHTS_SMALL: tiny pinpoint dot
@@ -147,14 +251,14 @@ static inline LightScaleConfig GetVehicleLightScaleConfig(uint8_t lightSize, boo
 	}
 
 	switch (lightSize) {
-	case 1: // LIGHTS_SMALL
-		return { 0.40f, 0.45f, 0.45f };
-	case 0: // LIGHTS_LONG
-		return { 1.0f, 1.0f, 1.0f };
-	case 2: // LIGHTS_BIG
-		return { 2.40f, 1.80f, 1.80f };
-	case 3: // LIGHTS_TALL
-		return { 3.20f, 2.40f, 1.25f };
+	case 1: // LIGHTS_SMALL: compact high-intensity projector / laser LED dot
+		return { 0.35f, 1.30f, 0.50f };
+	case 0: // LIGHTS_LONG: wide horizontal light bar / sleek horizontal blade
+		return { 1.35f, 1.35f, 2.50f };
+	case 2: // LIGHTS_BIG: colossal round rally spotlight / giant floodlight
+		return { 3.60f, 2.60f, 2.30f };
+	case 3: // LIGHTS_TALL: vertical light column / stacked vertical projector array
+		return { 1.35f, 2.90f, 0.90f };
 	default:
 		return { 1.0f, 1.0f, 1.0f };
 	}
@@ -163,7 +267,25 @@ static inline LightScaleConfig GetVehicleLightScaleConfig(uint8_t lightSize, boo
 static bool __fastcall Hooked_DoHeadLightEffect(CVehicle* thisVehicle, void* edx, int dummyId, CMatrix& vehicleMatrix, unsigned char lightId, unsigned char lightState)
 {
 	s_pCurrentHeadLightVehicle = thisVehicle;
-	bool res = g_origDoHeadLightEffect ? g_origDoHeadLightEffect(thisVehicle, edx, dummyId, vehicleMatrix, lightId, lightState) : false;
+	bool res = false;
+
+	if (thisVehicle && IsVehiclePointerValid(thisVehicle)) {
+		auto* binding = CustomVehicleBindingManager::Instance().FindByVehicle(thisVehicle);
+		if (binding) {
+			auto* customModel = StreamingExtender::GetCustomModel(binding->customModelId);
+			auto* baseModel = reinterpret_cast<CVehicleModelInfo*>(CModelInfo::GetModelInfo(thisVehicle->m_nModelIndex));
+			DummySwapGuard guard(baseModel, customModel);
+			if (g_origDoHeadLightEffect) {
+				res = g_origDoHeadLightEffect(thisVehicle, edx, dummyId, vehicleMatrix, lightId, lightState);
+			}
+			s_pCurrentHeadLightVehicle = nullptr;
+			return res;
+		}
+	}
+
+	if (g_origDoHeadLightEffect) {
+		res = g_origDoHeadLightEffect(thisVehicle, edx, dummyId, vehicleMatrix, lightId, lightState);
+	}
 	s_pCurrentHeadLightVehicle = nullptr;
 	return res;
 }
@@ -176,9 +298,277 @@ static bool __fastcall Hooked_DoTailLightEffect(CVehicle* thisVehicle, void* edx
 	// Setting arg4 = 0 and arg5 = 1 forces taillights to render their red glowing lens coronas at night!
 	arg4 = 0;
 	arg5 = 1;
-	bool res = g_origDoTailLightEffect ? g_origDoTailLightEffect(thisVehicle, edx, lightId, matrix, arg2, arg3, arg4, arg5) : false;
+	bool res = false;
+
+	if (thisVehicle && IsVehiclePointerValid(thisVehicle)) {
+		auto* binding = CustomVehicleBindingManager::Instance().FindByVehicle(thisVehicle);
+		if (binding) {
+			auto* customModel = StreamingExtender::GetCustomModel(binding->customModelId);
+			auto* baseModel = reinterpret_cast<CVehicleModelInfo*>(CModelInfo::GetModelInfo(thisVehicle->m_nModelIndex));
+			DummySwapGuard guard(baseModel, customModel);
+			if (g_origDoTailLightEffect) {
+				res = g_origDoTailLightEffect(thisVehicle, edx, lightId, matrix, arg2, arg3, arg4, arg5);
+			}
+			s_pCurrentTailLightVehicle = nullptr;
+			return res;
+		}
+	}
+
+	if (g_origDoTailLightEffect) {
+		res = g_origDoTailLightEffect(thisVehicle, edx, lightId, matrix, arg2, arg3, arg4, arg5);
+	}
 	s_pCurrentTailLightVehicle = nullptr;
 	return res;
+}
+
+static void(__fastcall* g_origAddExhaustParticles)(CVehicle* thisVehicle, void* edx) = nullptr;
+
+static void __fastcall Hooked_AddExhaustParticles(CVehicle* thisVehicle, void* edx)
+{
+	if (!thisVehicle || !IsVehiclePointerValid(thisVehicle)) {
+		if (g_origAddExhaustParticles)
+			g_origAddExhaustParticles(thisVehicle, edx);
+		return;
+	}
+
+	auto* binding = CustomVehicleBindingManager::Instance().FindByVehicle(thisVehicle);
+	if (binding) {
+		auto* customModel = StreamingExtender::GetCustomModel(binding->customModelId);
+		auto* baseModel = reinterpret_cast<CVehicleModelInfo*>(CModelInfo::GetModelInfo(thisVehicle->m_nModelIndex));
+		DummySwapGuard guard(baseModel, customModel);
+
+		if (g_origAddExhaustParticles)
+			g_origAddExhaustParticles(thisVehicle, edx);
+
+		if (binding->backfireEnabled && thisVehicle->m_nVehicleSubClass == VEHICLE_AUTOMOBILE) {
+			auto* car = reinterpret_cast<CAutomobile*>(thisVehicle);
+			float speed = car->m_vecMoveSpeed.Magnitude();
+			if (speed > 0.15f && car->m_fGasPedal < 0.05f && car->m_nCurrentGear > 1) {
+				uint32_t now = GetTickCount();
+				if (now - binding->lastBackfireTick > (400u + (static_cast<uint32_t>(thisVehicle->m_nRandomSeed) % 500u))) {
+					binding->lastBackfireTick = now;
+
+					CVector exhaustLocal(-0.6f, -2.0f, 0.0f);
+					if (customModel && customModel->m_pVehicleStruct) {
+						// EXHAUST is VehicleDummies::EXHAUST = index 6 (byte offset 0x48).
+						// Index 2 would be LIGHT_FRONT_SECONDARY, causing backfire at headlight pos!
+						// Verified: CMultiplayerSA_VehicleDummies.cpp line 116: "EXHAUST is at index 6, offset = 6*12 = 0x48"
+						exhaustLocal = customModel->m_pVehicleStruct->m_avDummyPos[6];
+					}
+					// CMatrix has no TransformPoint() — use operator*(CMatrix, CVector) from CMatrix.h:95
+					// which performs: pos + right*v.x + forward*v.y + up*v.z (i.e. local-to-world transform)
+					CVector exhaustWorld = thisVehicle->GetMatrix() * exhaustLocal;
+					CVector backwardDir = -thisVehicle->GetMatrix().GetForward();
+
+					CCoronas::RegisterCorona(
+						reinterpret_cast<uintptr_t>(thisVehicle) + 0x20,
+						nullptr,
+						255, 140, 40, 255,
+						exhaustWorld,
+						0.45f,
+						35.0f,
+						CORONATYPE_SHINYSTAR,
+						FLARETYPE_NONE,
+						false, false, 0, 0.0f, false, 0.05f, 0, 15.0f, false, false
+					);
+
+					CVector rightDir = thisVehicle->GetMatrix().GetRight();
+					g_fx.AddSparks(exhaustWorld, backwardDir, 3.5f, 15, rightDir, 0, 0.25f, 0.2f);
+
+					AudioEngine.ReportMissionAudioEvent(static_cast<eAudioEvents>(1131), &exhaustWorld);
+				}
+			}
+		}
+		return;
+	}
+
+	if (g_origAddExhaustParticles)
+		g_origAddExhaustParticles(thisVehicle, edx);
+}
+
+// Hooked_SetRemap: Intercepts CVehicle::SetRemap (0x6D0C00) to support SA-MP ChangeVehiclePaintjob on custom vehicles
+static void(__fastcall* g_origSetRemap)(CVehicle* thisVehicle, void* edx, int remapIndex) = nullptr;
+
+static void __fastcall Hooked_SetRemap(CVehicle* thisVehicle, void* edx, int remapIndex)
+{
+	if (!thisVehicle || !IsVehiclePointerValid(thisVehicle)) {
+		if (g_origSetRemap)
+			g_origSetRemap(thisVehicle, edx, remapIndex);
+		return;
+	}
+
+	auto* binding = CustomVehicleBindingManager::Instance().FindByVehicle(thisVehicle);
+	if (binding) {
+		binding->paintjobIndex = remapIndex;
+		CustomVehicleBindingManager::Instance().ApplyPaintjobToVehicle(thisVehicle, remapIndex);
+		return;
+	}
+
+	if (g_origSetRemap)
+		g_origSetRemap(thisVehicle, edx, remapIndex);
+}
+
+// Hooked_GetFrameFromId: Intercepts CClumpModelInfo::GetFrameFromId (0x4C53C0)
+// Prevents crash when attaching upgrades to custom vehicle models that lack certain dummy/component frames (MTA:SA parity CMultiplayerSA_CrashFixHacks.cpp:2430)
+static RwFrame*(__cdecl* g_origGetFrameFromId)(RpClump* clump, int id) = nullptr;
+
+static RwFrame* __cdecl Hooked_GetFrameFromId(RpClump* clump, int id)
+{
+	if (!clump)
+		return nullptr;
+
+	RwFrame* frame = g_origGetFrameFromId ? g_origGetFrameFromId(clump, id) : nullptr;
+	if (frame)
+		return frame;
+
+	// Ignore callers that legitimately expect and handle NULL (e.g., optional window frames)
+	uintptr_t caller = reinterpret_cast<uintptr_t>(_ReturnAddress());
+	if (caller == 0x6D308F      // CVehicle::SetWindowOpenFlag
+		|| caller == 0x6D30BF   // CVehicle::ClearWindowOpenFlag
+		|| caller == 0x4C7DDE   // CVehicleModelInfo::GetOriginalCompPosition
+		|| caller == 0x4C96BD)  // CVehicleModelInfo::CreateInstance
+	{
+		return nullptr;
+	}
+
+	// For custom models with missing dummy/component frames during upgrade installation
+	// (0x6DFA61 CVehicle::AddUpgrade, 0x6D3847 CVehicle::AddReplacementUpgrade, etc.):
+	// Search for nearest valid frame ID to prevent immediate NULL-pointer crash in RwFrameAddChild
+	for (int i = 2; i < 40; ++i) {
+		int newId = id + (i / 2) * ((i & 1) ? -1 : 1);
+		if (newId >= 0 && g_origGetFrameFromId) {
+			RwFrame* fallbackFrame = g_origGetFrameFromId(clump, newId);
+			if (fallbackFrame)
+				return fallbackFrame;
+		}
+	}
+
+	// Root frame as safe ultimate fallback
+	if (clump->object.parent) {
+		return reinterpret_cast<RwFrame*>(clump->object.parent);
+	}
+
+	return nullptr;
+}
+
+// Hooked_AddUpgrade: Intercepts CVehicle::AddUpgrade (0x6DFA20) to support SA-MP AddVehicleComponent with custom vehicle dummy positions
+static void(__fastcall* g_origAddUpgrade)(CVehicle* thisVehicle, void* edx, int modelIndex, int upgradeIndex) = nullptr;
+
+static void __fastcall Hooked_AddUpgrade(CVehicle* thisVehicle, void* edx, int modelIndex, int upgradeIndex)
+{
+	if (!thisVehicle || !IsVehiclePointerValid(thisVehicle) || !thisVehicle->m_pRwClump) {
+		return;
+	}
+
+	auto* binding = CustomVehicleBindingManager::Instance().FindByVehicle(thisVehicle);
+	if (binding) {
+		auto* customModel = StreamingExtender::GetCustomModel(binding->customModelId);
+		auto* baseModel = reinterpret_cast<CVehicleModelInfo*>(CModelInfo::GetModelInfo(thisVehicle->m_nModelIndex));
+		DummySwapGuard guard(baseModel, customModel);
+		if (g_origAddUpgrade)
+			g_origAddUpgrade(thisVehicle, edx, modelIndex, upgradeIndex);
+		return;
+	}
+
+	if (g_origAddUpgrade)
+		g_origAddUpgrade(thisVehicle, edx, modelIndex, upgradeIndex);
+}
+
+// Hooked_RemoveUpgrade: Intercepts CVehicle::RemoveUpgrade (0x6D3630) to support SA-MP RemoveVehicleComponent
+static void(__fastcall* g_origRemoveUpgrade)(CVehicle* thisVehicle, void* edx, int upgradeIndex) = nullptr;
+
+static void __fastcall Hooked_RemoveUpgrade(CVehicle* thisVehicle, void* edx, int upgradeIndex)
+{
+	if (!thisVehicle || !IsVehiclePointerValid(thisVehicle) || !thisVehicle->m_pRwClump) {
+		return;
+	}
+
+	auto* binding = CustomVehicleBindingManager::Instance().FindByVehicle(thisVehicle);
+	if (binding) {
+		auto* customModel = StreamingExtender::GetCustomModel(binding->customModelId);
+		auto* baseModel = reinterpret_cast<CVehicleModelInfo*>(CModelInfo::GetModelInfo(thisVehicle->m_nModelIndex));
+		DummySwapGuard guard(baseModel, customModel);
+		if (g_origRemoveUpgrade)
+			g_origRemoveUpgrade(thisVehicle, edx, upgradeIndex);
+		return;
+	}
+
+	if (g_origRemoveUpgrade)
+		g_origRemoveUpgrade(thisVehicle, edx, upgradeIndex);
+}
+
+// Hooked_DoesVehicleUseSiren: Intercepts CVehicle::DoesVehicleUseSiren (0x6D8470) to support emergency sirens on custom vehicles
+static bool(__fastcall* g_origDoesVehicleUseSiren)(CVehicle* thisVehicle, void* edx) = nullptr;
+
+static bool __fastcall Hooked_DoesVehicleUseSiren(CVehicle* thisVehicle, void* edx)
+{
+	if (!thisVehicle || !IsVehiclePointerValid(thisVehicle)) {
+		if (g_origDoesVehicleUseSiren)
+			return g_origDoesVehicleUseSiren(thisVehicle, edx);
+		return false;
+	}
+
+	auto* binding = CustomVehicleBindingManager::Instance().FindByVehicle(thisVehicle);
+	if (binding && binding->hasCustomSiren) {
+		return true; // Siren capability is present on this custom vehicle
+	}
+
+	auto audioDef = AudioExtender::GetVehicleAudio(static_cast<uint32_t>(thisVehicle->m_nModelIndex));
+	if (audioDef && audioDef->sirenType >= 0) {
+		return (audioDef->sirenType > 0);
+	}
+
+	if (g_origDoesVehicleUseSiren)
+		return g_origDoesVehicleUseSiren(thisVehicle, edx);
+
+	return false;
+}
+
+// Hooked_GetVehicleSirenType: Hooks CAEVehicleAudioEntity::GetVehicleSirenType at 0x4F62A0
+// Controls whether siren sound plays (*pSirenActive) and whether it's wail vs police (*pSirenType).
+typedef void(__fastcall* GetVehicleSirenType_t)(CAEVehicleAudioEntity* thisEntity, void* edx, bool* pSirenActive, bool* pSirenType, cVehicleParams* pParams);
+static GetVehicleSirenType_t g_origGetVehicleSirenType = nullptr;
+
+static void __fastcall Hooked_GetVehicleSirenType(CAEVehicleAudioEntity* thisEntity, void* edx, bool* pSirenActive, bool* pSirenType, cVehicleParams* pParams)
+{
+	if (!thisEntity || !pParams || !pParams->m_pVehicle) {
+		if (pSirenActive) *pSirenActive = false;
+		if (pSirenType) *pSirenType = false;
+		return;
+	}
+
+	CVehicle* pVehicle = pParams->m_pVehicle;
+
+	if (thisEntity->m_bSoundsStopped) {
+		if (pSirenActive) *pSirenActive = false;
+		return;
+	}
+
+	auto* binding = CustomVehicleBindingManager::Instance().FindByVehicle(pVehicle);
+	if (binding && binding->hasCustomSiren) {
+		if (!binding->sirenEnabled || binding->sirenType == 0) {
+			if (pSirenActive) *pSirenActive = false;
+			return;
+		}
+		if (pSirenActive) *pSirenActive = true;
+		if (pSirenType) *pSirenType = (binding->sirenType == 2);
+		return;
+	}
+
+	auto audioDef = AudioExtender::GetVehicleAudio(static_cast<uint32_t>(pVehicle->m_nModelIndex));
+	if (audioDef && audioDef->sirenType >= 0) {
+		if (audioDef->sirenType == 0 || !pVehicle->bSirenOrAlarm) {
+			if (pSirenActive) *pSirenActive = false;
+			return;
+		}
+		if (pSirenActive) *pSirenActive = true;
+		if (pSirenType) *pSirenType = (audioDef->sirenType == 2);
+		return;
+	}
+
+	if (g_origGetVehicleSirenType) {
+		g_origGetVehicleSirenType(thisEntity, edx, pSirenActive, pSirenType, pParams);
+	}
 }
 
 static void __cdecl Hooked_RegisterCoronaTexture(
@@ -212,19 +602,20 @@ static void __cdecl Hooked_RegisterCoronaTexture(
 
 	float scale = 1.0f;
 	uint8_t lightSize = 0;
+	bool isBike = IsTwoWheeler(pVeh);
 	if (pVeh && pVeh->m_pHandlingData) {
 		lightSize = isFront
 			? static_cast<uint8_t>(pVeh->m_pHandlingData->m_nFrontLights)
 			: static_cast<uint8_t>(pVeh->m_pHandlingData->m_nRearLights);
-		LightScaleConfig cfg = GetVehicleLightScaleConfig(lightSize, isRear);
+		LightScaleConfig cfg = GetVehicleLightScaleConfig(lightSize, isRear, isBike);
 		scale = cfg.coronaScale;
 
 		static uint32_t s_lastLog = 0;
 		uint32_t now = GetTickCount();
 		if (scale != 1.0f && (now - s_lastLog > 2000)) {
 			s_lastLog = now;
-			ClientLog(std::format("[Client] Corona scaled: isFront={}, isRear={}, size={}, scale={:.2f}, radius={:.2f}->{:.2f}",
-				isFront, isRear, static_cast<int>(lightSize), scale, radius, radius * scale));
+			ClientLog(std::format("[Client] Corona scaled: isFront={}, isRear={}, isBike={}, size={}, scale={:.2f}, radius={:.2f}->{:.2f}",
+				isFront, isRear, isBike, static_cast<int>(lightSize), scale, radius, radius * scale));
 		}
 	}
 
@@ -232,16 +623,23 @@ static void __cdecl Hooked_RegisterCoronaTexture(
 	if (scale > 1.0f) {
 		farClip *= (1.0f + (scale - 1.0f) * 0.5f);
 		if (isRear) {
-			alpha = static_cast<unsigned char>(std::min(255, static_cast<int>(alpha * 1.6f)));
+			alpha = static_cast<unsigned char>(std::min(255, static_cast<int>(alpha * (isBike ? 1.25f : 1.6f))));
 			if (red < 200)
 				red = 220;
+		} else if (isFront) {
+			if (lightSize == 2) { // LIGHTS_BIG: blinding intensity & far reach
+				alpha = 255;
+				farClip *= 1.4f;
+			} else {
+				alpha = static_cast<unsigned char>(std::min(255, static_cast<int>(alpha * 1.25f)));
+			}
 		}
 	} else if (scale < 1.0f) {
 		farClip *= scale;
 	}
 
 	if (g_origRegisterCoronaTexture) {
-		if (isRear && pVeh) {
+		if (pVeh && (isFront || isRear) && !isBike) {
 			if (lightSize == 0) { // LIGHTS_LONG: horizontally elongated wide bar
 				float barRadius = radius * 0.75f;
 				g_origRegisterCoronaTexture(id, attachTo, red, green, blue, alpha, posn, barRadius, farClip, texture, flaretype, enableReflection, checkObstacles, _param_not_used, angle, longDistance, nearClip, fadeState, fadeSpeed, onlyFromBelow, reflectionDelay);
@@ -249,39 +647,57 @@ static void __cdecl Hooked_RegisterCoronaTexture(
 				// In local coordinates (when attachTo != nullptr), X is vehicle width (Right/Left).
 				// In world coordinates (when attachTo == nullptr), use vehicle matrix right vector.
 				CVector dirRight(1.0f, 0.0f, 0.0f);
-				if (!attachTo && pVeh->m_matrix) {
-					dirRight = pVeh->m_matrix->right;
+				if (!attachTo) {
+					if (pVeh->m_matrix) {
+						dirRight = pVeh->m_matrix->right;
+					} else {
+						dirRight = pVeh->GetRightDirection();
+					}
 				}
 
-				float offsetDist = radius * 0.55f;
+				float offsetDist = isFront ? (radius * 0.65f) : (radius * 0.55f);
 				CVector posL = posn - dirRight * offsetDist;
 				CVector posR = posn + dirRight * offsetDist;
 
 				uint32_t subId1 = id ^ 0x24000001;
 				uint32_t subId2 = id ^ 0x48000001;
+				eCoronaFlareType subFlare = isFront ? FLARETYPE_NONE : flaretype;
 
-				g_origRegisterCoronaTexture(subId1, attachTo, red, green, blue, alpha, posL, barRadius, farClip, texture, flaretype, enableReflection, checkObstacles, _param_not_used, angle, longDistance, nearClip, fadeState, fadeSpeed, onlyFromBelow, reflectionDelay);
-				g_origRegisterCoronaTexture(subId2, attachTo, red, green, blue, alpha, posR, barRadius, farClip, texture, flaretype, enableReflection, checkObstacles, _param_not_used, angle, longDistance, nearClip, fadeState, fadeSpeed, onlyFromBelow, reflectionDelay);
-			} else if (lightSize == 3) { // LIGHTS_TALL: vertically elongated tall column extending upwards along the pillar
+				g_origRegisterCoronaTexture(subId1, attachTo, red, green, blue, alpha, posL, barRadius, farClip, texture, subFlare, enableReflection, checkObstacles, _param_not_used, angle, longDistance, nearClip, fadeState, fadeSpeed, onlyFromBelow, reflectionDelay);
+				g_origRegisterCoronaTexture(subId2, attachTo, red, green, blue, alpha, posR, barRadius, farClip, texture, subFlare, enableReflection, checkObstacles, _param_not_used, angle, longDistance, nearClip, fadeState, fadeSpeed, onlyFromBelow, reflectionDelay);
+			} else if (lightSize == 3) { // LIGHTS_TALL: vertically elongated tall column / blade
 				float barRadius = radius * 0.75f;
 				g_origRegisterCoronaTexture(id, attachTo, red, green, blue, alpha, posn, barRadius, farClip, texture, flaretype, enableReflection, checkObstacles, _param_not_used, angle, longDistance, nearClip, fadeState, fadeSpeed, onlyFromBelow, reflectionDelay);
 
 				// In local coordinates (when attachTo != nullptr), Z is vehicle height (Up/Down).
 				// In world coordinates (when attachTo == nullptr), use vehicle matrix at (up) vector.
 				CVector dirUp(0.0f, 0.0f, 1.0f);
-				if (!attachTo && pVeh->m_matrix) {
-					dirUp = pVeh->m_matrix->at;
+				if (!attachTo) {
+					if (pVeh->m_matrix) {
+						dirUp = pVeh->m_matrix->at;
+					} else {
+						dirUp = pVeh->GetTopDirection();
+					}
 				}
 
-				float offsetDist = radius * 0.55f;
-				CVector posUp1 = posn + dirUp * (offsetDist * 0.7f);
-				CVector posUp2 = posn + dirUp * (offsetDist * 1.4f);
+				float offsetDist = radius * 0.65f;
+				CVector pos1, pos2;
+				if (isFront) {
+					// Front headlights: center dummy with symmetrical vertical expansion above and below
+					pos1 = posn + dirUp * (offsetDist * 0.85f);
+					pos2 = posn - dirUp * (offsetDist * 0.85f);
+				} else {
+					// Rear taillights: extend upwards along the rear pillar
+					pos1 = posn + dirUp * (offsetDist * 0.70f);
+					pos2 = posn + dirUp * (offsetDist * 1.40f);
+				}
 
 				uint32_t subId1 = id ^ 0x24000001;
 				uint32_t subId2 = id ^ 0x48000001;
+				eCoronaFlareType subFlare = isFront ? FLARETYPE_NONE : flaretype;
 
-				g_origRegisterCoronaTexture(subId1, attachTo, red, green, blue, alpha, posUp1, barRadius, farClip, texture, flaretype, enableReflection, checkObstacles, _param_not_used, angle, longDistance, nearClip, fadeState, fadeSpeed, onlyFromBelow, reflectionDelay);
-				g_origRegisterCoronaTexture(subId2, attachTo, red, green, blue, alpha, posUp2, barRadius, farClip, texture, flaretype, enableReflection, checkObstacles, _param_not_used, angle, longDistance, nearClip, fadeState, fadeSpeed, onlyFromBelow, reflectionDelay);
+				g_origRegisterCoronaTexture(subId1, attachTo, red, green, blue, alpha, pos1, barRadius, farClip, texture, subFlare, enableReflection, checkObstacles, _param_not_used, angle, longDistance, nearClip, fadeState, fadeSpeed, onlyFromBelow, reflectionDelay);
+				g_origRegisterCoronaTexture(subId2, attachTo, red, green, blue, alpha, pos2, barRadius, farClip, texture, subFlare, enableReflection, checkObstacles, _param_not_used, angle, longDistance, nearClip, fadeState, fadeSpeed, onlyFromBelow, reflectionDelay);
 			} else {
 				// LIGHTS_SMALL (1), LIGHTS_BIG (2), or default:
 				g_origRegisterCoronaTexture(id, attachTo, red, green, blue, alpha, posn, radius, farClip, texture, flaretype, enableReflection, checkObstacles, _param_not_used, angle, longDistance, nearClip, fadeState, fadeSpeed, onlyFromBelow, reflectionDelay);
@@ -323,19 +739,20 @@ static void __cdecl Hooked_RegisterCoronaType(
 
 	float scale = 1.0f;
 	uint8_t lightSize = 0;
+	bool isBike = IsTwoWheeler(pVeh);
 	if (pVeh && pVeh->m_pHandlingData) {
 		lightSize = isFront
 			? static_cast<uint8_t>(pVeh->m_pHandlingData->m_nFrontLights)
 			: static_cast<uint8_t>(pVeh->m_pHandlingData->m_nRearLights);
-		LightScaleConfig cfg = GetVehicleLightScaleConfig(lightSize, isRear);
+		LightScaleConfig cfg = GetVehicleLightScaleConfig(lightSize, isRear, isBike);
 		scale = cfg.coronaScale;
 
 		static uint32_t s_lastLogType = 0;
 		uint32_t now = GetTickCount();
 		if (scale != 1.0f && (now - s_lastLogType > 2000)) {
 			s_lastLogType = now;
-			ClientLog(std::format("[Client] Corona[Type] scaled: isFront={}, isRear={}, size={}, scale={:.2f}, radius={:.2f}->{:.2f}",
-				isFront, isRear, static_cast<int>(lightSize), scale, radius, radius * scale));
+			ClientLog(std::format("[Client] Corona[Type] scaled: isFront={}, isRear={}, isBike={}, size={}, scale={:.2f}, radius={:.2f}->{:.2f}",
+				isFront, isRear, isBike, static_cast<int>(lightSize), scale, radius, radius * scale));
 		}
 	}
 
@@ -343,53 +760,79 @@ static void __cdecl Hooked_RegisterCoronaType(
 	if (scale > 1.0f) {
 		farClip *= (1.0f + (scale - 1.0f) * 0.5f);
 		if (isRear) {
-			alpha = static_cast<unsigned char>(std::min(255, static_cast<int>(alpha * 1.6f)));
+			alpha = static_cast<unsigned char>(std::min(255, static_cast<int>(alpha * (isBike ? 1.25f : 1.6f))));
 			if (red < 200)
 				red = 220;
+		} else if (isFront) {
+			if (lightSize == 2) { // LIGHTS_BIG: blinding intensity & far reach
+				alpha = 255;
+				farClip *= 1.4f;
+			} else {
+				alpha = static_cast<unsigned char>(std::min(255, static_cast<int>(alpha * 1.25f)));
+			}
 		}
 	} else if (scale < 1.0f) {
 		farClip *= scale;
 	}
 
 	if (g_origRegisterCoronaType) {
-		if (isRear && pVeh) {
+		if (pVeh && (isFront || isRear) && !isBike) {
 			if (lightSize == 0) { // LIGHTS_LONG: horizontally elongated wide bar
 				float barRadius = radius * 0.75f;
 				g_origRegisterCoronaType(id, attachTo, red, green, blue, alpha, posn, barRadius, farClip, coronaType, flaretype, enableReflection, checkObstacles, _param_not_used, angle, longDistance, nearClip, fadeState, fadeSpeed, onlyFromBelow, reflectionDelay);
 
 				CVector dirRight(1.0f, 0.0f, 0.0f);
-				if (!attachTo && pVeh->m_matrix) {
-					dirRight = pVeh->m_matrix->right;
+				if (!attachTo) {
+					if (pVeh->m_matrix) {
+						dirRight = pVeh->m_matrix->right;
+					} else {
+						dirRight = pVeh->GetRightDirection();
+					}
 				}
 
-				float offsetDist = radius * 0.55f;
+				float offsetDist = isFront ? (radius * 0.65f) : (radius * 0.55f);
 				CVector posL = posn - dirRight * offsetDist;
 				CVector posR = posn + dirRight * offsetDist;
 
 				uint32_t subId1 = id ^ 0x24000001;
 				uint32_t subId2 = id ^ 0x48000001;
+				eCoronaFlareType subFlare = isFront ? FLARETYPE_NONE : flaretype;
 
-				g_origRegisterCoronaType(subId1, attachTo, red, green, blue, alpha, posL, barRadius, farClip, coronaType, flaretype, enableReflection, checkObstacles, _param_not_used, angle, longDistance, nearClip, fadeState, fadeSpeed, onlyFromBelow, reflectionDelay);
-				g_origRegisterCoronaType(subId2, attachTo, red, green, blue, alpha, posR, barRadius, farClip, coronaType, flaretype, enableReflection, checkObstacles, _param_not_used, angle, longDistance, nearClip, fadeState, fadeSpeed, onlyFromBelow, reflectionDelay);
-			} else if (lightSize == 3) { // LIGHTS_TALL: vertically elongated tall column extending upwards
+				g_origRegisterCoronaType(subId1, attachTo, red, green, blue, alpha, posL, barRadius, farClip, coronaType, subFlare, enableReflection, checkObstacles, _param_not_used, angle, longDistance, nearClip, fadeState, fadeSpeed, onlyFromBelow, reflectionDelay);
+				g_origRegisterCoronaType(subId2, attachTo, red, green, blue, alpha, posR, barRadius, farClip, coronaType, subFlare, enableReflection, checkObstacles, _param_not_used, angle, longDistance, nearClip, fadeState, fadeSpeed, onlyFromBelow, reflectionDelay);
+			} else if (lightSize == 3) { // LIGHTS_TALL: vertically elongated tall column / blade
 				float barRadius = radius * 0.75f;
 				g_origRegisterCoronaType(id, attachTo, red, green, blue, alpha, posn, barRadius, farClip, coronaType, flaretype, enableReflection, checkObstacles, _param_not_used, angle, longDistance, nearClip, fadeState, fadeSpeed, onlyFromBelow, reflectionDelay);
 
 				CVector dirUp(0.0f, 0.0f, 1.0f);
-				if (!attachTo && pVeh->m_matrix) {
-					dirUp = pVeh->m_matrix->at;
+				if (!attachTo) {
+					if (pVeh->m_matrix) {
+						dirUp = pVeh->m_matrix->at;
+					} else {
+						dirUp = pVeh->GetTopDirection();
+					}
 				}
 
-				float offsetDist = radius * 0.55f;
-				CVector posUp1 = posn + dirUp * (offsetDist * 0.7f);
-				CVector posUp2 = posn + dirUp * (offsetDist * 1.4f);
+				float offsetDist = radius * 0.65f;
+				CVector pos1, pos2;
+				if (isFront) {
+					// Front headlights: center dummy with symmetrical vertical expansion above and below
+					pos1 = posn + dirUp * (offsetDist * 0.85f);
+					pos2 = posn - dirUp * (offsetDist * 0.85f);
+				} else {
+					// Rear taillights: extend upwards along the rear pillar
+					pos1 = posn + dirUp * (offsetDist * 0.70f);
+					pos2 = posn + dirUp * (offsetDist * 1.40f);
+				}
 
 				uint32_t subId1 = id ^ 0x24000001;
 				uint32_t subId2 = id ^ 0x48000001;
+				eCoronaFlareType subFlare = isFront ? FLARETYPE_NONE : flaretype;
 
-				g_origRegisterCoronaType(subId1, attachTo, red, green, blue, alpha, posUp1, barRadius, farClip, coronaType, flaretype, enableReflection, checkObstacles, _param_not_used, angle, longDistance, nearClip, fadeState, fadeSpeed, onlyFromBelow, reflectionDelay);
-				g_origRegisterCoronaType(subId2, attachTo, red, green, blue, alpha, posUp2, barRadius, farClip, coronaType, flaretype, enableReflection, checkObstacles, _param_not_used, angle, longDistance, nearClip, fadeState, fadeSpeed, onlyFromBelow, reflectionDelay);
+				g_origRegisterCoronaType(subId1, attachTo, red, green, blue, alpha, pos1, barRadius, farClip, coronaType, subFlare, enableReflection, checkObstacles, _param_not_used, angle, longDistance, nearClip, fadeState, fadeSpeed, onlyFromBelow, reflectionDelay);
+				g_origRegisterCoronaType(subId2, attachTo, red, green, blue, alpha, pos2, barRadius, farClip, coronaType, subFlare, enableReflection, checkObstacles, _param_not_used, angle, longDistance, nearClip, fadeState, fadeSpeed, onlyFromBelow, reflectionDelay);
 			} else {
+				// LIGHTS_SMALL (1), LIGHTS_BIG (2), or default:
 				g_origRegisterCoronaType(id, attachTo, red, green, blue, alpha, posn, radius, farClip, coronaType, flaretype, enableReflection, checkObstacles, _param_not_used, angle, longDistance, nearClip, fadeState, fadeSpeed, onlyFromBelow, reflectionDelay);
 			}
 		} else {
@@ -416,11 +859,12 @@ static void __cdecl Hooked_StoreCarLightShadow(
 
 	if (pVeh && pVeh->m_pHandlingData) {
 		bool isFront = (s_pCurrentHeadLightVehicle != nullptr) || !(red > 100 && green < 50 && blue < 50);
+		bool isBike = IsTwoWheeler(pVeh);
 		uint8_t lightSize = isFront
 			? static_cast<uint8_t>(pVeh->m_pHandlingData->m_nFrontLights)
 			: static_cast<uint8_t>(pVeh->m_pHandlingData->m_nRearLights);
 
-		LightScaleConfig cfg = GetVehicleLightScaleConfig(lightSize, !isFront);
+		LightScaleConfig cfg = GetVehicleLightScaleConfig(lightSize, !isFront, isBike);
 
 		// Because posn is the center of the shadow quad, scaling frontX/frontY expands the shadow symmetrically
 		// both forward and backward. To prevent the light from spilling backward under the vehicle chassis,
@@ -446,7 +890,8 @@ static void __cdecl Hooked_StoreCarLightShadow(
 	}
 
 	if (g_origStoreCarLightShadow) {
-		g_origStoreCarLightShadow(vehicle, id, texture, posn ? &modifiedPosn : nullptr, frontX, frontY, sideX, sideY, red, green, blue, maxViewAngle);
+		CVehicle* passVeh = vehicle ? vehicle : pVeh;
+		g_origStoreCarLightShadow(passVeh, id, texture, posn ? &modifiedPosn : nullptr, frontX, frontY, sideX, sideY, red, green, blue, maxViewAngle);
 	}
 }
 
@@ -1093,6 +1538,119 @@ static void OnGameProcess()
 		_customVehInstance.ProcessPendingDefinitions();
 		_customVehInstance.ProcessCompletedDownloads();
 		CustomVehicleBindingManager::Instance().Process();
+
+		// Render visual effects (neon underglow and emergency roof strobes) for custom vehicles
+		CustomVehicleBindingManager::Instance().ForEachBinding([](uint16_t vehId, const CustomVehicleBindingManager::Binding& b) {
+			if (!b.modelApplied || !b.appliedGameVehicle || !IsVehiclePointerValid(b.appliedGameVehicle))
+				return;
+
+			CVehicle* pVeh = b.appliedGameVehicle;
+			// 'bIsVisible' is a bitfield in CEntity — no m_ prefix (CEntity.h:36)
+			if (!pVeh->m_pRwObject || !pVeh->bIsVisible)
+				return;
+
+			CMatrixLink& mat = pVeh->GetMatrix();
+
+			// 1. Render chassis neon underglow if enabled
+			if (b.neonEnabled) {
+				// CMatrix has no TransformPoint(); use operator*(CMatrix, CVector) from CMatrix.h:95
+				// which performs: mat.pos + mat.right*v.x + mat.forward*v.y + mat.up*v.z
+				CVector worldLeft  = mat * CVector(-0.85f, 0.0f, -0.35f);
+				CVector worldRight = mat * CVector( 0.85f, 0.0f, -0.35f);
+
+				// Left chassis neon corona
+				CCoronas::RegisterCorona(
+					reinterpret_cast<uintptr_t>(pVeh) + 0x10,
+					nullptr,
+					b.neonR, b.neonG, b.neonB, 255,
+					worldLeft,
+					b.neonSize,
+					45.0f,
+					CORONATYPE_SHINYSTAR,
+					FLARETYPE_NONE,
+					false, false, 0, 0.0f, false, 0.15f, 0, 15.0f, false, false
+				);
+
+				// Right chassis neon corona
+				CCoronas::RegisterCorona(
+					reinterpret_cast<uintptr_t>(pVeh) + 0x11,
+					nullptr,
+					b.neonR, b.neonG, b.neonB, 255,
+					worldRight,
+					b.neonSize,
+					45.0f,
+					CORONATYPE_SHINYSTAR,
+					FLARETYPE_NONE,
+					false, false, 0, 0.0f, false, 0.15f, 0, 15.0f, false, false
+				);
+
+				// Chassis ambient ground shadow
+				if (gpShadowCarTex) {
+					CVector chassisBottom = mat * CVector(0.0f, 0.0f, -0.45f);   // operator*(CMatrix, CVector) — local-to-world
+					CVector forward = mat.GetForward();
+					CVector right = mat.GetRight();
+					CShadows::StoreCarLightShadow(
+						pVeh,
+						static_cast<int>(reinterpret_cast<uintptr_t>(pVeh) + 0x12),
+						gpShadowCarTex,
+						&chassisBottom,
+						forward.x * 2.2f, forward.y * 2.2f,
+						right.x * 1.3f, right.y * 1.3f,
+						b.neonR, b.neonG, b.neonB,
+						5.0f
+					);
+				}
+			}
+
+			// 2. Render visual emergency strobe lights if siren is enabled
+			if (b.hasCustomSiren && b.sirenEnabled) {
+				int modelId = pVeh->m_nModelIndex;
+				bool nativeSirenModel = (modelId == 596 || modelId == 597 || modelId == 598 || modelId == 599 ||
+					modelId == 490 || modelId == 601 || modelId == 528 || modelId == 407 || modelId == 416 ||
+					modelId == 427 || modelId == 544 || modelId == 523);
+
+				// For models without native GTA:SA siren coronas, render alternating Red/Blue roof strobes
+				if (!nativeSirenModel) {
+					uint32_t phase = (GetTickCount() / 160) % 2;
+
+					float roofZ = 0.75f;
+					auto* col = pVeh->GetColModel();
+					if (col) {
+						roofZ = col->m_boundBox.m_vecMax.z + 0.08f;
+					}
+
+					CVector roofLeft  = mat * CVector(-0.35f, 0.0f, roofZ);
+					CVector roofRight = mat * CVector( 0.35f, 0.0f, roofZ);
+
+					if (phase == 0) {
+						CCoronas::RegisterCorona(
+							reinterpret_cast<uintptr_t>(pVeh) + 0x30,
+							nullptr,
+							255, 20, 20, 255,
+							roofLeft,
+							0.75f,
+							65.0f,
+							CORONATYPE_SHINYSTAR,
+							FLARETYPE_NONE,
+							false, false, 0, 0.0f, false, 0.15f, 0, 15.0f, false, false
+						);
+					} else {
+						CCoronas::RegisterCorona(
+							reinterpret_cast<uintptr_t>(pVeh) + 0x31,
+							nullptr,
+							20, 80, 255, 255,
+							roofRight,
+							0.75f,
+							65.0f,
+							CORONATYPE_SHINYSTAR,
+							FLARETYPE_NONE,
+							false, false, 0, 0.0f, false, 0.15f, 0, 15.0f, false, false
+						);
+					}
+				}
+			}
+		});
+
 		_customVehInstance.ProcessPendingDestructions();
 		_customVehInstance.ProcessPendingClearAll();
 
@@ -1553,6 +2111,14 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD dwReason, LPVOID lpReserved)
 			ClientLog(std::format("[Client] Failed to hook CVehicle::DoTailLightEffect (0x6E1780): {}", MH_StatusToString(tlStatus)));
 		}
 
+		MH_STATUS exhStatus = MH_CreateHook(reinterpret_cast<void*>(0x6DE240), reinterpret_cast<void*>(&Hooked_AddExhaustParticles), reinterpret_cast<void**>(&g_origAddExhaustParticles));
+		if (exhStatus == MH_OK) {
+			MH_EnableHook(reinterpret_cast<void*>(0x6DE240));
+			ClientLog("[Client] CVehicle::AddExhaustParticles (0x6DE240) hooked successfully via MinHook");
+		} else {
+			ClientLog(std::format("[Client] Failed to hook CVehicle::AddExhaustParticles (0x6DE240): {}", MH_StatusToString(exhStatus)));
+		}
+
 		MH_STATUS rcTexStatus = MH_CreateHook(reinterpret_cast<void*>(0x6FC180), reinterpret_cast<void*>(&Hooked_RegisterCoronaTexture), reinterpret_cast<void**>(&g_origRegisterCoronaTexture));
 		if (rcTexStatus == MH_OK) {
 			MH_EnableHook(reinterpret_cast<void*>(0x6FC180));
@@ -1577,6 +2143,54 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD dwReason, LPVOID lpReserved)
 			ClientLog(std::format("[Client] Failed to hook CShadows::StoreCarLightShadow (0x70C500): {}", MH_StatusToString(clsStatus)));
 		}
 
+		MH_STATUS remapStatus = MH_CreateHook(reinterpret_cast<void*>(0x6D0C00), reinterpret_cast<void*>(&Hooked_SetRemap), reinterpret_cast<void**>(&g_origSetRemap));
+		if (remapStatus == MH_OK) {
+			MH_EnableHook(reinterpret_cast<void*>(0x6D0C00));
+			ClientLog("[Client] CVehicle::SetRemap (0x6D0C00) hooked successfully via MinHook");
+		} else {
+			ClientLog(std::format("[Client] Failed to hook CVehicle::SetRemap (0x6D0C00): {}", MH_StatusToString(remapStatus)));
+		}
+
+		MH_STATUS addUpgStatus = MH_CreateHook(reinterpret_cast<void*>(0x6DFA20), reinterpret_cast<void*>(&Hooked_AddUpgrade), reinterpret_cast<void**>(&g_origAddUpgrade));
+		if (addUpgStatus == MH_OK) {
+			MH_EnableHook(reinterpret_cast<void*>(0x6DFA20));
+			ClientLog("[Client] CVehicle::AddUpgrade (0x6DFA20) hooked successfully via MinHook");
+		} else {
+			ClientLog(std::format("[Client] Failed to hook CVehicle::AddUpgrade (0x6DFA20): {}", MH_StatusToString(addUpgStatus)));
+		}
+
+		MH_STATUS remUpgStatus = MH_CreateHook(reinterpret_cast<void*>(0x6D3630), reinterpret_cast<void*>(&Hooked_RemoveUpgrade), reinterpret_cast<void**>(&g_origRemoveUpgrade));
+		if (remUpgStatus == MH_OK) {
+			MH_EnableHook(reinterpret_cast<void*>(0x6D3630));
+			ClientLog("[Client] CVehicle::RemoveUpgrade (0x6D3630) hooked successfully via MinHook");
+		} else {
+			ClientLog(std::format("[Client] Failed to hook CVehicle::RemoveUpgrade (0x6D3630): {}", MH_StatusToString(remUpgStatus)));
+		}
+
+		MH_STATUS sirenStatus = MH_CreateHook(reinterpret_cast<void*>(0x6D8470), reinterpret_cast<void*>(&Hooked_DoesVehicleUseSiren), reinterpret_cast<void**>(&g_origDoesVehicleUseSiren));
+		if (sirenStatus == MH_OK) {
+			MH_EnableHook(reinterpret_cast<void*>(0x6D8470));
+			ClientLog("[Client] CVehicle::DoesVehicleUseSiren (0x6D8470) hooked successfully via MinHook");
+		} else {
+			ClientLog(std::format("[Client] Failed to hook CVehicle::DoesVehicleUseSiren (0x6D8470): {}", MH_StatusToString(sirenStatus)));
+		}
+
+		MH_STATUS sirenAudioStatus = MH_CreateHook(reinterpret_cast<void*>(0x4F62A0), reinterpret_cast<void*>(&Hooked_GetVehicleSirenType), reinterpret_cast<void**>(&g_origGetVehicleSirenType));
+		if (sirenAudioStatus == MH_OK) {
+			MH_EnableHook(reinterpret_cast<void*>(0x4F62A0));
+			ClientLog("[Client] CAEVehicleAudioEntity::GetVehicleSirenType (0x4F62A0) hooked successfully via MinHook");
+		} else {
+			ClientLog(std::format("[Client] Failed to hook CAEVehicleAudioEntity::GetVehicleSirenType (0x4F62A0): {}", MH_StatusToString(sirenAudioStatus)));
+		}
+
+		MH_STATUS frameIdStatus = MH_CreateHook(reinterpret_cast<void*>(0x4C53C0), reinterpret_cast<void*>(&Hooked_GetFrameFromId), reinterpret_cast<void**>(&g_origGetFrameFromId));
+		if (frameIdStatus == MH_OK) {
+			MH_EnableHook(reinterpret_cast<void*>(0x4C53C0));
+			ClientLog("[Client] CClumpModelInfo::GetFrameFromId (0x4C53C0) hooked successfully via MinHook");
+		} else {
+			ClientLog(std::format("[Client] Failed to hook CClumpModelInfo::GetFrameFromId (0x4C53C0): {}", MH_StatusToString(frameIdStatus)));
+		}
+
 		Plugn = std::make_unique<c_plugin>(hModule);
 		static bool threadSpawned = false;
 		if (!threadSpawned) {
@@ -1586,12 +2200,11 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD dwReason, LPVOID lpReserved)
 		Events::initGameEvent += []() {
 			colLoader->Initialize();
 		};
-		Events::drawingEvent += []() {
-			OnGameProcess();
-		};
-		Events::gameProcessEvent += []() {
-			OnGameProcess();
-		};
+		// OnGameProcess() is already called by hooked_game_loop (0x53BEE0) once per frame.
+		// Do NOT add it to drawingEvent or gameProcessEvent: both of those also fire on
+		// every game loop iteration, causing 3x execution per frame (triple TurnSpeed decay,
+		// triple pool processing, triple MainThreadQueue drain).
+
 		break;
 	}
 	case DLL_PROCESS_DETACH: {
@@ -1623,6 +2236,12 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD dwReason, LPVOID lpReserved)
 			g_origDoTailLightEffect = nullptr;
 		}
 
+		if (g_origAddExhaustParticles) {
+			MH_DisableHook(reinterpret_cast<void*>(0x6DE240));
+			MH_RemoveHook(reinterpret_cast<void*>(0x6DE240));
+			g_origAddExhaustParticles = nullptr;
+		}
+
 		if (g_origRegisterCoronaTexture) {
 			MH_DisableHook(reinterpret_cast<void*>(0x6FC180));
 			MH_RemoveHook(reinterpret_cast<void*>(0x6FC180));
@@ -1639,6 +2258,42 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD dwReason, LPVOID lpReserved)
 			MH_DisableHook(reinterpret_cast<void*>(0x70C500));
 			MH_RemoveHook(reinterpret_cast<void*>(0x70C500));
 			g_origStoreCarLightShadow = nullptr;
+		}
+
+		if (g_origSetRemap) {
+			MH_DisableHook(reinterpret_cast<void*>(0x6D0C00));
+			MH_RemoveHook(reinterpret_cast<void*>(0x6D0C00));
+			g_origSetRemap = nullptr;
+		}
+
+		if (g_origAddUpgrade) {
+			MH_DisableHook(reinterpret_cast<void*>(0x6DFA20));
+			MH_RemoveHook(reinterpret_cast<void*>(0x6DFA20));
+			g_origAddUpgrade = nullptr;
+		}
+
+		if (g_origRemoveUpgrade) {
+			MH_DisableHook(reinterpret_cast<void*>(0x6D3630));
+			MH_RemoveHook(reinterpret_cast<void*>(0x6D3630));
+			g_origRemoveUpgrade = nullptr;
+		}
+
+		if (g_origDoesVehicleUseSiren) {
+			MH_DisableHook(reinterpret_cast<void*>(0x6D8470));
+			MH_RemoveHook(reinterpret_cast<void*>(0x6D8470));
+			g_origDoesVehicleUseSiren = nullptr;
+		}
+
+		if (g_origGetVehicleSirenType) {
+			MH_DisableHook(reinterpret_cast<void*>(0x4F62A0));
+			MH_RemoveHook(reinterpret_cast<void*>(0x4F62A0));
+			g_origGetVehicleSirenType = nullptr;
+		}
+
+		if (g_origGetFrameFromId) {
+			MH_DisableHook(reinterpret_cast<void*>(0x4C53C0));
+			MH_RemoveHook(reinterpret_cast<void*>(0x4C53C0));
+			g_origGetFrameFromId = nullptr;
 		}
 
 		rakhook::on_receive_rpc.clear();

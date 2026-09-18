@@ -146,6 +146,63 @@ CVehicle* GetGameVehicleFromPool(uint16_t sampVehicleId)
 	}
 }
 
+bool GetVehiclePlateText(uint16_t sampVehicleId, char* outText, size_t maxLen)
+{
+	if (!outText || maxLen == 0)
+		return false;
+
+	rakhook::samp_ver version = rakhook::samp_version();
+	switch (version) {
+	case rakhook::samp_ver::v037r1: {
+		auto* pNetGame = sampapi::v037r1::RefNetGame();
+		if (!pNetGame || !pNetGame->m_pPools || !pNetGame->m_pPools->m_pVehicle)
+			return false;
+		auto* veh = pNetGame->m_pPools->m_pVehicle->Get(sampVehicleId);
+		if (veh && veh->m_szLicensePlateText[0] != '\0') {
+			strncpy_s(outText, maxLen, veh->m_szLicensePlateText, _TRUNCATE);
+			return true;
+		}
+		break;
+	}
+	case rakhook::samp_ver::v037r31: {
+		auto* pNetGame = sampapi::v037r3::RefNetGame();
+		if (!pNetGame || !pNetGame->m_pPools || !pNetGame->m_pPools->m_pVehicle)
+			return false;
+		auto* veh = pNetGame->m_pPools->m_pVehicle->Get(sampVehicleId);
+		if (veh && veh->m_szLicensePlateText[0] != '\0') {
+			strncpy_s(outText, maxLen, veh->m_szLicensePlateText, _TRUNCATE);
+			return true;
+		}
+		break;
+	}
+	case rakhook::samp_ver::v037r5: {
+		auto* pNetGame = sampapi::v037r5::RefNetGame();
+		if (!pNetGame || !pNetGame->m_pPools || !pNetGame->m_pPools->m_pVehicle)
+			return false;
+		auto* veh = pNetGame->m_pPools->m_pVehicle->Get(sampVehicleId);
+		if (veh && veh->m_szLicensePlateText[0] != '\0') {
+			strncpy_s(outText, maxLen, veh->m_szLicensePlateText, _TRUNCATE);
+			return true;
+		}
+		break;
+	}
+	case rakhook::samp_ver::v03dlr1: {
+		auto* pNetGame = sampapi::v03dl::RefNetGame();
+		if (!pNetGame || !pNetGame->m_pPools || !pNetGame->m_pPools->m_pVehicle)
+			return false;
+		auto* veh = pNetGame->m_pPools->m_pVehicle->Get(sampVehicleId);
+		if (veh && veh->m_szLicensePlateText[0] != '\0') {
+			strncpy_s(outText, maxLen, veh->m_szLicensePlateText, _TRUNCATE);
+			return true;
+		}
+		break;
+	}
+	default:
+		break;
+	}
+	return false;
+}
+
 bool IsGameInitialized()
 {
 	rakhook::samp_ver version = rakhook::samp_version();

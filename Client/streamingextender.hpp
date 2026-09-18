@@ -82,6 +82,12 @@ public:
 		memcpy(newModel, vBaseInfo, sizeof(CVehicleModelInfo));
 		newModel->m_pRwClump = nullptr;
 		newModel->m_pRwObject = nullptr;
+		// CRITICAL: Do NOT pre-allocate m_pVehicleStruct with CRT new.
+		// GTA:SA's SetClump (0x4C95C0) calls PreprocessHierarchy (0x4C8E60) which
+		// allocates from CPool<CVehicleStructure> at 0xC1CC18 automatically.
+		// Pre-allocating causes a double-alloc pool leak, and later deleting a pool
+		// pointer with CRT delete is UB / heap corruption.
+		// Verified against MTA:SA CRenderWareSA::ReplaceModel (CRenderWareSA.cpp:406-417).
 		newModel->m_pVehicleStruct = nullptr;
 		newModel->m_nTxdIndex = -1;
 		newModel->m_pColModel = nullptr;
@@ -98,6 +104,83 @@ public:
 		return newModel;
 	}
 
+	static void ExtractDummiesFromClump(RpClump* pClump, CVehicleModelInfo::CVehicleStructure* pStruct)
+	{
+		if (!pClump || !pStruct)
+			return;
+
+		// GTA:SA CVehicleStructure::m_avDummyPos[] indices, verified against:
+		//   - VehicleDummies::Enum in MTA:SA Shared/sdk/enums/VehicleDummies.h
+		//   - CMultiplayerSA_VehicleDummies.cpp byte offsets (EXHAUST=0x48 => idx 6, ENGINE=0x54 => idx 7, etc.)
+		//   - MTA:SA CLuaFunctionParseHelpers.cpp ADD_ENUM table
+		// This function is a FALLBACK ONLY: it only writes a slot if SetClump's
+		// PreprocessHierarchy (0x4C8E60) left it as (0,0,0), so we never corrupt
+		// data that GTA:SA already filled correctly.
+		struct DummyMapping {
+			int dummyIndex;
+			std::vector<const char*> names;
+		};
+
+		// Index | VehicleDummies enum      | byte offset in m_avDummyPos
+		//   0   | LIGHT_FRONT_MAIN         | 0x00  (headlights)
+		//   1   | LIGHT_REAR_MAIN          | 0x0C  (taillights)
+		//   2   | LIGHT_FRONT_SECONDARY    | 0x18
+		//   3   | LIGHT_REAR_SECONDARY     | 0x24
+		//   4   | SEAT_FRONT               | 0x30  (driver seat!)
+		//   5   | SEAT_REAR                | 0x3C
+		//   6   | EXHAUST                  | 0x48  (exhaust smoke & backfire)
+		//   7   | ENGINE                   | 0x54  (engine fire/damage particles)
+		//   8   | GAS_CAP / petrolcap      | 0x60
+		//   9   | TRAILER_ATTACH           | 0x6C
+		//  10   | HAND_REST                | 0x78
+		//  11   | EXHAUST_SECONDARY        | 0x84
+		static const DummyMapping s_dummyMap[] = {
+			{ 0,  { "headlights",  "headlights_dummy",  "headlight"  } },   // LIGHT_FRONT_MAIN
+			{ 1,  { "taillights",  "taillights_dummy",  "taillight"  } },   // LIGHT_REAR_MAIN
+			{ 4,  { "seat_f",      "seat_front"                       } },   // SEAT_FRONT (driver!)
+			{ 5,  { "seat_r",      "seat_rear"                        } },   // SEAT_REAR
+			{ 6,  { "exhaust",     "exhaust_dummy"                    } },   // EXHAUST
+			{ 7,  { "engine",      "engine_dummy"                     } },   // ENGINE
+			{ 8,  { "petrolcap",   "petrolcap_dummy",   "gascap"      } },   // GAS_CAP
+			{ 9,  { "trailer_attach", "trailer"                       } },   // TRAILER_ATTACH
+			{ 10, { "handgrip",    "hand_rest",         "handrest"    } },   // HAND_REST
+			{ 11, { "exhaust_2",   "exhaust2",          "secexhaust",
+			        "exhaust_secondary"                                } },   // EXHAUST_SECONDARY
+		};
+
+		RwFrame* rootFrame = RpClumpGetFrame(pClump);
+		if (!rootFrame)
+			return;
+
+		RwFrameUpdateObjects(rootFrame);
+
+		for (const auto& mapping : s_dummyMap) {
+			RwFrame* frame = nullptr;
+			for (const char* name : mapping.names) {
+				frame = CClumpModelInfo::GetFrameFromName(pClump, name);
+				if (frame)
+					break;
+			}
+			if (frame) {
+				RwMatrix* ltm = RwFrameGetLTM(frame);
+				if (ltm) {
+					CVector& slot = pStruct->m_avDummyPos[mapping.dummyIndex];
+					// Only write if PreprocessHierarchy left this slot as (0,0,0).
+					// This prevents overwriting positions GTA:SA filled correctly.
+					if (slot.x == 0.0f && slot.y == 0.0f && slot.z == 0.0f) {
+						slot = CVector(ltm->pos.x, ltm->pos.y, ltm->pos.z);
+						if (mapping.dummyIndex == 0 || mapping.dummyIndex == 1) {
+							// Headlights/taillights: GTA:SA stores abs(X), right side positive
+							slot.x = fabsf(slot.x);
+						}
+					}
+				}
+			}
+		}
+	}
+
+
+
 	static bool FinalizeClump(CVehicleModelInfo* pInfo, RpClump* pClump)
 	{
 		if (!pInfo || !pClump)
@@ -105,9 +188,27 @@ public:
 		if (pInfo->m_pRwClump) {
 			pInfo->DeleteRwObject();
 		}
+		// CRITICAL: If m_pVehicleStruct was set (e.g. by a previous SetClump call),
+		// release it from GTA:SA's CPool<CVehicleStructure> BEFORE calling SetClump.
+		// SetClump (0x4C95C0) calls PreprocessHierarchy which always allocates a NEW
+		// CVehicleStructure from the pool. Failing to release the old one first
+		// causes CPool depletion (at most 70 entries on SA 1.0 US).
+		// Verified: MTA:SA CRenderWareSA.cpp:406-417 uses destructor 0x4C7410 + release 0x4C9580.
+		if (pInfo->m_pVehicleStruct) {
+			auto CVehicleStructure_Destructor = reinterpret_cast<void(__thiscall*)(CVehicleModelInfo::CVehicleStructure*)>(0x4C7410);
+			auto CVehicleStructure_Release    = reinterpret_cast<void(__cdecl*)(CVehicleModelInfo::CVehicleStructure*)>(0x4C9580);
+			CVehicleStructure_Destructor(pInfo->m_pVehicleStruct);
+			CVehicleStructure_Release(pInfo->m_pVehicleStruct);
+			pInfo->m_pVehicleStruct = nullptr;
+		}
 		CVisibilityPlugins::SetupVehicleVariables(pClump);
-		pInfo->SetClump(pClump);
+		pInfo->SetClump(pClump);   // SetClump allocates m_pVehicleStruct from pool + fills dummies
 		pInfo->SetAtomicRenderCallbacks();
+		// ExtractDummiesFromClump is a fallback only: it fills any dummy slot that
+		// PreprocessHierarchy left as (0,0,0), using the RpClump frame hierarchy.
+		if (pInfo->m_pVehicleStruct) {
+			ExtractDummiesFromClump(pClump, pInfo->m_pVehicleStruct);
+		}
 		return pInfo->m_pRwClump == pClump;
 	}
 
@@ -159,6 +260,11 @@ public:
 				}
 				pInfo->m_nTxdIndex = -1;
 			}
+			// NOTE: Do NOT delete pInfo->m_pVehicleStruct here.
+			// DeleteRwObject() (0x4C8040) already calls the CVehicleStructure destructor
+			// (0x4C7410) and releases it back to CPool<CVehicleStructure> (0x4C9580),
+			// then zeroes m_pVehicleStruct. Calling CRT delete on a pool pointer is
+			// heap corruption / double-free. Verified: MTA:SA CRenderWareSA.cpp:406-417.
 			delete pInfo;
 		}
 		s_customModels.erase(it);
@@ -183,6 +289,9 @@ public:
 					}
 					pInfo->m_nTxdIndex = -1;
 				}
+				// NOTE: Do NOT delete pInfo->m_pVehicleStruct here.
+				// DeleteRwObject() already released it via CPool<CVehicleStructure>.
+				// CRT delete on a pool pointer = heap corruption / double-free.
 				delete pInfo;
 			}
 			AudioExtender::UnregisterVehicleAudio(id);

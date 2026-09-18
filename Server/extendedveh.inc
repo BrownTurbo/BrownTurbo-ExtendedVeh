@@ -232,12 +232,52 @@ native bool:ResetAllHandling(playerid);
 native bool:BeginCustomVehicleDef(customModelId, visualBase, audioBase, handlingBase, engineOnSoundId, engineOffSoundId);
 native bool:SetCustomVehicleDff(customModelId);
 native bool:SetCustomVehicleTxd(customModelId);
+native bool:SetCustomVehicleCol(customModelId);
 native bool:CommitCustomVehicleDef(customModelId);
 native bool:DestroyCustomVehicle(customModelId);
 native bool:IsCustomVehicleModel(customModelId);
 native bool:IsVehicleCustom(vehicleid);
-native bool:SetCustomVehicleCol(customModelId);
-native bool:BindVehicleModel(vehicleid, customModelId);
+
+/*
+ * Custom Vehicle Instance Customization Natives
+ *
+ * NOTE: Legacy SA-MP vehicle natives work out-of-the-box on custom vehicles:
+ *   - ChangeVehiclePaintjob(vehicleid, paintjobid) automatically applies custom liveries.
+ *   - ChangeVehicleColor(vehicleid, color1, color2) automatically recolors custom vehicles.
+ *   - AddVehicleComponent(vehicleid, componentid) / RemoveVehicleComponent(...) work seamlessly.
+ */
+native bool:BindCustomVehicle(vehicleid, customModelId);
+
+native bool:SetCustomVehicleStance(vehicleid, Float:frontScale, Float:rearScale, Float:frontCamber, Float:rearCamber, Float:frontTrackWidth, Float:rearTrackWidth);
+native bool:GetCustomVehicleStance(vehicleid, &Float:frontScale, &Float:rearScale, &Float:frontCamber, &Float:rearCamber, &Float:frontTrackWidth, &Float:rearTrackWidth);
+
+native bool:SetCustomVehicleExtras(vehicleid, extrasMask);
+native bool:GetCustomVehicleExtras(vehicleid, &extrasMask);
+
+native bool:SetCustomVehiclePaintjob(vehicleid, paintjobid);
+native GetCustomVehiclePaintjob(vehicleid);
+
+native bool:SetCustomVehicleNeon(vehicleid, enabled, r, g, b, Float:size = 2.5);
+native bool:GetCustomVehicleNeon(vehicleid, &enabled, &r, &g, &b, &Float:size);
+
+native bool:SetCustomVehicleWindowTint(vehicleid, alpha, r = 0, g = 0, b = 0);
+native bool:GetCustomVehicleWindowTint(vehicleid, &alpha, &r, &g, &b);
+
+native bool:SetCustomVehicleWheelColor(vehicleid, r, g, b);
+native bool:GetCustomVehicleWheelColor(vehicleid, &r, &g, &b);
+
+native bool:SetCustomVehicleBackfire(vehicleid, bool:enabled);
+native bool:GetCustomVehicleBackfire(vehicleid, &bool:enabled);
+
+native bool:SetCustomVehicleHorn(vehicleid, hornSoundId, Float:hornPitch = 1.0);
+native bool:GetCustomVehicleHorn(vehicleid, &hornSoundId, &Float:hornPitch);
+
+native bool:SetCustomVehicleSiren(vehicleid, bool:enabled, sirenType = 1);
+native bool:GetCustomVehicleSiren(vehicleid, &bool:enabled, &sirenType);
+
+native bool:SetCustomVehicleModelHorn(customModelId, hornSoundId, Float:hornPitch = 1.0);
+native bool:SetCustomVehicleModelSiren(customModelId, bool:hasSiren, sirenType = 1);
+
 native bool:GetFileSha256(const filename[], outputHash[]);
 native bool:InvalidateModelCache(customModelId, fileKind);
 native GetClientFileStoreStatus(playerid, customModelId, fileKind);
@@ -245,9 +285,36 @@ native GetClientFileStoreStatus(playerid, customModelId, fileKind);
 // Vehicle Door Removal / Restoration Natives
 // Allowed on: Automobiles, Quads, Monster Trucks, Planes, Helicopters
 // Prohibited on: Bikes, Motorcycles, Bicycles, Boats, Trailers, Trains (vehicles without standard doors)
-native bool:SetVehicleDoorMissing(vehicleid, doorid, bool:missing);
-native bool:GetVehicleDoorMissing(vehicleid, doorid, &bool:missing);
-native bool:SetVehicleAllDoorsMissing(vehicleid, bool:missing);
+native bool:SetCustomVehicleDoorMissing(vehicleid, doorid, bool:missing);
+native bool:GetCustomVehicleDoorMissing(vehicleid, doorid, &bool:missing);
+native bool:SetCustomVehicleAllDoorsMissing(vehicleid, bool:missing);
+
+/*
+ * Backward-compatibility aliases for legacy scripts
+ */
+#define BindVehicleModel            BindCustomVehicle
+#define SetVehicleStance            SetCustomVehicleStance
+#define GetVehicleStance            GetCustomVehicleStance
+#define SetVehicleExtras            SetCustomVehicleExtras
+#define GetVehicleExtras            GetCustomVehicleExtras
+#define SetVehiclePaintjob          SetCustomVehiclePaintjob
+#define SetVehicleNeon              SetCustomVehicleNeon
+#define GetVehicleNeon              GetCustomVehicleNeon
+#define SetVehicleWindowTint        SetCustomVehicleWindowTint
+#define GetVehicleWindowTint        GetCustomVehicleWindowTint
+#define SetVehicleWheelColor        SetCustomVehicleWheelColor
+#define GetVehicleWheelColor        GetCustomVehicleWheelColor
+#define SetVehicleBackfire          SetCustomVehicleBackfire
+#define GetVehicleBackfire          GetCustomVehicleBackfire
+#define SetVehicleHorn              SetCustomVehicleHorn
+#define GetVehicleHorn              GetCustomVehicleHorn
+#define SetVehicleSiren             SetCustomVehicleSiren
+#define GetVehicleSiren             GetCustomVehicleSiren
+#define SetVehicleModelHorn         SetCustomVehicleModelHorn
+#define SetVehicleModelSiren        SetCustomVehicleModelSiren
+#define SetVehicleDoorMissing       SetCustomVehicleDoorMissing
+#define GetVehicleDoorMissing       GetCustomVehicleDoorMissing
+#define SetVehicleAllDoorsMissing   SetCustomVehicleAllDoorsMissing
 
 /*
  * Stock Wrapper Helper for Single-Call Custom Vehicle Creation

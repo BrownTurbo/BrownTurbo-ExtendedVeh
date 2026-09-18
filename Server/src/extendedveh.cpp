@@ -320,8 +320,101 @@ void ExtendedVehCompo::onVehicleStreamIn(IVehicle& vehicle, IPlayer& player)
 
 	if (gPlayers.HasExtendedVeh(player.getID()))
 	{
-		CustomVehicleTransport::SendVehicleBind(player, static_cast<uint16_t>(vehicle.getID()), *customModel);
+		uint16_t vId = static_cast<uint16_t>(vehicle.getID());
+		CustomVehicleTransport::SendVehicleBind(player, vId, *customModel);
+
+		auto stanceOpt = CustomVehicleBindingRegistry::Instance().GetStance(vId);
+		if (stanceOpt)
+		{
+			CustomVehicleTransport::SendVehicleStance(player, *stanceOpt);
+		}
+
+		auto extrasOpt = CustomVehicleBindingRegistry::Instance().GetExtras(vId);
+		if (extrasOpt)
+		{
+			CustomVeh::Protocol::VehicleExtrasPacket pkt {};
+			pkt.sampVehicleId = vId;
+			pkt.extrasMask = *extrasOpt;
+			CustomVehicleTransport::SendVehicleExtras(player, pkt);
+		}
+
+		int pj = -1;
+		auto pjOpt = CustomVehicleBindingRegistry::Instance().GetPaintjob(vId);
+		if (pjOpt)
+			pj = *pjOpt;
+		else
+			pj = vehicle.getPaintJob();
+
+		if (pj >= 0)
+		{
+			CustomVeh::Protocol::VehiclePaintjobPacket pkt {};
+			pkt.sampVehicleId = vId;
+			pkt.paintjobIndex = static_cast<int8_t>(pj);
+			CustomVehicleTransport::SendVehiclePaintjob(player, pkt);
+		}
+
+		auto neonOpt = CustomVehicleBindingRegistry::Instance().GetNeon(vId);
+		if (neonOpt)
+		{
+			CustomVehicleTransport::SendVehicleNeon(player, *neonOpt);
+		}
+
+		auto tintOpt = CustomVehicleBindingRegistry::Instance().GetWindowTint(vId);
+		if (tintOpt)
+		{
+			CustomVehicleTransport::SendVehicleWindowTint(player, *tintOpt);
+		}
+
+		auto wcOpt = CustomVehicleBindingRegistry::Instance().GetWheelColor(vId);
+		if (wcOpt)
+		{
+			CustomVehicleTransport::SendVehicleWheelColor(player, *wcOpt);
+		}
+
+		auto bfOpt = CustomVehicleBindingRegistry::Instance().GetBackfire(vId);
+		if (bfOpt)
+		{
+			CustomVeh::Protocol::VehicleBackfirePacket pkt {};
+			pkt.sampVehicleId = vId;
+			pkt.enabled = *bfOpt ? 1 : 0;
+			CustomVehicleTransport::SendVehicleBackfire(player, pkt);
+		}
+
+		auto hornOpt = CustomVehicleBindingRegistry::Instance().GetHorn(vId);
+		if (hornOpt)
+		{
+			CustomVehicleTransport::SendVehicleHorn(player, *hornOpt);
+		}
+
+		auto sirenOpt = CustomVehicleBindingRegistry::Instance().GetSiren(vId);
+		if (sirenOpt)
+		{
+			CustomVehicleTransport::SendVehicleSiren(player, *sirenOpt);
+		}
 	}
+}
+
+bool ExtendedVehCompo::onVehiclePaintJob(IPlayer& player, IVehicle& vehicle, int paintJob)
+{
+	uint16_t vId = static_cast<uint16_t>(vehicle.getID());
+	if (CustomVehicleBindingRegistry::Instance().Get(vId))
+	{
+		CustomVehicleBindingRegistry::Instance().SetPaintjob(vId, static_cast<int8_t>(paintJob));
+		CustomVeh::Protocol::VehiclePaintjobPacket pkt {};
+		pkt.sampVehicleId = vId;
+		pkt.paintjobIndex = static_cast<int8_t>(paintJob);
+		if (core_)
+		{
+			for (IPlayer* p : core_->getPlayers().players())
+			{
+				if (p && gPlayers.HasExtendedVeh(p->getID()))
+				{
+					CustomVehicleTransport::SendVehiclePaintjob(*p, pkt);
+				}
+			}
+		}
+	}
+	return true;
 }
 
 void ExtendedVehCompo::onPlayerEnterVehicle(IPlayer& player, IVehicle& vehicle, bool passenger)

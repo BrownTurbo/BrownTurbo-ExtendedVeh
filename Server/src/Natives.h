@@ -1558,8 +1558,9 @@ SCRIPT_API(IsVehicleCustom, bool(IVehicle& vehicle))
 	return CustomVehicleBindingRegistry::Instance().Get(static_cast<uint16_t>(vehicleid)).has_value();
 }
 
-// native BindVehicleModel(vehicleid, customModelId);
-SCRIPT_API(BindVehicleModel, bool(IVehicle& vehicle, int customModelId))
+namespace CustomVehicleNatives
+{
+inline bool BindCustomVehicle(IVehicle& vehicle, int customModelId)
 {
 	int vehicleid = vehicle.getID();
 	ExtendedVehCompo* compo = ExtendedVehCompo::get();
@@ -1567,13 +1568,13 @@ SCRIPT_API(BindVehicleModel, bool(IVehicle& vehicle, int customModelId))
 	if (!CVehicleMgr::VehicleRegistry::Get().IsValidVehicleID(vehicleid))
 	{
 		if (core_)
-			core_->logLn(LogLevel::Warning, "[ExtendedVeh] BindVehicleModel: Invalid vehicle ID %d", vehicleid);
+			core_->logLn(LogLevel::Warning, "[ExtendedVeh] BindCustomVehicle: Invalid vehicle ID %d", vehicleid);
 		return false;
 	}
 	if (!CVehicleMgr::VehicleRegistry::Get().IsValidVehicleModel(customModelId))
 	{
 		if (core_)
-			core_->logLn(LogLevel::Warning, "[ExtendedVeh] BindVehicleModel: Invalid customModelId %d", customModelId);
+			core_->logLn(LogLevel::Warning, "[ExtendedVeh] BindCustomVehicle: Invalid customModelId %d", customModelId);
 		return false;
 	}
 	if (CVehicleMgr::IsCustomVehicleModel(customModelId))
@@ -1581,7 +1582,7 @@ SCRIPT_API(BindVehicleModel, bool(IVehicle& vehicle, int customModelId))
 		if (HandlingMgr::customVehicleDefs.find(customModelId) == HandlingMgr::customVehicleDefs.end())
 		{
 			if (core_)
-				core_->logLn(LogLevel::Warning, "[ExtendedVeh] BindVehicleModel: Custom vehicle model %d has not been committed yet via CommitCustomVehicleDef", customModelId);
+				core_->logLn(LogLevel::Warning, "[ExtendedVeh] BindCustomVehicle: Custom vehicle model %d has not been committed yet via CommitCustomVehicleDef", customModelId);
 			return false;
 		}
 	}
@@ -1591,7 +1592,7 @@ SCRIPT_API(BindVehicleModel, bool(IVehicle& vehicle, int customModelId))
 
 	if (core_)
 	{
-		core_->logLn(LogLevel::Message, "[ExtendedVeh] BindVehicleModel: Bound vehicle %d to custom model %d", vehicleid, customModelId);
+		core_->logLn(LogLevel::Message, "[ExtendedVeh] BindCustomVehicle: Bound vehicle %d to custom model %d", vehicleid, customModelId);
 		for (IPlayer* player : core_->getPlayers().players())
 		{
 			if (player && gPlayers.HasExtendedVeh(player->getID()))
@@ -1601,6 +1602,748 @@ SCRIPT_API(BindVehicleModel, bool(IVehicle& vehicle, int customModelId))
 		}
 	}
 	return true;
+}
+}
+
+// native BindCustomVehicle(vehicleid, customModelId);
+SCRIPT_API(BindCustomVehicle, bool(IVehicle& vehicle, int customModelId))
+{
+	return CustomVehicleNatives::BindCustomVehicle(vehicle, customModelId);
+}
+
+// Legacy alias: BindVehicleModel -> BindCustomVehicle
+SCRIPT_API(BindVehicleModel, bool(IVehicle& vehicle, int customModelId))
+{
+	return CustomVehicleNatives::BindCustomVehicle(vehicle, customModelId);
+}
+
+namespace CustomVehicleNatives
+{
+inline bool SetCustomVehicleStance(IVehicle& vehicle, float frontScale, float rearScale, float frontCamber, float rearCamber, float frontTrackWidth, float rearTrackWidth)
+{
+	int vehicleid = vehicle.getID();
+	if (!CVehicleMgr::VehicleRegistry::Get().IsValidVehicleID(vehicleid))
+		return false;
+
+	uint16_t vId = static_cast<uint16_t>(vehicleid);
+	CustomVeh::Protocol::VehicleStancePacket pkt {};
+	pkt.sampVehicleId = vId;
+	pkt.frontWheelScale = frontScale;
+	pkt.rearWheelScale = rearScale;
+	pkt.frontCamber = frontCamber;
+	pkt.rearCamber = rearCamber;
+	pkt.frontTrackWidth = frontTrackWidth;
+	pkt.rearTrackWidth = rearTrackWidth;
+
+	CustomVehicleBindingRegistry::Instance().SetStance(vId, pkt);
+
+	ExtendedVehCompo* compo = ExtendedVehCompo::get();
+	ICore* core_ = compo ? compo->getCore() : nullptr;
+	if (core_)
+	{
+		for (IPlayer* player : core_->getPlayers().players())
+		{
+			if (player && gPlayers.HasExtendedVeh(player->getID()))
+			{
+				CustomVehicleTransport::SendVehicleStance(*player, pkt);
+			}
+		}
+	}
+	return true;
+}
+}
+
+// native SetCustomVehicleStance(vehicleid, Float:frontScale, Float:rearScale, Float:frontCamber, Float:rearCamber, Float:frontTrackWidth, Float:rearTrackWidth);
+SCRIPT_API(SetCustomVehicleStance, bool(IVehicle& vehicle, float frontScale, float rearScale, float frontCamber, float rearCamber, float frontTrackWidth, float rearTrackWidth))
+{
+	return CustomVehicleNatives::SetCustomVehicleStance(vehicle, frontScale, rearScale, frontCamber, rearCamber, frontTrackWidth, rearTrackWidth);
+}
+
+// Legacy alias: SetVehicleStance -> SetCustomVehicleStance
+SCRIPT_API(SetVehicleStance, bool(IVehicle& vehicle, float frontScale, float rearScale, float frontCamber, float rearCamber, float frontTrackWidth, float rearTrackWidth))
+{
+	return CustomVehicleNatives::SetCustomVehicleStance(vehicle, frontScale, rearScale, frontCamber, rearCamber, frontTrackWidth, rearTrackWidth);
+}
+
+namespace CustomVehicleNatives
+{
+inline bool GetCustomVehicleStance(IVehicle& vehicle, float& frontScale, float& rearScale, float& frontCamber, float& rearCamber, float& frontTrackWidth, float& rearTrackWidth)
+{
+	int vehicleid = vehicle.getID();
+	if (!CVehicleMgr::VehicleRegistry::Get().IsValidVehicleID(vehicleid))
+		return false;
+
+	auto stanceOpt = CustomVehicleBindingRegistry::Instance().GetStance(static_cast<uint16_t>(vehicleid));
+	if (!stanceOpt)
+		return false;
+
+	frontScale = stanceOpt->frontWheelScale;
+	rearScale = stanceOpt->rearWheelScale;
+	frontCamber = stanceOpt->frontCamber;
+	rearCamber = stanceOpt->rearCamber;
+	frontTrackWidth = stanceOpt->frontTrackWidth;
+	rearTrackWidth = stanceOpt->rearTrackWidth;
+	return true;
+}
+}
+
+// native GetCustomVehicleStance(vehicleid, &Float:frontScale, &Float:rearScale, &Float:frontCamber, &Float:rearCamber, &Float:frontTrackWidth, &Float:rearTrackWidth);
+SCRIPT_API(GetCustomVehicleStance, bool(IVehicle& vehicle, float& frontScale, float& rearScale, float& frontCamber, float& rearCamber, float& frontTrackWidth, float& rearTrackWidth))
+{
+	return CustomVehicleNatives::GetCustomVehicleStance(vehicle, frontScale, rearScale, frontCamber, rearCamber, frontTrackWidth, rearTrackWidth);
+}
+
+// Legacy alias: GetVehicleStance -> GetCustomVehicleStance
+SCRIPT_API(GetVehicleStance, bool(IVehicle& vehicle, float& frontScale, float& rearScale, float& frontCamber, float& rearCamber, float& frontTrackWidth, float& rearTrackWidth))
+{
+	return CustomVehicleNatives::GetCustomVehicleStance(vehicle, frontScale, rearScale, frontCamber, rearCamber, frontTrackWidth, rearTrackWidth);
+}
+
+namespace CustomVehicleNatives
+{
+inline bool SetCustomVehicleExtras(IVehicle& vehicle, int extrasMask)
+{
+	int vehicleid = vehicle.getID();
+	if (!CVehicleMgr::VehicleRegistry::Get().IsValidVehicleID(vehicleid))
+		return false;
+
+	uint16_t vId = static_cast<uint16_t>(vehicleid);
+	uint8_t mask = static_cast<uint8_t>(extrasMask);
+
+	CustomVehicleBindingRegistry::Instance().SetExtras(vId, mask);
+
+	CustomVeh::Protocol::VehicleExtrasPacket pkt {};
+	pkt.sampVehicleId = vId;
+	pkt.extrasMask = mask;
+
+	ExtendedVehCompo* compo = ExtendedVehCompo::get();
+	ICore* core_ = compo ? compo->getCore() : nullptr;
+	if (core_)
+	{
+		for (IPlayer* player : core_->getPlayers().players())
+		{
+			if (player && gPlayers.HasExtendedVeh(player->getID()))
+			{
+				CustomVehicleTransport::SendVehicleExtras(*player, pkt);
+			}
+		}
+	}
+	return true;
+}
+}
+
+// native SetCustomVehicleExtras(vehicleid, extrasMask);
+SCRIPT_API(SetCustomVehicleExtras, bool(IVehicle& vehicle, int extrasMask))
+{
+	return CustomVehicleNatives::SetCustomVehicleExtras(vehicle, extrasMask);
+}
+
+// Legacy alias: SetVehicleExtras -> SetCustomVehicleExtras
+SCRIPT_API(SetVehicleExtras, bool(IVehicle& vehicle, int extrasMask))
+{
+	return CustomVehicleNatives::SetCustomVehicleExtras(vehicle, extrasMask);
+}
+
+namespace CustomVehicleNatives
+{
+inline bool GetCustomVehicleExtras(IVehicle& vehicle, int& extrasMask)
+{
+	int vehicleid = vehicle.getID();
+	if (!CVehicleMgr::VehicleRegistry::Get().IsValidVehicleID(vehicleid))
+		return false;
+
+	auto extrasOpt = CustomVehicleBindingRegistry::Instance().GetExtras(static_cast<uint16_t>(vehicleid));
+	if (!extrasOpt)
+		return false;
+
+	extrasMask = static_cast<int>(*extrasOpt);
+	return true;
+}
+}
+
+// native GetCustomVehicleExtras(vehicleid, &extrasMask);
+SCRIPT_API(GetCustomVehicleExtras, bool(IVehicle& vehicle, int& extrasMask))
+{
+	return CustomVehicleNatives::GetCustomVehicleExtras(vehicle, extrasMask);
+}
+
+// Legacy alias: GetVehicleExtras -> GetCustomVehicleExtras
+SCRIPT_API(GetVehicleExtras, bool(IVehicle& vehicle, int& extrasMask))
+{
+	return CustomVehicleNatives::GetCustomVehicleExtras(vehicle, extrasMask);
+}
+
+namespace CustomVehicleNatives
+{
+inline bool SetCustomVehiclePaintjob(IVehicle& vehicle, int paintjobid)
+{
+	int vehicleid = vehicle.getID();
+	if (!CVehicleMgr::VehicleRegistry::Get().IsValidVehicleID(vehicleid))
+		return false;
+
+	uint16_t vId = static_cast<uint16_t>(vehicleid);
+	int8_t pj = static_cast<int8_t>(paintjobid);
+
+	CustomVehicleBindingRegistry::Instance().SetPaintjob(vId, pj);
+	vehicle.setPaintJob(paintjobid);
+
+	CustomVeh::Protocol::VehiclePaintjobPacket pkt {};
+	pkt.sampVehicleId = vId;
+	pkt.paintjobIndex = pj;
+
+	ExtendedVehCompo* compo = ExtendedVehCompo::get();
+	ICore* core_ = compo ? compo->getCore() : nullptr;
+	if (core_)
+	{
+		for (IPlayer* player : core_->getPlayers().players())
+		{
+			if (player && gPlayers.HasExtendedVeh(player->getID()))
+			{
+				CustomVehicleTransport::SendVehiclePaintjob(*player, pkt);
+			}
+		}
+	}
+	return true;
+}
+}
+
+// native SetCustomVehiclePaintjob(vehicleid, paintjobid);
+SCRIPT_API(SetCustomVehiclePaintjob, bool(IVehicle& vehicle, int paintjobid))
+{
+	return CustomVehicleNatives::SetCustomVehiclePaintjob(vehicle, paintjobid);
+}
+
+// Legacy alias: SetVehiclePaintjob -> SetCustomVehiclePaintjob
+SCRIPT_API(SetVehiclePaintjob, bool(IVehicle& vehicle, int paintjobid))
+{
+	return CustomVehicleNatives::SetCustomVehiclePaintjob(vehicle, paintjobid);
+}
+
+namespace CustomVehicleNatives
+{
+inline int GetCustomVehiclePaintjob(IVehicle& vehicle)
+{
+	int vehicleid = vehicle.getID();
+	if (!CVehicleMgr::VehicleRegistry::Get().IsValidVehicleID(vehicleid))
+		return -1;
+
+	auto pjOpt = CustomVehicleBindingRegistry::Instance().GetPaintjob(static_cast<uint16_t>(vehicleid));
+	if (pjOpt)
+		return static_cast<int>(*pjOpt);
+
+	return vehicle.getPaintJob();
+}
+}
+
+// native GetCustomVehiclePaintjob(vehicleid);
+// NOTE: Replaces colliding GetVehiclePaintjob to prevent duplicate native errors with open.mp
+SCRIPT_API(GetCustomVehiclePaintjob, int(IVehicle& vehicle))
+{
+	return CustomVehicleNatives::GetCustomVehiclePaintjob(vehicle);
+}
+
+namespace CustomVehicleNatives
+{
+inline bool SetCustomVehicleNeon(IVehicle& vehicle, int enabled, int r, int g, int b, float size)
+{
+	int vehicleid = vehicle.getID();
+	if (!CVehicleMgr::VehicleRegistry::Get().IsValidVehicleID(vehicleid))
+		return false;
+
+	uint16_t vId = static_cast<uint16_t>(vehicleid);
+	CustomVeh::Protocol::VehicleNeonPacket pkt {};
+	pkt.sampVehicleId = vId;
+	pkt.enabled = enabled ? 1 : 0;
+	pkt.r = static_cast<uint8_t>(r);
+	pkt.g = static_cast<uint8_t>(g);
+	pkt.b = static_cast<uint8_t>(b);
+	pkt.size = size;
+
+	CustomVehicleBindingRegistry::Instance().SetNeon(vId, pkt);
+
+	ExtendedVehCompo* compo = ExtendedVehCompo::get();
+	ICore* core_ = compo ? compo->getCore() : nullptr;
+	if (core_)
+	{
+		for (IPlayer* player : core_->getPlayers().players())
+		{
+			if (player && gPlayers.HasExtendedVeh(player->getID()))
+			{
+				CustomVehicleTransport::SendVehicleNeon(*player, pkt);
+			}
+		}
+	}
+	return true;
+}
+}
+
+// native SetCustomVehicleNeon(vehicleid, enabled, r, g, b, Float:size);
+SCRIPT_API(SetCustomVehicleNeon, bool(IVehicle& vehicle, int enabled, int r, int g, int b, float size))
+{
+	return CustomVehicleNatives::SetCustomVehicleNeon(vehicle, enabled, r, g, b, size);
+}
+
+// Legacy alias: SetVehicleNeon -> SetCustomVehicleNeon
+SCRIPT_API(SetVehicleNeon, bool(IVehicle& vehicle, int enabled, int r, int g, int b, float size))
+{
+	return CustomVehicleNatives::SetCustomVehicleNeon(vehicle, enabled, r, g, b, size);
+}
+
+namespace CustomVehicleNatives
+{
+inline bool GetCustomVehicleNeon(IVehicle& vehicle, int& enabled, int& r, int& g, int& b, float& size)
+{
+	int vehicleid = vehicle.getID();
+	if (!CVehicleMgr::VehicleRegistry::Get().IsValidVehicleID(vehicleid))
+		return false;
+
+	auto neonOpt = CustomVehicleBindingRegistry::Instance().GetNeon(static_cast<uint16_t>(vehicleid));
+	if (!neonOpt)
+		return false;
+
+	enabled = neonOpt->enabled ? 1 : 0;
+	r = static_cast<int>(neonOpt->r);
+	g = static_cast<int>(neonOpt->g);
+	b = static_cast<int>(neonOpt->b);
+	size = neonOpt->size;
+	return true;
+}
+}
+
+// native GetCustomVehicleNeon(vehicleid, &enabled, &r, &g, &b, &Float:size);
+SCRIPT_API(GetCustomVehicleNeon, bool(IVehicle& vehicle, int& enabled, int& r, int& g, int& b, float& size))
+{
+	return CustomVehicleNatives::GetCustomVehicleNeon(vehicle, enabled, r, g, b, size);
+}
+
+// Legacy alias: GetVehicleNeon -> GetCustomVehicleNeon
+SCRIPT_API(GetVehicleNeon, bool(IVehicle& vehicle, int& enabled, int& r, int& g, int& b, float& size))
+{
+	return CustomVehicleNatives::GetCustomVehicleNeon(vehicle, enabled, r, g, b, size);
+}
+
+namespace CustomVehicleNatives
+{
+inline bool SetCustomVehicleWindowTint(IVehicle& vehicle, int alpha, int r, int g, int b)
+{
+	int vehicleid = vehicle.getID();
+	if (!CVehicleMgr::VehicleRegistry::Get().IsValidVehicleID(vehicleid))
+		return false;
+
+	uint16_t vId = static_cast<uint16_t>(vehicleid);
+	CustomVeh::Protocol::VehicleWindowTintPacket pkt {};
+	pkt.sampVehicleId = vId;
+	pkt.alpha = static_cast<uint8_t>(alpha);
+	pkt.r = static_cast<uint8_t>(r);
+	pkt.g = static_cast<uint8_t>(g);
+	pkt.b = static_cast<uint8_t>(b);
+
+	CustomVehicleBindingRegistry::Instance().SetWindowTint(vId, pkt);
+
+	ExtendedVehCompo* compo = ExtendedVehCompo::get();
+	ICore* core_ = compo ? compo->getCore() : nullptr;
+	if (core_)
+	{
+		for (IPlayer* player : core_->getPlayers().players())
+		{
+			if (player && gPlayers.HasExtendedVeh(player->getID()))
+			{
+				CustomVehicleTransport::SendVehicleWindowTint(*player, pkt);
+			}
+		}
+	}
+	return true;
+}
+}
+
+// native SetCustomVehicleWindowTint(vehicleid, alpha, r, g, b);
+SCRIPT_API(SetCustomVehicleWindowTint, bool(IVehicle& vehicle, int alpha, int r, int g, int b))
+{
+	return CustomVehicleNatives::SetCustomVehicleWindowTint(vehicle, alpha, r, g, b);
+}
+
+// Legacy alias: SetVehicleWindowTint -> SetCustomVehicleWindowTint
+SCRIPT_API(SetVehicleWindowTint, bool(IVehicle& vehicle, int alpha, int r, int g, int b))
+{
+	return CustomVehicleNatives::SetCustomVehicleWindowTint(vehicle, alpha, r, g, b);
+}
+
+namespace CustomVehicleNatives
+{
+inline bool GetCustomVehicleWindowTint(IVehicle& vehicle, int& alpha, int& r, int& g, int& b)
+{
+	int vehicleid = vehicle.getID();
+	if (!CVehicleMgr::VehicleRegistry::Get().IsValidVehicleID(vehicleid))
+		return false;
+
+	auto tintOpt = CustomVehicleBindingRegistry::Instance().GetWindowTint(static_cast<uint16_t>(vehicleid));
+	if (!tintOpt)
+		return false;
+
+	alpha = static_cast<int>(tintOpt->alpha);
+	r = static_cast<int>(tintOpt->r);
+	g = static_cast<int>(tintOpt->g);
+	b = static_cast<int>(tintOpt->b);
+	return true;
+}
+}
+
+// native GetCustomVehicleWindowTint(vehicleid, &alpha, &r, &g, &b);
+SCRIPT_API(GetCustomVehicleWindowTint, bool(IVehicle& vehicle, int& alpha, int& r, int& g, int& b))
+{
+	return CustomVehicleNatives::GetCustomVehicleWindowTint(vehicle, alpha, r, g, b);
+}
+
+// Legacy alias: GetVehicleWindowTint -> GetCustomVehicleWindowTint
+SCRIPT_API(GetVehicleWindowTint, bool(IVehicle& vehicle, int& alpha, int& r, int& g, int& b))
+{
+	return CustomVehicleNatives::GetCustomVehicleWindowTint(vehicle, alpha, r, g, b);
+}
+
+namespace CustomVehicleNatives
+{
+inline bool SetCustomVehicleWheelColor(IVehicle& vehicle, int r, int g, int b)
+{
+	int vehicleid = vehicle.getID();
+	if (!CVehicleMgr::VehicleRegistry::Get().IsValidVehicleID(vehicleid))
+		return false;
+
+	uint16_t vId = static_cast<uint16_t>(vehicleid);
+	CustomVeh::Protocol::VehicleWheelColorPacket pkt {};
+	pkt.sampVehicleId = vId;
+	pkt.r = static_cast<uint8_t>(r);
+	pkt.g = static_cast<uint8_t>(g);
+	pkt.b = static_cast<uint8_t>(b);
+
+	CustomVehicleBindingRegistry::Instance().SetWheelColor(vId, pkt);
+
+	ExtendedVehCompo* compo = ExtendedVehCompo::get();
+	ICore* core_ = compo ? compo->getCore() : nullptr;
+	if (core_)
+	{
+		for (IPlayer* player : core_->getPlayers().players())
+		{
+			if (player && gPlayers.HasExtendedVeh(player->getID()))
+			{
+				CustomVehicleTransport::SendVehicleWheelColor(*player, pkt);
+			}
+		}
+	}
+	return true;
+}
+}
+
+// native SetCustomVehicleWheelColor(vehicleid, r, g, b);
+SCRIPT_API(SetCustomVehicleWheelColor, bool(IVehicle& vehicle, int r, int g, int b))
+{
+	return CustomVehicleNatives::SetCustomVehicleWheelColor(vehicle, r, g, b);
+}
+
+// Legacy alias: SetVehicleWheelColor -> SetCustomVehicleWheelColor
+SCRIPT_API(SetVehicleWheelColor, bool(IVehicle& vehicle, int r, int g, int b))
+{
+	return CustomVehicleNatives::SetCustomVehicleWheelColor(vehicle, r, g, b);
+}
+
+namespace CustomVehicleNatives
+{
+inline bool GetCustomVehicleWheelColor(IVehicle& vehicle, int& r, int& g, int& b)
+{
+	int vehicleid = vehicle.getID();
+	if (!CVehicleMgr::VehicleRegistry::Get().IsValidVehicleID(vehicleid))
+		return false;
+
+	auto wcOpt = CustomVehicleBindingRegistry::Instance().GetWheelColor(static_cast<uint16_t>(vehicleid));
+	if (!wcOpt)
+		return false;
+
+	r = static_cast<int>(wcOpt->r);
+	g = static_cast<int>(wcOpt->g);
+	b = static_cast<int>(wcOpt->b);
+	return true;
+}
+}
+
+// native GetCustomVehicleWheelColor(vehicleid, &r, &g, &b);
+SCRIPT_API(GetCustomVehicleWheelColor, bool(IVehicle& vehicle, int& r, int& g, int& b))
+{
+	return CustomVehicleNatives::GetCustomVehicleWheelColor(vehicle, r, g, b);
+}
+
+// Legacy alias: GetVehicleWheelColor -> GetCustomVehicleWheelColor
+SCRIPT_API(GetVehicleWheelColor, bool(IVehicle& vehicle, int& r, int& g, int& b))
+{
+	return CustomVehicleNatives::GetCustomVehicleWheelColor(vehicle, r, g, b);
+}
+
+namespace CustomVehicleNatives
+{
+inline bool SetCustomVehicleBackfire(IVehicle& vehicle, int enabled)
+{
+	int vehicleid = vehicle.getID();
+	if (!CVehicleMgr::VehicleRegistry::Get().IsValidVehicleID(vehicleid))
+		return false;
+
+	uint16_t vId = static_cast<uint16_t>(vehicleid);
+	bool en = (enabled != 0);
+
+	CustomVehicleBindingRegistry::Instance().SetBackfire(vId, en);
+
+	CustomVeh::Protocol::VehicleBackfirePacket pkt {};
+	pkt.sampVehicleId = vId;
+	pkt.enabled = en ? 1 : 0;
+
+	ExtendedVehCompo* compo = ExtendedVehCompo::get();
+	ICore* core_ = compo ? compo->getCore() : nullptr;
+	if (core_)
+	{
+		for (IPlayer* player : core_->getPlayers().players())
+		{
+			if (player && gPlayers.HasExtendedVeh(player->getID()))
+			{
+				CustomVehicleTransport::SendVehicleBackfire(*player, pkt);
+			}
+		}
+	}
+	return true;
+}
+}
+
+// native SetCustomVehicleBackfire(vehicleid, enabled);
+SCRIPT_API(SetCustomVehicleBackfire, bool(IVehicle& vehicle, int enabled))
+{
+	return CustomVehicleNatives::SetCustomVehicleBackfire(vehicle, enabled);
+}
+
+// Legacy alias: SetVehicleBackfire -> SetCustomVehicleBackfire
+SCRIPT_API(SetVehicleBackfire, bool(IVehicle& vehicle, int enabled))
+{
+	return CustomVehicleNatives::SetCustomVehicleBackfire(vehicle, enabled);
+}
+
+namespace CustomVehicleNatives
+{
+inline bool GetCustomVehicleBackfire(IVehicle& vehicle, int& enabled)
+{
+	int vehicleid = vehicle.getID();
+	if (!CVehicleMgr::VehicleRegistry::Get().IsValidVehicleID(vehicleid))
+		return false;
+
+	auto bfOpt = CustomVehicleBindingRegistry::Instance().GetBackfire(static_cast<uint16_t>(vehicleid));
+	if (!bfOpt)
+		return false;
+
+	enabled = *bfOpt ? 1 : 0;
+	return true;
+}
+}
+
+// native GetCustomVehicleBackfire(vehicleid, &enabled);
+SCRIPT_API(GetCustomVehicleBackfire, bool(IVehicle& vehicle, int& enabled))
+{
+	return CustomVehicleNatives::GetCustomVehicleBackfire(vehicle, enabled);
+}
+
+// Legacy alias: GetVehicleBackfire -> GetCustomVehicleBackfire
+SCRIPT_API(GetVehicleBackfire, bool(IVehicle& vehicle, int& enabled))
+{
+	return CustomVehicleNatives::GetCustomVehicleBackfire(vehicle, enabled);
+}
+
+namespace CustomVehicleNatives
+{
+inline bool SetCustomVehicleHorn(IVehicle& vehicle, int hornSoundId, float hornPitch)
+{
+	int vehicleid = vehicle.getID();
+	if (!CVehicleMgr::VehicleRegistry::Get().IsValidVehicleID(vehicleid))
+		return false;
+
+	uint16_t vId = static_cast<uint16_t>(vehicleid);
+	CustomVehicleBindingRegistry::Instance().SetHorn(vId, static_cast<int8_t>(hornSoundId), hornPitch);
+
+	CustomVeh::Protocol::VehicleHornPacket pkt {};
+	pkt.sampVehicleId = vId;
+	pkt.hornSoundId = static_cast<int8_t>(hornSoundId);
+	pkt.hornPitch = hornPitch;
+
+	ExtendedVehCompo* compo = ExtendedVehCompo::get();
+	ICore* core_ = compo ? compo->getCore() : nullptr;
+	if (core_)
+	{
+		for (IPlayer* player : core_->getPlayers().players())
+		{
+			if (player && gPlayers.HasExtendedVeh(player->getID()))
+			{
+				CustomVehicleTransport::SendVehicleHorn(*player, pkt);
+			}
+		}
+	}
+	return true;
+}
+}
+
+// native SetCustomVehicleHorn(vehicleid, hornSoundId, Float:hornPitch = 1.0);
+SCRIPT_API(SetCustomVehicleHorn, bool(IVehicle& vehicle, int hornSoundId, float hornPitch))
+{
+	return CustomVehicleNatives::SetCustomVehicleHorn(vehicle, hornSoundId, hornPitch);
+}
+
+// Legacy alias: SetVehicleHorn -> SetCustomVehicleHorn
+SCRIPT_API(SetVehicleHorn, bool(IVehicle& vehicle, int hornSoundId, float hornPitch))
+{
+	return CustomVehicleNatives::SetCustomVehicleHorn(vehicle, hornSoundId, hornPitch);
+}
+
+namespace CustomVehicleNatives
+{
+inline bool GetCustomVehicleHorn(IVehicle& vehicle, int& hornSoundId, float& hornPitch)
+{
+	int vehicleid = vehicle.getID();
+	if (!CVehicleMgr::VehicleRegistry::Get().IsValidVehicleID(vehicleid))
+		return false;
+
+	auto hornOpt = CustomVehicleBindingRegistry::Instance().GetHorn(static_cast<uint16_t>(vehicleid));
+	if (!hornOpt)
+		return false;
+
+	hornSoundId = static_cast<int>(hornOpt->hornSoundId);
+	hornPitch = hornOpt->hornPitch;
+	return true;
+}
+}
+
+// native GetCustomVehicleHorn(vehicleid, &hornSoundId, &Float:hornPitch);
+SCRIPT_API(GetCustomVehicleHorn, bool(IVehicle& vehicle, int& hornSoundId, float& hornPitch))
+{
+	return CustomVehicleNatives::GetCustomVehicleHorn(vehicle, hornSoundId, hornPitch);
+}
+
+// Legacy alias: GetVehicleHorn -> GetCustomVehicleHorn
+SCRIPT_API(GetVehicleHorn, bool(IVehicle& vehicle, int& hornSoundId, float& hornPitch))
+{
+	return CustomVehicleNatives::GetCustomVehicleHorn(vehicle, hornSoundId, hornPitch);
+}
+
+namespace CustomVehicleNatives
+{
+inline bool SetCustomVehicleSiren(IVehicle& vehicle, bool enabled, int sirenType)
+{
+	int vehicleid = vehicle.getID();
+	if (!CVehicleMgr::VehicleRegistry::Get().IsValidVehicleID(vehicleid))
+		return false;
+
+	uint16_t vId = static_cast<uint16_t>(vehicleid);
+	CustomVehicleBindingRegistry::Instance().SetSiren(vId, enabled, static_cast<int8_t>(sirenType));
+
+	CustomVeh::Protocol::VehicleSirenPacket pkt {};
+	pkt.sampVehicleId = vId;
+	pkt.enabled = enabled ? 1 : 0;
+	pkt.sirenType = static_cast<int8_t>(sirenType);
+
+	ExtendedVehCompo* compo = ExtendedVehCompo::get();
+	ICore* core_ = compo ? compo->getCore() : nullptr;
+	if (core_)
+	{
+		for (IPlayer* player : core_->getPlayers().players())
+		{
+			if (player && gPlayers.HasExtendedVeh(player->getID()))
+			{
+				CustomVehicleTransport::SendVehicleSiren(*player, pkt);
+			}
+		}
+	}
+	return true;
+}
+}
+
+// native SetCustomVehicleSiren(vehicleid, bool:enabled, sirenType = 1);
+SCRIPT_API(SetCustomVehicleSiren, bool(IVehicle& vehicle, bool enabled, int sirenType))
+{
+	return CustomVehicleNatives::SetCustomVehicleSiren(vehicle, enabled, sirenType);
+}
+
+// Legacy alias: SetVehicleSiren -> SetCustomVehicleSiren
+SCRIPT_API(SetVehicleSiren, bool(IVehicle& vehicle, bool enabled, int sirenType))
+{
+	return CustomVehicleNatives::SetCustomVehicleSiren(vehicle, enabled, sirenType);
+}
+
+namespace CustomVehicleNatives
+{
+inline bool GetCustomVehicleSiren(IVehicle& vehicle, bool& enabled, int& sirenType)
+{
+	int vehicleid = vehicle.getID();
+	if (!CVehicleMgr::VehicleRegistry::Get().IsValidVehicleID(vehicleid))
+		return false;
+
+	auto sirenOpt = CustomVehicleBindingRegistry::Instance().GetSiren(static_cast<uint16_t>(vehicleid));
+	if (!sirenOpt)
+		return false;
+
+	enabled = (sirenOpt->enabled != 0);
+	sirenType = static_cast<int>(sirenOpt->sirenType);
+	return true;
+}
+}
+
+// native GetCustomVehicleSiren(vehicleid, &bool:enabled, &sirenType);
+SCRIPT_API(GetCustomVehicleSiren, bool(IVehicle& vehicle, bool& enabled, int& sirenType))
+{
+	return CustomVehicleNatives::GetCustomVehicleSiren(vehicle, enabled, sirenType);
+}
+
+// Legacy alias: GetVehicleSiren -> GetCustomVehicleSiren
+SCRIPT_API(GetVehicleSiren, bool(IVehicle& vehicle, bool& enabled, int& sirenType))
+{
+	return CustomVehicleNatives::GetCustomVehicleSiren(vehicle, enabled, sirenType);
+}
+
+namespace CustomVehicleNatives
+{
+inline bool SetCustomVehicleModelHorn(int customModelId, int hornSoundId, float hornPitch)
+{
+	if (customModelId < 0 || !CVehicleMgr::IsCustomVehicleModel(static_cast<uint32_t>(customModelId)))
+		return false;
+
+	CustomVehicleBindingRegistry::Instance().SetModelHorn(static_cast<uint32_t>(customModelId), static_cast<int8_t>(hornSoundId), hornPitch);
+	return true;
+}
+}
+
+// native SetCustomVehicleModelHorn(customModelId, hornSoundId, Float:hornPitch = 1.0);
+SCRIPT_API(SetCustomVehicleModelHorn, bool(int customModelId, int hornSoundId, float hornPitch))
+{
+	return CustomVehicleNatives::SetCustomVehicleModelHorn(customModelId, hornSoundId, hornPitch);
+}
+
+// Legacy alias: SetVehicleModelHorn -> SetCustomVehicleModelHorn
+SCRIPT_API(SetVehicleModelHorn, bool(int customModelId, int hornSoundId, float hornPitch))
+{
+	return CustomVehicleNatives::SetCustomVehicleModelHorn(customModelId, hornSoundId, hornPitch);
+}
+
+namespace CustomVehicleNatives
+{
+inline bool SetCustomVehicleModelSiren(int customModelId, bool hasSiren, int sirenType)
+{
+	if (customModelId < 0 || !CVehicleMgr::IsCustomVehicleModel(static_cast<uint32_t>(customModelId)))
+		return false;
+
+	CustomVehicleBindingRegistry::Instance().SetModelSiren(static_cast<uint32_t>(customModelId), hasSiren, static_cast<int8_t>(sirenType));
+	return true;
+}
+}
+
+// native SetCustomVehicleModelSiren(customModelId, bool:hasSiren, sirenType = 1);
+SCRIPT_API(SetCustomVehicleModelSiren, bool(int customModelId, bool hasSiren, int sirenType))
+{
+	return CustomVehicleNatives::SetCustomVehicleModelSiren(customModelId, hasSiren, sirenType);
+}
+
+// Legacy alias: SetVehicleModelSiren -> SetCustomVehicleModelSiren
+SCRIPT_API(SetVehicleModelSiren, bool(int customModelId, bool hasSiren, int sirenType))
+{
+	return CustomVehicleNatives::SetCustomVehicleModelSiren(customModelId, hasSiren, sirenType);
 }
 
 // native GetFileSha256(const filename[], outputHash[]);
@@ -1651,8 +2394,9 @@ SCRIPT_API(GetClientFileStoreStatus, int(IPlayer& player, int modelId, int kind)
 	return ModelTransferMgr::GetClientFileStoreStatus(playerid, static_cast<uint32_t>(modelId), static_cast<ModelFileKind>(kind));
 }
 
-// native SetVehicleDoorMissing(vehicleid, doorid, bool:missing);
-SCRIPT_API(SetVehicleDoorMissing, bool(IVehicle& vehicle, int doorid, bool missing))
+namespace CustomVehicleNatives
+{
+inline bool SetCustomVehicleDoorMissing(IVehicle& vehicle, int doorid, bool missing)
 {
 	int vehicleid = vehicle.getID();
 	ExtendedVehCompo* compo = ExtendedVehCompo::get();
@@ -1660,7 +2404,7 @@ SCRIPT_API(SetVehicleDoorMissing, bool(IVehicle& vehicle, int doorid, bool missi
 	if (!CVehicleMgr::VehicleRegistry::Get().IsValidVehicleID(vehicleid))
 	{
 		if (core_)
-			core_->logLn(LogLevel::Warning, "[ExtendedVeh] SetVehicleDoorMissing: Invalid vehicle ID %d", vehicleid);
+			core_->logLn(LogLevel::Warning, "[ExtendedVeh] SetCustomVehicleDoorMissing: Invalid vehicle ID %d", vehicleid);
 		return false;
 	}
 
@@ -1669,25 +2413,39 @@ SCRIPT_API(SetVehicleDoorMissing, bool(IVehicle& vehicle, int doorid, bool missi
 	if (cat == CVehicleMgr::VehicleCategory::Bike || cat == CVehicleMgr::VehicleCategory::Bmx || cat == CVehicleMgr::VehicleCategory::Boat || cat == CVehicleMgr::VehicleCategory::Trailer || cat == CVehicleMgr::VehicleCategory::Train)
 	{
 		if (core_)
-			core_->logLn(LogLevel::Warning, "[ExtendedVeh] SetVehicleDoorMissing: Vehicle %d (category '%s') has no doors",
+			core_->logLn(LogLevel::Warning, "[ExtendedVeh] SetCustomVehicleDoorMissing: Vehicle %d (category '%s') has no doors",
 				vehicleid, CVehicleMgr::GetVehicleCategoryName(cat));
 		return false;
 	}
 	if (doorid < 0 || (doorid > 5 && doorid != 0xFF))
 	{
 		if (core_)
-			core_->logLn(LogLevel::Warning, "[ExtendedVeh] SetVehicleDoorMissing: Invalid door ID %d (must be 0-5 or 255)", doorid);
+			core_->logLn(LogLevel::Warning, "[ExtendedVeh] SetCustomVehicleDoorMissing: Invalid door ID %d (must be 0-5 or 255)", doorid);
 		return false;
 	}
 
 	bool ret = HandlingMgr::SetVehicleDoorMissing(static_cast<uint16_t>(vehicleid), static_cast<uint8_t>(doorid), missing);
 	if (core_)
-		core_->logLn(LogLevel::Debug, "[ExtendedVeh] SetVehicleDoorMissing(veh=%d, door=%d, missing=%d) -> %s", vehicleid, doorid, missing, ret ? "true" : "false");
+		core_->logLn(LogLevel::Debug, "[ExtendedVeh] SetCustomVehicleDoorMissing(veh=%d, door=%d, missing=%d) -> %s", vehicleid, doorid, missing, ret ? "true" : "false");
 	return ret;
 }
+}
 
-// native GetVehicleDoorMissing(vehicleid, doorid, &bool:missing);
-SCRIPT_API(GetVehicleDoorMissing, bool(IVehicle& vehicle, int doorid, bool& missing))
+// native SetCustomVehicleDoorMissing(vehicleid, doorid, bool:missing);
+SCRIPT_API(SetCustomVehicleDoorMissing, bool(IVehicle& vehicle, int doorid, bool missing))
+{
+	return CustomVehicleNatives::SetCustomVehicleDoorMissing(vehicle, doorid, missing);
+}
+
+// Legacy alias: SetVehicleDoorMissing -> SetCustomVehicleDoorMissing
+SCRIPT_API(SetVehicleDoorMissing, bool(IVehicle& vehicle, int doorid, bool missing))
+{
+	return CustomVehicleNatives::SetCustomVehicleDoorMissing(vehicle, doorid, missing);
+}
+
+namespace CustomVehicleNatives
+{
+inline bool GetCustomVehicleDoorMissing(IVehicle& vehicle, int doorid, bool& missing)
 {
 	missing = false;
 	int vehicleid = vehicle.getID();
@@ -1696,7 +2454,7 @@ SCRIPT_API(GetVehicleDoorMissing, bool(IVehicle& vehicle, int doorid, bool& miss
 	if (!CVehicleMgr::VehicleRegistry::Get().IsValidVehicleID(vehicleid))
 	{
 		if (core_)
-			core_->logLn(LogLevel::Warning, "[ExtendedVeh] GetVehicleDoorMissing: Invalid vehicle ID %d", vehicleid);
+			core_->logLn(LogLevel::Warning, "[ExtendedVeh] GetCustomVehicleDoorMissing: Invalid vehicle ID %d", vehicleid);
 		return false;
 	}
 
@@ -1705,25 +2463,39 @@ SCRIPT_API(GetVehicleDoorMissing, bool(IVehicle& vehicle, int doorid, bool& miss
 	if (cat == CVehicleMgr::VehicleCategory::Bike || cat == CVehicleMgr::VehicleCategory::Bmx || cat == CVehicleMgr::VehicleCategory::Boat || cat == CVehicleMgr::VehicleCategory::Trailer || cat == CVehicleMgr::VehicleCategory::Train)
 	{
 		if (core_)
-			core_->logLn(LogLevel::Warning, "[ExtendedVeh] GetVehicleDoorMissing: Vehicle %d (category '%s') has no doors",
+			core_->logLn(LogLevel::Warning, "[ExtendedVeh] GetCustomVehicleDoorMissing: Vehicle %d (category '%s') has no doors",
 				vehicleid, CVehicleMgr::GetVehicleCategoryName(cat));
 		return false;
 	}
 	if (doorid < 0 || doorid > 5)
 	{
 		if (core_)
-			core_->logLn(LogLevel::Warning, "[ExtendedVeh] GetVehicleDoorMissing: Invalid door ID %d (must be 0-5)", doorid);
+			core_->logLn(LogLevel::Warning, "[ExtendedVeh] GetCustomVehicleDoorMissing: Invalid door ID %d (must be 0-5)", doorid);
 		return false;
 	}
 
 	bool ret = HandlingMgr::GetVehicleDoorMissing(static_cast<uint16_t>(vehicleid), static_cast<uint8_t>(doorid), missing);
 	if (core_)
-		core_->logLn(LogLevel::Debug, "[ExtendedVeh] GetVehicleDoorMissing(veh=%d, door=%d) -> missing=%d, ret=%s", vehicleid, doorid, missing, ret ? "true" : "false");
+		core_->logLn(LogLevel::Debug, "[ExtendedVeh] GetCustomVehicleDoorMissing(veh=%d, door=%d) -> missing=%d, ret=%s", vehicleid, doorid, missing, ret ? "true" : "false");
 	return ret;
 }
+}
 
-// native SetVehicleAllDoorsMissing(vehicleid, bool:missing);
-SCRIPT_API(SetVehicleAllDoorsMissing, bool(IVehicle& vehicle, bool missing))
+// native GetCustomVehicleDoorMissing(vehicleid, doorid, &bool:missing);
+SCRIPT_API(GetCustomVehicleDoorMissing, bool(IVehicle& vehicle, int doorid, bool& missing))
+{
+	return CustomVehicleNatives::GetCustomVehicleDoorMissing(vehicle, doorid, missing);
+}
+
+// Legacy alias: GetVehicleDoorMissing -> GetCustomVehicleDoorMissing
+SCRIPT_API(GetVehicleDoorMissing, bool(IVehicle& vehicle, int doorid, bool& missing))
+{
+	return CustomVehicleNatives::GetCustomVehicleDoorMissing(vehicle, doorid, missing);
+}
+
+namespace CustomVehicleNatives
+{
+inline bool SetCustomVehicleAllDoorsMissing(IVehicle& vehicle, bool missing)
 {
 	int vehicleid = vehicle.getID();
 	ExtendedVehCompo* compo = ExtendedVehCompo::get();
@@ -1731,7 +2503,7 @@ SCRIPT_API(SetVehicleAllDoorsMissing, bool(IVehicle& vehicle, bool missing))
 	if (!CVehicleMgr::VehicleRegistry::Get().IsValidVehicleID(vehicleid))
 	{
 		if (core_)
-			core_->logLn(LogLevel::Warning, "[ExtendedVeh] SetVehicleAllDoorsMissing: Invalid vehicle ID %d", vehicleid);
+			core_->logLn(LogLevel::Warning, "[ExtendedVeh] SetCustomVehicleAllDoorsMissing: Invalid vehicle ID %d", vehicleid);
 		return false;
 	}
 
@@ -1740,13 +2512,26 @@ SCRIPT_API(SetVehicleAllDoorsMissing, bool(IVehicle& vehicle, bool missing))
 	if (cat == CVehicleMgr::VehicleCategory::Bike || cat == CVehicleMgr::VehicleCategory::Bmx || cat == CVehicleMgr::VehicleCategory::Boat || cat == CVehicleMgr::VehicleCategory::Trailer || cat == CVehicleMgr::VehicleCategory::Train)
 	{
 		if (core_)
-			core_->logLn(LogLevel::Warning, "[ExtendedVeh] SetVehicleAllDoorsMissing: Vehicle %d (category '%s') has no doors",
+			core_->logLn(LogLevel::Warning, "[ExtendedVeh] SetCustomVehicleAllDoorsMissing: Vehicle %d (category '%s') has no doors",
 				vehicleid, CVehicleMgr::GetVehicleCategoryName(cat));
 		return false;
 	}
 
 	bool ret = HandlingMgr::SetVehicleAllDoorsMissing(static_cast<uint16_t>(vehicleid), missing);
 	if (core_)
-		core_->logLn(LogLevel::Debug, "[ExtendedVeh] SetVehicleAllDoorsMissing(veh=%d, missing=%d) -> %s", vehicleid, missing, ret ? "true" : "false");
+		core_->logLn(LogLevel::Debug, "[ExtendedVeh] SetCustomVehicleAllDoorsMissing(veh=%d, missing=%d) -> %s", vehicleid, missing, ret ? "true" : "false");
 	return ret;
+}
+}
+
+// native SetCustomVehicleAllDoorsMissing(vehicleid, bool:missing);
+SCRIPT_API(SetCustomVehicleAllDoorsMissing, bool(IVehicle& vehicle, bool missing))
+{
+	return CustomVehicleNatives::SetCustomVehicleAllDoorsMissing(vehicle, missing);
+}
+
+// Legacy alias: SetVehicleAllDoorsMissing -> SetCustomVehicleAllDoorsMissing
+SCRIPT_API(SetVehicleAllDoorsMissing, bool(IVehicle& vehicle, bool missing))
+{
+	return CustomVehicleNatives::SetCustomVehicleAllDoorsMissing(vehicle, missing);
 }

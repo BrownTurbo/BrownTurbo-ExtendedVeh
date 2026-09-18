@@ -40,6 +40,7 @@ using VehiclePoolVariant = std::variant<
 PlayerPoolVariant GetPlayerPoolPtr();
 bool MatchPlayerId(int playerId);
 CVehicle* GetGameVehicleFromPool(uint16_t sampVehicleId);
+bool GetVehiclePlateText(uint16_t sampVehicleId, char* outText, size_t maxLen);
 bool IsGameInitialized();
 uint16_t GetLocalPlayerId();
 VehiclePoolVariant GetVehiclesPool();

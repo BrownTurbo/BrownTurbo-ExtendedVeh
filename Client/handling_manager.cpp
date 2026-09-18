@@ -1566,6 +1566,87 @@ bool HandlingManager::ProcessAction(CustomVehAction action, RakNet::BitStream* b
 		}
 		return false;
 	}
+	case static_cast<CustomVehAction>(CustomVeh::Protocol::Action::SetVehicleStance): {
+		CustomVeh::Protocol::VehicleStancePacket stance {};
+		if (bs->Read(reinterpret_cast<char*>(&stance), sizeof(stance))) {
+			ClientLog(std::format("[Client] SetVehicleStance: vehId={}, frontScale={:.2f}, rearScale={:.2f}, frontCamber={:.2f}, rearCamber={:.2f}, frontTrack={:.2f}, rearTrack={:.2f}",
+				stance.sampVehicleId, stance.frontWheelScale, stance.rearWheelScale, stance.frontCamber, stance.rearCamber, stance.frontTrackWidth, stance.rearTrackWidth));
+			CustomVehicleBindingManager::Instance().SetVehicleStance(
+				stance.sampVehicleId, stance.frontWheelScale, stance.rearWheelScale,
+				stance.frontCamber, stance.rearCamber, stance.frontTrackWidth, stance.rearTrackWidth);
+		}
+		return false;
+	}
+	case static_cast<CustomVehAction>(CustomVeh::Protocol::Action::SetVehicleExtras): {
+		CustomVeh::Protocol::VehicleExtrasPacket extras {};
+		if (bs->Read(reinterpret_cast<char*>(&extras), sizeof(extras))) {
+			ClientLog(std::format("[Client] SetVehicleExtras: vehId={}, mask=0x{:X}", extras.sampVehicleId, extras.extrasMask));
+			CustomVehicleBindingManager::Instance().SetVehicleExtras(extras.sampVehicleId, extras.extrasMask);
+		}
+		return false;
+	}
+	case static_cast<CustomVehAction>(CustomVeh::Protocol::Action::SetVehiclePaintjob): {
+		CustomVeh::Protocol::VehiclePaintjobPacket pj {};
+		if (bs->Read(reinterpret_cast<char*>(&pj), sizeof(pj))) {
+			ClientLog(std::format("[Client] SetVehiclePaintjob: vehId={}, paintjob={}", pj.sampVehicleId, static_cast<int>(pj.paintjobIndex)));
+			CustomVehicleBindingManager::Instance().SetVehiclePaintjob(pj.sampVehicleId, pj.paintjobIndex);
+		}
+		return false;
+	}
+	case static_cast<CustomVehAction>(CustomVeh::Protocol::Action::SetVehicleNeon): {
+		CustomVeh::Protocol::VehicleNeonPacket neon {};
+		if (bs->Read(reinterpret_cast<char*>(&neon), sizeof(neon))) {
+			ClientLog(std::format("[Client] SetVehicleNeon: vehId={}, enabled={}, r={}, g={}, b={}, size={:.2f}",
+				neon.sampVehicleId, neon.enabled != 0, neon.r, neon.g, neon.b, neon.size));
+			CustomVehicleBindingManager::Instance().SetVehicleNeon(neon.sampVehicleId, neon.enabled != 0, neon.r, neon.g, neon.b, neon.size);
+		}
+		return false;
+	}
+	case static_cast<CustomVehAction>(CustomVeh::Protocol::Action::SetVehicleWindowTint): {
+		CustomVeh::Protocol::VehicleWindowTintPacket tint {};
+		if (bs->Read(reinterpret_cast<char*>(&tint), sizeof(tint))) {
+			ClientLog(std::format("[Client] SetVehicleWindowTint: vehId={}, alpha={}, r={}, g={}, b={}",
+				tint.sampVehicleId, tint.alpha, tint.r, tint.g, tint.b));
+			CustomVehicleBindingManager::Instance().SetVehicleWindowTint(tint.sampVehicleId, tint.alpha, tint.r, tint.g, tint.b);
+		}
+		return false;
+	}
+	case static_cast<CustomVehAction>(CustomVeh::Protocol::Action::SetVehicleWheelColor): {
+		CustomVeh::Protocol::VehicleWheelColorPacket wc {};
+		if (bs->Read(reinterpret_cast<char*>(&wc), sizeof(wc))) {
+			ClientLog(std::format("[Client] SetVehicleWheelColor: vehId={}, r={}, g={}, b={}",
+				wc.sampVehicleId, wc.r, wc.g, wc.b));
+			CustomVehicleBindingManager::Instance().SetVehicleWheelColor(wc.sampVehicleId, wc.r, wc.g, wc.b);
+		}
+		return false;
+	}
+	case static_cast<CustomVehAction>(CustomVeh::Protocol::Action::SetVehicleBackfire): {
+		CustomVeh::Protocol::VehicleBackfirePacket bf {};
+		if (bs->Read(reinterpret_cast<char*>(&bf), sizeof(bf))) {
+			ClientLog(std::format("[Client] SetVehicleBackfire: vehId={}, enabled={}",
+				bf.sampVehicleId, bf.enabled != 0));
+			CustomVehicleBindingManager::Instance().SetVehicleBackfire(bf.sampVehicleId, bf.enabled != 0);
+		}
+		return false;
+	}
+	case static_cast<CustomVehAction>(CustomVeh::Protocol::Action::SetVehicleHorn): {
+		CustomVeh::Protocol::VehicleHornPacket horn {};
+		if (bs->Read(reinterpret_cast<char*>(&horn), sizeof(horn))) {
+			ClientLog(std::format("[Client] SetVehicleHorn: vehId={}, soundId={}, pitch={:.2f}",
+				horn.sampVehicleId, horn.hornSoundId, horn.hornPitch));
+			CustomVehicleBindingManager::Instance().SetVehicleHorn(horn.sampVehicleId, horn.hornSoundId, horn.hornPitch);
+		}
+		return false;
+	}
+	case static_cast<CustomVehAction>(CustomVeh::Protocol::Action::SetVehicleSiren): {
+		CustomVeh::Protocol::VehicleSirenPacket siren {};
+		if (bs->Read(reinterpret_cast<char*>(&siren), sizeof(siren))) {
+			ClientLog(std::format("[Client] SetVehicleSiren: vehId={}, enabled={}, type={}",
+				siren.sampVehicleId, siren.enabled != 0, siren.sirenType));
+			CustomVehicleBindingManager::Instance().SetVehicleSiren(siren.sampVehicleId, siren.enabled != 0, siren.sirenType);
+		}
+		return false;
+	}
 	default:
 		ClientLog(std::format("[Client] ProcessAction: Unknown or unhandled action {}", static_cast<int>(action)));
 		break;

@@ -44,4 +44,76 @@ void SendVehicleUnbind(IPlayer& player, uint16_t sampVehicleId)
 
 	player.sendPacket(Span<uint8_t>(reinterpret_cast<uint8_t*>(pkt.data.GetData()), pkt.data.GetNumberOfBitsUsed()), 0, true);
 }
+
+void SendVehicleStance(IPlayer& player, const CustomVeh::Protocol::VehicleStancePacket& stance)
+{
+	ScvActionPacket pkt(CustomVeh::Protocol::Action::SetVehicleStance);
+	pkt.data.Write(reinterpret_cast<const char*>(&stance), sizeof(stance));
+
+	player.sendPacket(Span<uint8_t>(reinterpret_cast<uint8_t*>(pkt.data.GetData()), pkt.data.GetNumberOfBitsUsed()), 0, true);
+}
+
+void SendVehicleExtras(IPlayer& player, const CustomVeh::Protocol::VehicleExtrasPacket& extras)
+{
+	ScvActionPacket pkt(CustomVeh::Protocol::Action::SetVehicleExtras);
+	pkt.data.Write(reinterpret_cast<const char*>(&extras), sizeof(extras));
+
+	player.sendPacket(Span<uint8_t>(reinterpret_cast<uint8_t*>(pkt.data.GetData()), pkt.data.GetNumberOfBitsUsed()), 0, true);
+}
+
+void SendVehiclePaintjob(IPlayer& player, const CustomVeh::Protocol::VehiclePaintjobPacket& pj)
+{
+	ScvActionPacket pkt(CustomVeh::Protocol::Action::SetVehiclePaintjob);
+	pkt.data.Write(reinterpret_cast<const char*>(&pj), sizeof(pj));
+
+	player.sendPacket(Span<uint8_t>(reinterpret_cast<uint8_t*>(pkt.data.GetData()), pkt.data.GetNumberOfBitsUsed()), 0, true);
+}
+
+void SendVehicleNeon(IPlayer& player, const CustomVeh::Protocol::VehicleNeonPacket& neon)
+{
+	ScvActionPacket pkt(CustomVeh::Protocol::Action::SetVehicleNeon);
+	pkt.data.Write(reinterpret_cast<const char*>(&neon), sizeof(neon));
+
+	player.sendPacket(Span<uint8_t>(reinterpret_cast<uint8_t*>(pkt.data.GetData()), pkt.data.GetNumberOfBitsUsed()), 0, true);
+}
+
+void SendVehicleWindowTint(IPlayer& player, const CustomVeh::Protocol::VehicleWindowTintPacket& tint)
+{
+	ScvActionPacket pkt(CustomVeh::Protocol::Action::SetVehicleWindowTint);
+	pkt.data.Write(reinterpret_cast<const char*>(&tint), sizeof(tint));
+
+	player.sendPacket(Span<uint8_t>(reinterpret_cast<uint8_t*>(pkt.data.GetData()), pkt.data.GetNumberOfBitsUsed()), 0, true);
+}
+
+void SendVehicleWheelColor(IPlayer& player, const CustomVeh::Protocol::VehicleWheelColorPacket& wc)
+{
+	ScvActionPacket pkt(CustomVeh::Protocol::Action::SetVehicleWheelColor);
+	pkt.data.Write(reinterpret_cast<const char*>(&wc), sizeof(wc));
+
+	player.sendPacket(Span<uint8_t>(reinterpret_cast<uint8_t*>(pkt.data.GetData()), pkt.data.GetNumberOfBitsUsed()), 0, true);
+}
+
+void SendVehicleBackfire(IPlayer& player, const CustomVeh::Protocol::VehicleBackfirePacket& bf)
+{
+	ScvActionPacket pkt(CustomVeh::Protocol::Action::SetVehicleBackfire);
+	pkt.data.Write(reinterpret_cast<const char*>(&bf), sizeof(bf));
+
+	player.sendPacket(Span<uint8_t>(reinterpret_cast<uint8_t*>(pkt.data.GetData()), pkt.data.GetNumberOfBitsUsed()), 0, true);
+}
+
+void SendVehicleHorn(IPlayer& player, const CustomVeh::Protocol::VehicleHornPacket& horn)
+{
+	ScvActionPacket pkt(CustomVeh::Protocol::Action::SetVehicleHorn);
+	pkt.data.Write(reinterpret_cast<const char*>(&horn), sizeof(horn));
+
+	player.sendPacket(Span<uint8_t>(reinterpret_cast<uint8_t*>(pkt.data.GetData()), pkt.data.GetNumberOfBitsUsed()), 0, true);
+}
+
+void SendVehicleSiren(IPlayer& player, const CustomVeh::Protocol::VehicleSirenPacket& siren)
+{
+	ScvActionPacket pkt(CustomVeh::Protocol::Action::SetVehicleSiren);
+	pkt.data.Write(reinterpret_cast<const char*>(&siren), sizeof(siren));
+
+	player.sendPacket(Span<uint8_t>(reinterpret_cast<uint8_t*>(pkt.data.GetData()), pkt.data.GetNumberOfBitsUsed()), 0, true);
+}
 };

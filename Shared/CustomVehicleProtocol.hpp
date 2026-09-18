@@ -29,6 +29,15 @@ namespace CustomVeh::Protocol {
 		CustomVehicleBind = 41,
 		CustomVehicleUnbind = 42,
 		CustomVehicleDestroy = 43,
+		SetVehicleStance = 60,
+		SetVehicleExtras = 61,
+		SetVehiclePaintjob = 62,
+		SetVehicleNeon = 63,
+		SetVehicleWindowTint = 64,
+		SetVehicleWheelColor = 65,
+		SetVehicleBackfire = 66,
+		SetVehicleHorn = 67,
+		SetVehicleSiren = 68,
 		AssetManifest = 50,
 		AssetRequest = 51,
 		AssetResume = 52,
@@ -112,6 +121,67 @@ namespace CustomVeh::Protocol {
 
 	struct VehicleUnbinding {
 		uint16_t sampVehicleId = 0;
+	};
+
+	struct VehicleStancePacket {
+		uint16_t sampVehicleId = 0;
+		float frontWheelScale = 1.0f;
+		float rearWheelScale = 1.0f;
+		float frontCamber = 0.0f;
+		float rearCamber = 0.0f;
+		float frontTrackWidth = 0.0f;
+		float rearTrackWidth = 0.0f;
+	};
+
+	struct VehicleExtrasPacket {
+		uint16_t sampVehicleId = 0;
+		uint8_t extrasMask = 0xFF;
+	};
+
+	struct VehiclePaintjobPacket {
+		uint16_t sampVehicleId = 0;
+		int8_t paintjobIndex = -1;
+	};
+
+	struct VehicleNeonPacket {
+		uint16_t sampVehicleId = 0;
+		uint8_t enabled = 0;
+		uint8_t r = 0;
+		uint8_t g = 180;
+		uint8_t b = 255;
+		float size = 2.5f;
+	};
+
+	struct VehicleWindowTintPacket {
+		uint16_t sampVehicleId = 0;
+		uint8_t alpha = 255;
+		uint8_t r = 0;
+		uint8_t g = 0;
+		uint8_t b = 0;
+	};
+
+	struct VehicleWheelColorPacket {
+		uint16_t sampVehicleId = 0;
+		uint8_t r = 255;
+		uint8_t g = 255;
+		uint8_t b = 255;
+	};
+
+	struct VehicleBackfirePacket {
+		uint16_t sampVehicleId = 0;
+		uint8_t enabled = 0;
+	};
+
+	struct VehicleHornPacket {
+		uint16_t sampVehicleId = 0;
+		int8_t hornSoundId = 0;
+		float hornPitch = 1.0f;
+	};
+
+	struct VehicleSirenPacket {
+		uint16_t sampVehicleId = 0;
+		uint8_t enabled = 0;
+		int8_t sirenType = 1;
 	};
 
 	struct AssetRequest {

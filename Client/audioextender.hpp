@@ -22,6 +22,9 @@ public:
 		int16_t engineOffSoundBankId = -1;
 		int16_t accelerateSoundBankId = -1;
 		int16_t decelerateSoundBankId = -1;
+		int16_t hornSoundId = -1;
+		float hornPitch = 1.0f;
+		int8_t sirenType = -1; // -1: default, 0: disabled, 1: wail (ambulance/fire), 2: police switching
 	};
 	struct CustomVehicleAudioRuntime {
 		CAESound engineSound;
@@ -52,12 +55,14 @@ private:
 			const std::uint32_t modelId = static_cast<std::uint32_t>(pVehicle->m_nModelIndex);
 			const int origModelIndex = pVehicle->m_nModelIndex;
 			bool swappedModel = false;
+			AudioExtender::CustomVehicleAudioDefinition def;
+			bool hasCustomAudio = false;
 			{
 				std::lock_guard<std::mutex> lock(s_audioMutex);
 				const auto it = s_customAudioMap.find(modelId);
 				if (it != s_customAudioMap.end()) {
-					AudioExtender::CustomVehicleAudioDefinition def = it->second;
-					ApplyCustomVehicleAudio(*pVehicle, def);
+					def = it->second;
+					hasCustomAudio = true;
 					if (def.audioModelId >= 400 && def.audioModelId <= 611) {
 						pVehicle->m_nModelIndex = def.audioModelId;
 						swappedModel = true;
@@ -72,6 +77,9 @@ private:
 			if (swappedModel) {
 				pVehicle->m_nModelIndex = origModelIndex;
 			}
+			if (hasCustomAudio) {
+				ApplyCustomVehicleAudio(*pVehicle, def);
+			}
 		} else {
 			s_initVehicleAudioHook.original<InitVehicleAudioFn>()(pAudio, pVehicle);
 		}
@@ -84,20 +92,12 @@ public:
 			return;
 
 		void* addrVehicleAudio = GtaAddress(0x4F7670);
-		if (!addrVehicleAudio) {
-			return;
+		if (addrVehicleAudio && IsExecutableAddress(reinterpret_cast<uintptr_t>(addrVehicleAudio)) && LooksLikeFunctionEntry(reinterpret_cast<uintptr_t>(addrVehicleAudio))) {
+			auto removeHook = safetyhook::create_inline(addrVehicleAudio, reinterpret_cast<void*>(&Hooked_InitialiseVehicleAudio));
+			if (removeHook) {
+				s_initVehicleAudioHook = std::move(removeHook);
+			}
 		}
-		if (!IsExecutableAddress(reinterpret_cast<uintptr_t>(addrVehicleAudio)) || !IsInsideMainModule(reinterpret_cast<uintptr_t>(addrVehicleAudio)) || !LooksLikeFunctionEntry(reinterpret_cast<uintptr_t>(addrVehicleAudio))) {
-			return;
-		}
-		auto removeHook = safetyhook::create_inline(addrVehicleAudio, reinterpret_cast<void*>(&Hooked_InitialiseVehicleAudio));
-
-		if (!removeHook) {
-			s_initVehicleAudioHook.reset();
-			return;
-		}
-
-		s_initVehicleAudioHook = std::move(removeHook);
 
 		s_hooksInstalled = true;
 	}
@@ -167,6 +167,13 @@ public:
 		if (definition.engineOffSoundBankId >= 0) {
 			audio.m_settings.m_nEngineOffSoundBankId = definition.engineOffSoundBankId;
 		}
+		if (definition.hornSoundId >= 0) {
+			audio.m_settings.m_bHornTon = static_cast<char>(definition.hornSoundId);
+			audio.m_settings.m_fHornHigh = definition.hornPitch;
+		}
+		if (definition.sirenType >= 0) {
+			audio.m_bModelWithSiren = (definition.sirenType > 0);
+		}
 		return std::optional<CAEVehicleAudioEntity*>(&audio);
 	}
 
@@ -218,14 +225,40 @@ public:
 		return true;
 	}
 
-	static void RegisterVehicleAudio(uint32_t customModelId, uint32_t audioBaseModelId, int16_t engineOnSoundId, int16_t engineOffSoundId, int16_t accelerateSoundId, int16_t decelerateSoundId)
+	static void RegisterVehicleAudio(uint32_t customModelId, uint32_t audioBaseModelId,
+		int16_t engineOnSoundId, int16_t engineOffSoundId,
+		int16_t accelerateSoundId, int16_t decelerateSoundId,
+		int16_t hornSoundId = -1, float hornPitch = 1.0f, int8_t sirenType = -1)
 	{
 		std::lock_guard<std::mutex> lock(s_audioMutex);
-		s_customAudioMap[customModelId].audioModelId = audioBaseModelId;
-		s_customAudioMap[customModelId].engineOnSoundBankId = engineOnSoundId;
-		s_customAudioMap[customModelId].accelerateSoundBankId = accelerateSoundId;
-		s_customAudioMap[customModelId].engineOffSoundBankId = engineOffSoundId;
-		s_customAudioMap[customModelId].decelerateSoundBankId = decelerateSoundId;
+		auto& def = s_customAudioMap[customModelId];
+		def.audioModelId = audioBaseModelId;
+		def.engineOnSoundBankId = engineOnSoundId;
+		def.accelerateSoundBankId = accelerateSoundId;
+		def.engineOffSoundBankId = engineOffSoundId;
+		def.decelerateSoundBankId = decelerateSoundId;
+		if (hornSoundId >= 0) {
+			def.hornSoundId = hornSoundId;
+			def.hornPitch = hornPitch;
+		}
+		if (sirenType >= 0) {
+			def.sirenType = sirenType;
+		}
+	}
+
+	static void SetModelHorn(uint32_t customModelId, int16_t hornSoundId, float hornPitch = 1.0f)
+	{
+		std::lock_guard<std::mutex> lock(s_audioMutex);
+		auto& def = s_customAudioMap[customModelId];
+		def.hornSoundId = hornSoundId;
+		def.hornPitch = hornPitch;
+	}
+
+	static void SetModelSiren(uint32_t customModelId, bool hasSiren, int8_t sirenType = 1)
+	{
+		std::lock_guard<std::mutex> lock(s_audioMutex);
+		auto& def = s_customAudioMap[customModelId];
+		def.sirenType = hasSiren ? sirenType : 0;
 	}
 
 	static std::optional<AudioExtender::CustomVehicleAudioDefinition> GetVehicleAudio(uint32_t customModelId)
