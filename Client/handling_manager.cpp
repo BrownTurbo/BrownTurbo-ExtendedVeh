@@ -166,56 +166,127 @@ std::vector<HandlingManager::HandlingAttribEntry> HandlingManager::ParseAttribEn
 
 void HandlingManager::ApplyAttribEntries(tHandlingData* handling, const std::vector<HandlingAttribEntry>& entries, CVehicle* pVehicle)
 {
+	bool transmissionNeedsInit = false;
+
 	for (const auto& e : entries) {
-		void* ptr = ResolveAttributePointer(handling, static_cast<uint8_t>(e.attrib));
-		if (!ptr)
-			continue;
-
-		switch (e.type) {
-		case TYPE_FLOAT:
-			*reinterpret_cast<float*>(ptr) = e.value.f;
+		switch (e.attrib) {
+		case HANDL_TR_FMAXVELOCITY: {
+			float maxSpeedKph = e.value.f;
+			float speedGameUnits = maxSpeedKph / 180.0f;
+			handling->m_transmissionData.m_fMaxGearVelocity = speedGameUnits * 1.2f;
+			handling->m_transmissionData.field_5C = speedGameUnits;
+			float minGearVel = -speedGameUnits * 0.3f;
+			if (minGearVel < -0.2f) {
+				minGearVel = -0.2f;
+			}
+			handling->m_transmissionData.m_fMinGearVelocity = minGearVel;
+			transmissionNeedsInit = true;
 			break;
-		case TYPE_UINT:
-		case TYPE_FLAG: {
-			uint32_t val = e.value.u;
-			if (e.attrib == HANDL_MODELFLAGS) {
-				bool wantsFlight = (val & 0x4000000) != 0;
-				bool wantsWaterDrive = (val & 0x8000000) != 0;
-				if (pVehicle) {
-					bool isFlightCapable = (pVehicle->m_nVehicleSubClass == VEHICLE_AUTOMOBILE || pVehicle->m_nVehicleSubClass == VEHICLE_MTRUCK || pVehicle->m_nVehicleSubClass == VEHICLE_QUAD || pVehicle->m_nVehicleSubClass == VEHICLE_BIKE || pVehicle->m_nVehicleSubClass == VEHICLE_BMX || pVehicle->m_nVehicleSubClass == VEHICLE_BOAT);
-					if (wantsFlight && !isFlightCapable) {
-						wantsFlight = false;
-					}
-
-					bool isWaterCapable = (pVehicle->m_nVehicleSubClass == VEHICLE_AUTOMOBILE || pVehicle->m_nVehicleSubClass == VEHICLE_MTRUCK || pVehicle->m_nVehicleSubClass == VEHICLE_QUAD);
-					if (wantsWaterDrive) {
-						if (!isWaterCapable) {
-							val &= ~0x8000000;
-						} else {
-							// Clear solid axle flags so all wheels can rotate in boat mode
-							val &= ~(0x00200000 | 0x00020000);
-						}
-					}
-
-					SetVehicleFlyingState(GetVehicleSAMPId(pVehicle), wantsFlight, pVehicle);
-					if (pVehicle->m_nVehicleSubClass != VEHICLE_PLANE) {
-						// Mask off MFLAG_IS_PLANE (0x4000000) and MFLAG_IS_HELI (0x2000000) for non-planes
-						// so GTA SA's CAutomobile does not disable wheel drive and engage landing gear brakes!
-						val &= ~(0x4000000 | 0x2000000);
-					}
-				} else {
-					val &= ~(0x4000000 | 0x2000000);
+		}
+		case HANDL_TR_FENGINEACCELERATION: {
+			float wheelMult = (handling->m_transmissionData.m_nDriveType == '4' ? 0.25f : 0.5f);
+			handling->m_transmissionData.m_fEngineAcceleration = e.value.f * 0.0004f * wheelMult;
+			transmissionNeedsInit = true;
+			break;
+		}
+		case HANDL_FBRAKEDECELERATION: {
+			handling->m_fBrakeDeceleration = e.value.f * 0.0004f;
+			break;
+		}
+		case HANDL_FCOLLISIONDAMAGEMULT: {
+			float mass = (handling->m_fMass > 0.0f) ? handling->m_fMass : 1500.0f;
+			handling->m_fCollisionDamageMultiplier = e.value.f * (2000.0f / mass);
+			break;
+		}
+		case HANDL_FMASS: {
+			handling->m_fMass = e.value.f;
+			if (pVehicle && IsVehiclePointerValid(pVehicle)) {
+				pVehicle->m_fMass = handling->m_fMass;
+			}
+			break;
+		}
+		case HANDL_FTURNMASS: {
+			handling->m_fTurnMass = e.value.f;
+			if (pVehicle && IsVehiclePointerValid(pVehicle)) {
+				pVehicle->m_fTurnMass = handling->m_fTurnMass;
+			}
+			break;
+		}
+		case HANDL_TR_NNUMBEROFGEARS: {
+			handling->m_transmissionData.m_nNumberOfGears = e.value.b;
+			transmissionNeedsInit = true;
+			break;
+		}
+		case HANDL_TR_NDRIVETYPE: {
+			uint8_t oldDriveType = handling->m_transmissionData.m_nDriveType;
+			handling->m_transmissionData.m_nDriveType = e.value.b;
+			if (oldDriveType != e.value.b) {
+				if (e.value.b == '4' && oldDriveType != '4') {
+					handling->m_transmissionData.m_fEngineAcceleration *= 0.5f;
+				} else if (oldDriveType == '4' && e.value.b != '4') {
+					handling->m_transmissionData.m_fEngineAcceleration *= 2.0f;
 				}
 			}
-			*reinterpret_cast<uint32_t*>(ptr) = val;
+			transmissionNeedsInit = true;
 			break;
 		}
-		case TYPE_BYTE:
-			*reinterpret_cast<uint8_t*>(ptr) = e.value.b;
-			break;
-		default:
+		default: {
+			void* ptr = ResolveAttributePointer(handling, static_cast<uint8_t>(e.attrib));
+			if (!ptr)
+				continue;
+
+			switch (e.type) {
+			case TYPE_FLOAT:
+				*reinterpret_cast<float*>(ptr) = e.value.f;
+				break;
+			case TYPE_UINT:
+			case TYPE_FLAG: {
+				uint32_t val = e.value.u;
+				if (e.attrib == HANDL_MODELFLAGS) {
+					bool wantsFlight = (val & 0x4000000) != 0;
+					bool wantsWaterDrive = (val & 0x8000000) != 0;
+					if (pVehicle) {
+						bool isFlightCapable = (pVehicle->m_nVehicleSubClass == VEHICLE_AUTOMOBILE || pVehicle->m_nVehicleSubClass == VEHICLE_MTRUCK || pVehicle->m_nVehicleSubClass == VEHICLE_QUAD || pVehicle->m_nVehicleSubClass == VEHICLE_BIKE || pVehicle->m_nVehicleSubClass == VEHICLE_BMX || pVehicle->m_nVehicleSubClass == VEHICLE_BOAT);
+						if (wantsFlight && !isFlightCapable) {
+							wantsFlight = false;
+						}
+
+						bool isWaterCapable = (pVehicle->m_nVehicleSubClass == VEHICLE_AUTOMOBILE || pVehicle->m_nVehicleSubClass == VEHICLE_MTRUCK || pVehicle->m_nVehicleSubClass == VEHICLE_QUAD);
+						if (wantsWaterDrive) {
+							if (!isWaterCapable) {
+								val &= ~0x8000000;
+							} else {
+								// Clear solid axle flags so all wheels can rotate in boat mode
+								val &= ~(0x00200000 | 0x00020000);
+							}
+						}
+
+						SetVehicleFlyingState(GetVehicleSAMPId(pVehicle), wantsFlight, pVehicle);
+						if (pVehicle->m_nVehicleSubClass != VEHICLE_PLANE) {
+							// Mask off MFLAG_IS_PLANE (0x4000000) and MFLAG_IS_HELI (0x2000000) for non-planes
+							// so GTA SA's CAutomobile does not disable wheel drive and engage landing gear brakes!
+							val &= ~(0x4000000 | 0x2000000);
+						}
+					} else {
+						val &= ~(0x4000000 | 0x2000000);
+					}
+				}
+				*reinterpret_cast<uint32_t*>(ptr) = val;
+				break;
+			}
+			case TYPE_BYTE:
+				*reinterpret_cast<uint8_t*>(ptr) = e.value.b;
+				break;
+			default:
+				break;
+			}
 			break;
 		}
+		}
+	}
+
+	if (transmissionNeedsInit) {
+		handling->m_transmissionData.InitGearRatios();
 	}
 }
 
@@ -544,6 +615,8 @@ void HandlingManager::RecalculateDerivedHandling(tHandlingData* handling, CVehic
 	if (!handling)
 		return;
 
+	handling->m_transmissionData.m_nHandlingFlags = handling->m_nHandlingFlags;
+
 	if (handling->m_nPercentSubmerged > 0) {
 		handling->m_fBuoyancyConstant = 0.0080000004f * handling->m_fMass * 100.0f / static_cast<float>(handling->m_nPercentSubmerged);
 	}
@@ -572,6 +645,11 @@ void HandlingManager::RecalculateDerivedHandling(tHandlingData* handling, CVehic
 		pVehicle->m_nHandlingFlagsIntValue = handling->m_nHandlingFlags;
 		pVehicle->m_vecCentreOfMass = handling->m_vecCentreOfMass;
 		pVehicle->m_fBuoyancyConstant = handling->m_fBuoyancyConstant;
+
+		pVehicle->bIsVan = (handling->m_nModelFlags & VEHICLE_HANDLING_MODEL_IS_VAN) != 0;
+		pVehicle->bIsBus = (handling->m_nModelFlags & VEHICLE_HANDLING_MODEL_IS_BUS) != 0;
+		pVehicle->bLowVehicle = (handling->m_nModelFlags & VEHICLE_HANDLING_MODEL_IS_LOW) != 0;
+		pVehicle->bIsBig = (handling->m_nModelFlags & VEHICLE_HANDLING_MODEL_IS_BIG) != 0;
 
 		if (IsVehicleFlying(pVehicle)) {
 			pVehicle->bIsHandbrakeOn = false;
@@ -919,8 +997,15 @@ void HandlingManager::ProcessVehicleMods(uint16_t sampVehicleId, const std::vect
 	handling->m_transmissionData.InitGearRatios();
 
 	RecalculateDerivedHandling(handling, gtaVehicle);
-	ClientLog(std::format("[Client] ProcessVehicleMods: Applied {} attribs to vehicle {}. Mass={:.1f}, Submerged={}, Buoyancy={:.4f}, ModelFlags={:#x}",
-		entries.size(), sampVehicleId, handling->m_fMass, static_cast<int>(handling->m_nPercentSubmerged), handling->m_fBuoyancyConstant, static_cast<uint32_t>(handling->m_nModelFlags)));
+	ClientLog(std::format("[Client] ProcessVehicleMods: Applied {} attribs to vehicle {}. Mass={:.1f}, MaxVel={:.1f} km/h (game={:.4f}), Accel={:.5f}, Gears={}, Submerged={}, Buoyancy={:.4f}, ModelFlags={:#x}",
+		entries.size(), sampVehicleId, handling->m_fMass,
+		(handling->m_transmissionData.m_fMaxGearVelocity / 1.2f) * 180.0f,
+		handling->m_transmissionData.m_fMaxGearVelocity,
+		handling->m_transmissionData.m_fEngineAcceleration,
+		static_cast<int>(handling->m_transmissionData.m_nNumberOfGears),
+		static_cast<int>(handling->m_nPercentSubmerged),
+		handling->m_fBuoyancyConstant,
+		static_cast<uint32_t>(handling->m_nModelFlags)));
 }
 
 void HandlingManager::ProcessVehicleDoorState(uint16_t sampVehicleId, uint8_t doorId, bool missing)
