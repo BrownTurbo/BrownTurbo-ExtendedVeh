@@ -4,21 +4,21 @@
 #include <game_sa/CAutomobile.h>
 #include <game_sa/CBike.h>
 #include <game_sa/CCheat.h>
+#include <game_sa/CCoronas.h>
 #include <game_sa/CHandlingDataMgr.h>
 #include <game_sa/CModelInfo.h>
 #include <game_sa/CPad.h>
+#include <game_sa/CShadows.h>
 #include <game_sa/CTimer.h>
 #include <game_sa/CTxdStore.h>
+#include <game_sa/CVehicle.h>
 #include <game_sa/CVisibilityPlugins.h>
 #include <game_sa/CWaterLevel.h>
-#include <game_sa/CVehicle.h>
-#include <game_sa/CCoronas.h>
-#include <game_sa/CShadows.h>
 #include <game_sa/rw/rpworld.h>
 #include <MinHook.h>
-#include <shared/game/CVector.h>
 #include <algorithm>
 #include <format>
+#include <shared/game/CVector.h>
 #include <string>
 
 #include "utils.h"
@@ -102,13 +102,15 @@ static void(__cdecl* g_origRegisterCoronaTexture)(
 	unsigned int id, CEntity* attachTo, unsigned char red, unsigned char green, unsigned char blue,
 	unsigned char alpha, CVector const& posn, float radius, float farClip, RwTexture* texture, eCoronaFlareType flaretype,
 	bool enableReflection, bool checkObstacles, int _param_not_used, float angle, bool longDistance, float nearClip,
-	unsigned char fadeState, float fadeSpeed, bool onlyFromBelow, bool reflectionDelay) = nullptr;
+	unsigned char fadeState, float fadeSpeed, bool onlyFromBelow, bool reflectionDelay)
+	= nullptr;
 
 static void(__cdecl* g_origStoreCarLightShadow)(
 	CVehicle* vehicle, int id, RwTexture* texture, CVector* posn,
 	float frontX, float frontY, float sideX, float sideY,
 	unsigned char red, unsigned char green, unsigned char blue,
-	float maxViewAngle) = nullptr;
+	float maxViewAngle)
+	= nullptr;
 
 static CVehicle* s_pCurrentHeadLightVehicle = nullptr;
 static CVehicle* s_pCurrentTailLightVehicle = nullptr;
@@ -223,7 +225,8 @@ static void __cdecl Hooked_RegisterCoronaTexture(
 		farClip *= (1.0f + (scale - 1.0f) * 0.5f);
 		if (isRear) {
 			alpha = static_cast<unsigned char>(std::min(255, static_cast<int>(alpha * 1.6f)));
-			if (red < 200) red = 220;
+			if (red < 200)
+				red = 220;
 		}
 	} else if (scale < 1.0f) {
 		farClip *= scale;
@@ -289,8 +292,10 @@ static void __cdecl Hooked_StoreCarLightShadow(
 {
 	CVehicle* pVeh = vehicle;
 	if (!pVeh) {
-		if (s_pCurrentHeadLightVehicle) pVeh = s_pCurrentHeadLightVehicle;
-		else if (s_pCurrentTailLightVehicle) pVeh = s_pCurrentTailLightVehicle;
+		if (s_pCurrentHeadLightVehicle)
+			pVeh = s_pCurrentHeadLightVehicle;
+		else if (s_pCurrentTailLightVehicle)
+			pVeh = s_pCurrentTailLightVehicle;
 	}
 
 	CVector modifiedPosn = posn ? *posn : CVector(0.0f, 0.0f, 0.0f);
