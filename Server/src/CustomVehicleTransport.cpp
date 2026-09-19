@@ -116,4 +116,12 @@ void SendVehicleSiren(IPlayer& player, const CustomVeh::Protocol::VehicleSirenPa
 
 	player.sendPacket(Span<uint8_t>(reinterpret_cast<uint8_t*>(pkt.data.GetData()), pkt.data.GetNumberOfBitsUsed()), 0, true);
 }
+
+void SendVehicleLights(IPlayer& player, const CustomVeh::Protocol::VehicleLightsPacket& lights)
+{
+	ScvActionPacket pkt(CustomVeh::Protocol::Action::SetVehicleLights);
+	pkt.data.Write(reinterpret_cast<const char*>(&lights), sizeof(lights));
+
+	player.sendPacket(Span<uint8_t>(reinterpret_cast<uint8_t*>(pkt.data.GetData()), pkt.data.GetNumberOfBitsUsed()), 0, true);
+}
 };

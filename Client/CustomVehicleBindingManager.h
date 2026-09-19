@@ -15,6 +15,8 @@ public:
 
 		uint32_t gtaModelId {};
 		int originalModelId { -1 };
+		uint32_t baseModelId {};
+		bool hasBaseModelId { false };
 
 		CVehicle* appliedGameVehicle { nullptr };
 		bool modelApplied {};
@@ -40,6 +42,13 @@ public:
 		bool hasWheelColor { false };
 		uint8_t wheelColorR { 255 }, wheelColorG { 255 }, wheelColorB { 255 };
 
+		bool hasStance { false };
+		bool hasExtras { false };
+		bool hasPaintjob { false };
+		bool hasNeon { false };
+		bool hasBackfire { false };
+		bool hasCustomLighting { false };
+
 		uint8_t lastPrimaryColor { 255 };
 		uint8_t lastSecondaryColor { 255 };
 		uint8_t lastTertiaryColor { 255 };
@@ -55,6 +64,9 @@ public:
 		bool hasCustomSiren { false };
 		bool sirenEnabled { false };
 		int8_t sirenType { 1 };
+
+		int8_t customLightingCategory { -1 };
+		float customLightScaleMult { 1.0f };
 	};
 
 	static CustomVehicleBindingManager& Instance()
@@ -76,6 +88,8 @@ public:
 			fn(id, b);
 		}
 	}
+
+	static void SetBaseModelId(uint32_t customModelId, uint32_t baseModelId);
 
 	void Bind(uint16_t vehicleId, uint32_t customModelId);
 
@@ -107,6 +121,8 @@ public:
 
 	void SetVehicleSiren(uint16_t vehicleId, bool enabled, int8_t sirenType = 1);
 
+	void SetVehicleLights(uint16_t vehicleId, int8_t lightingCategory, float scaleMult = 1.0f);
+
 	void ApplyPaintjobToVehicle(CVehicle* vehicle, int paintjobIndex);
 
 	void ApplyWindowTintToVehicle(CVehicle* vehicle, uint8_t alpha, uint8_t r, uint8_t g, uint8_t b);
@@ -116,10 +132,13 @@ public:
 	void ApplyAudioSettingsToVehicle(CVehicle* vehicle);
 
 private:
-	mutable std::recursive_mutex m_mutex;
+	static inline std::mutex m_mutex;
 
-	std::unordered_map<
+	static inline std::unordered_map<
 		uint16_t,
 		Binding>
 		m_bindings;
+
+	static inline std::mutex s_baseModelMutex;
+	static inline std::unordered_map<uint32_t, bool> s_baseModelIds;
 };

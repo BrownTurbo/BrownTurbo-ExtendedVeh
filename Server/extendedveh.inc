@@ -275,6 +275,22 @@ native bool:GetCustomVehicleHorn(vehicleid, &hornSoundId, &Float:hornPitch);
 native bool:SetCustomVehicleSiren(vehicleid, bool:enabled, sirenType = 1);
 native bool:GetCustomVehicleSiren(vehicleid, &bool:enabled, &sirenType);
 
+/* Vehicle Lighting Categories */
+enum
+{
+	VEHICLE_LIGHT_CAT_AUTO = 0,       // Standard Automobiles (Sedans, Sports, SUVs, etc.)
+	VEHICLE_LIGHT_CAT_TWOWHEELER = 1, // Motorcycles, Dirt Bikes, BMX, Quads
+	VEHICLE_LIGHT_CAT_HEAVY = 2,      // Monster Trucks, Big Rigs, Buses, Machinery
+	VEHICLE_LIGHT_CAT_AIRCRAFT = 3,   // Planes, Jets, Helicopters
+	VEHICLE_LIGHT_CAT_BOAT = 4,       // Speedboats, Yachts, Dinghies
+	VEHICLE_LIGHT_CAT_HOVER = 5,      // Hovercraft (Vortex) / Flight-mode vehicles
+	VEHICLE_LIGHT_CAT_RC = 6,         // Miniature RC models (RC Bandit, Baron, Raider, Goblin, Tiger, Cam)
+	VEHICLE_LIGHT_CAT_TRAILER = 7     // Towed trailers (rear markers/taillights only)
+};
+
+native bool:SetCustomVehicleLighting(vehicleid, category = -1, Float:scale = 1.0);
+native bool:GetCustomVehicleLighting(vehicleid, &category, &Float:scale);
+
 native bool:SetCustomVehicleModelHorn(customModelId, hornSoundId, Float:hornPitch = 1.0);
 native bool:SetCustomVehicleModelSiren(customModelId, bool:hasSiren, sirenType = 1);
 
@@ -310,6 +326,8 @@ native bool:SetCustomVehicleAllDoorsMissing(vehicleid, bool:missing);
 #define GetVehicleHorn              GetCustomVehicleHorn
 #define SetVehicleSiren             SetCustomVehicleSiren
 #define GetVehicleSiren             GetCustomVehicleSiren
+#define SetVehicleLighting          SetCustomVehicleLighting
+#define GetVehicleLighting          GetCustomVehicleLighting
 #define SetVehicleModelHorn         SetCustomVehicleModelHorn
 #define SetVehicleModelSiren        SetCustomVehicleModelSiren
 #define SetVehicleDoorMissing       SetCustomVehicleDoorMissing

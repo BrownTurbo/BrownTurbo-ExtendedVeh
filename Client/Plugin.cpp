@@ -4,6 +4,7 @@
 #include <game_sa/CAutomobile.h>
 #include <game_sa/CAudioEngine.h>
 #include <game_sa/CBike.h>
+#include <game_sa/CCamera.h>
 #include <game_sa/CCheat.h>
 #include <game_sa/CCoronas.h>
 #include <game_sa/CHandlingDataMgr.h>
@@ -121,7 +122,7 @@ static void __fastcall Hooked_UpdateWheelMatrix(CAutomobile* thisCar, void* edx,
 
 	if (nodeIndex >= CAR_WHEEL_RF && nodeIndex <= CAR_WHEEL_LB && thisCar->m_aCarNodes[nodeIndex]) {
 		auto* binding = CustomVehicleBindingManager::Instance().FindByVehicle(thisCar);
-		if (binding) {
+		if (binding && binding->hasStance) {
 			bool isFront = (nodeIndex == CAR_WHEEL_RF || nodeIndex == CAR_WHEEL_LF);
 			bool isRight = (nodeIndex == CAR_WHEEL_RF || nodeIndex == CAR_WHEEL_RM || nodeIndex == CAR_WHEEL_RB);
 			float scale = isFront ? binding->frontWheelScale : binding->rearWheelScale;
@@ -187,81 +188,325 @@ static void(__cdecl* g_origStoreCarLightShadow)(
 static CVehicle* s_pCurrentHeadLightVehicle = nullptr;
 static CVehicle* s_pCurrentTailLightVehicle = nullptr;
 
+enum class eVehicleLightingCategory : uint8_t {
+	Automobile,   // Sedans, coupes, sports cars, station wagons, SUVs
+	TwoWheeler,   // Motorcycles, dirt bikes, mopeds, bicycles, quad bikes
+	HeavyVehicle, // Monster trucks, big rigs, flatbeds, buses, coaches, heavy machinery
+	Aircraft,     // Airplanes, jets, helicopters
+	Boat,         // Speedboats, yachts, tugboats, dinghies
+	Hovercraft,   // Vortex hovercraft, or vehicle in active flight/hover mode
+	RCVehicle,    // Miniature remote controlled vehicles (RC Bandit, Baron, Raider, Goblin, Tiger, Cam)
+	Trailer       // Towed trailers (rear markers/taillights only)
+};
+
+static inline eVehicleLightingCategory GetVehicleLightingCategory(const CVehicle* pVeh, float* pOutCustomScaleMult = nullptr)
+{
+	if (pOutCustomScaleMult)
+		*pOutCustomScaleMult = 1.0f;
+
+	if (!pVeh)
+		return eVehicleLightingCategory::Automobile;
+
+	auto* binding = CustomVehicleBindingManager::Instance().FindByVehicle(const_cast<CVehicle*>(pVeh));
+	if (binding && binding->hasCustomLighting) {
+		if (pOutCustomScaleMult)
+			*pOutCustomScaleMult = (binding->customLightScaleMult > 0.05f) ? binding->customLightScaleMult : 1.0f;
+		if (binding->customLightingCategory >= 0 && binding->customLightingCategory <= 7) {
+			return static_cast<eVehicleLightingCategory>(binding->customLightingCategory);
+		}
+	}
+
+	int modelIndex = pVeh->m_nModelIndex;
+	if (binding && binding->baseModelId > 0) {
+		modelIndex = binding->baseModelId;
+	}
+
+	// 2. RC Vehicles: native RC model check
+	if (IsRcVehicleModel(modelIndex)) {
+		return eVehicleLightingCategory::RCVehicle;
+	}
+
+	// 3. Custom vehicle model geometry and type inspection
+	if (binding && binding->customModelId > 0) {
+		auto* customModel = StreamingExtender::GetCustomModel(binding->customModelId);
+		if (customModel) {
+			if (customModel->m_nVehicleType == VEHICLE_BIKE ||
+			    customModel->m_nVehicleType == VEHICLE_BMX ||
+			    customModel->m_nVehicleType == VEHICLE_QUAD) {
+				return eVehicleLightingCategory::TwoWheeler;
+			}
+			if (customModel->m_nVehicleType == VEHICLE_MTRUCK) {
+				return eVehicleLightingCategory::HeavyVehicle;
+			}
+			if (customModel->m_nVehicleType == VEHICLE_PLANE ||
+			    customModel->m_nVehicleType == VEHICLE_HELI ||
+			    customModel->m_nVehicleType == VEHICLE_FPLANE ||
+			    customModel->m_nVehicleType == VEHICLE_FHELI) {
+				return eVehicleLightingCategory::Aircraft;
+			}
+			if (customModel->m_nVehicleType == VEHICLE_BOAT) {
+				return eVehicleLightingCategory::Boat;
+			}
+			if (customModel->m_nVehicleType == VEHICLE_TRAILER) {
+				return eVehicleLightingCategory::Trailer;
+			}
+
+			// Dimension inspection: detect miniature custom models (RC) or giant custom models (Heavy)
+			auto* col = customModel->m_pColModel;
+			if (col) {
+				float width = col->m_boundBox.m_vecMax.x - col->m_boundBox.m_vecMin.x;
+				float length = col->m_boundBox.m_vecMax.y - col->m_boundBox.m_vecMin.y;
+				float height = col->m_boundBox.m_vecMax.z - col->m_boundBox.m_vecMin.z;
+				if (width > 0.05f && width < 0.95f && length < 1.65f) {
+					return eVehicleLightingCategory::RCVehicle;
+				}
+				if (width > 2.45f || length > 7.0f || height > 2.8f) {
+					return eVehicleLightingCategory::HeavyVehicle;
+				}
+			}
+		}
+	}
+
+	// 4. Hovercraft / Flight-capable Vehicles (Vortex 539 or active flight mode)
+	if (modelIndex == 539 || IsVehicleInFlightMode(const_cast<CVehicle*>(pVeh))) {
+		return eVehicleLightingCategory::Hovercraft;
+	}
+	if (pVeh->m_pHandlingData && (pVeh->m_pHandlingData->m_nModelFlags & 0x4000000) != 0) {
+		return eVehicleLightingCategory::Hovercraft;
+	}
+
+	// 5. Native GTA:SA Vehicle SubClass
+	switch (pVeh->m_nVehicleSubClass) {
+	case VEHICLE_BIKE:
+	case VEHICLE_BMX:
+	case VEHICLE_QUAD:
+		return eVehicleLightingCategory::TwoWheeler;
+
+	case VEHICLE_MTRUCK:
+		return eVehicleLightingCategory::HeavyVehicle;
+
+	case VEHICLE_PLANE:
+	case VEHICLE_HELI:
+	case VEHICLE_FPLANE:
+	case VEHICLE_FHELI:
+		return eVehicleLightingCategory::Aircraft;
+
+	case VEHICLE_BOAT:
+		return eVehicleLightingCategory::Boat;
+
+	case VEHICLE_TRAILER:
+		return eVehicleLightingCategory::Trailer;
+
+	case VEHICLE_AUTOMOBILE:
+	default:
+		if (IsHeavyVehicleModel(modelIndex)) {
+			return eVehicleLightingCategory::HeavyVehicle;
+		}
+		return eVehicleLightingCategory::Automobile;
+	}
+}
+
+static inline bool IsTwoWheeler(const CVehicle* pVeh)
+{
+	return GetVehicleLightingCategory(pVeh) == eVehicleLightingCategory::TwoWheeler;
+}
+
 struct LightScaleConfig {
 	float coronaScale;
 	float shadowFrontScale;
 	float shadowSideScale;
+	float offsetSpacingMult; // Multiplier for clustering width/height spacing
+	bool allowClustering;    // Whether multi-corona clustering is permitted
 };
 
-static inline bool IsTwoWheeler(const CVehicle* pVeh)
+static inline LightScaleConfig GetVehicleLightScaleConfig(
+	uint8_t lightSize,
+	bool isRear = false,
+	eVehicleLightingCategory category = eVehicleLightingCategory::Automobile,
+	float customMult = 1.0f)
 {
-	if (!pVeh)
-		return false;
-	return pVeh->m_nVehicleSubClass == VEHICLE_BIKE ||
-	       pVeh->m_nVehicleSubClass == VEHICLE_BMX ||
-	       pVeh->m_nVehicleSubClass == VEHICLE_QUAD;
-}
+	LightScaleConfig cfg;
 
-static inline LightScaleConfig GetVehicleLightScaleConfig(uint8_t lightSize, bool isRear = false, bool isTwoWheeler = false)
-{
-	if (isTwoWheeler) {
+	switch (category) {
+	case eVehicleLightingCategory::RCVehicle: {
+		// Miniature RC Models (RC Bandit, Baron, Raider, Goblin, Tiger, Cam)
 		if (isRear) {
 			switch (lightSize) {
-			case 1: // LIGHTS_SMALL: compact sharp LED tail dot
-				return { 0.35f, 0.60f, 0.50f };
-			case 0: // LIGHTS_LONG: sleek, refined horizontal tail glow (contained within bike tail width)
-				return { 0.70f, 0.70f, 0.75f };
-			case 2: // LIGHTS_BIG: bold classic round cruiser/cafe-racer tail lamp
-				return { 1.30f, 1.10f, 1.00f };
-			case 3: // LIGHTS_TALL: vertical fender LED strip (contained on fender, no sky towering)
-				return { 0.85f, 1.10f, 0.60f };
-			default:
-				return { 0.70f, 0.70f, 0.70f };
+			case 1: cfg = { 0.15f, 0.35f, 0.35f, 0.20f, false }; break; // LIGHTS_SMALL: tiny micro LED dot
+			case 0: cfg = { 0.22f, 0.45f, 0.55f, 0.20f, false }; break; // LIGHTS_LONG: micro horizontal LED bar
+			case 2: cfg = { 0.30f, 0.60f, 0.60f, 0.25f, false }; break; // LIGHTS_BIG: bright RC beacon
+			case 3: cfg = { 0.22f, 0.50f, 0.45f, 0.20f, false }; break; // LIGHTS_TALL: micro vertical tail strip
+			default: cfg = { 0.20f, 0.40f, 0.40f, 0.20f, false }; break;
+			}
+		} else {
+			switch (lightSize) {
+			case 1: cfg = { 0.18f, 0.35f, 0.30f, 0.20f, false }; break; // LIGHTS_SMALL: micro flashlight projector
+			case 0: cfg = { 0.28f, 0.40f, 0.50f, 0.20f, false }; break; // LIGHTS_LONG: miniature horizontal headlight bar
+			case 2: cfg = { 0.45f, 0.55f, 0.50f, 0.25f, false }; break; // LIGHTS_BIG: high-intensity RC crawler pod
+			case 3: cfg = { 0.30f, 0.50f, 0.35f, 0.20f, false }; break; // LIGHTS_TALL: micro vertical projector
+			default: cfg = { 0.25f, 0.40f, 0.35f, 0.20f, false }; break;
 			}
 		}
+		break;
+	}
 
-		// Front lights on two-wheelers:
-		switch (lightSize) {
-		case 1: // LIGHTS_SMALL: pinpoint projector / modern laser LED dot
-			return { 0.35f, 1.25f, 0.45f };
-		case 0: // LIGHTS_LONG: sleek horizontal sports bike headlight
-			return { 0.85f, 1.35f, 1.10f };
-		case 2: // LIGHTS_BIG: classic round 7" chopper / cafe racer headlight
-			return { 1.80f, 2.10f, 1.30f };
-		case 3: // LIGHTS_TALL: vertical dual-projector streetfighter headlight (KTM / MT-09 style)
-			return { 0.95f, 2.20f, 0.75f };
-		default:
-			return { 0.85f, 1.00f, 0.80f };
+	case eVehicleLightingCategory::Hovercraft: {
+		// Hovercraft (Vortex 539) & Flight-capable hovering vehicles
+		if (isRear) {
+			switch (lightSize) {
+			case 1: cfg = { 0.80f, 1.00f, 1.00f, 0.80f, false }; break; // LIGHTS_SMALL: compact shroud LED
+			case 0: cfg = { 0.95f, 1.10f, 1.25f, 0.85f, true };  break; // LIGHTS_LONG: wide rear skirt glow
+			case 2: cfg = { 1.25f, 1.25f, 1.20f, 0.90f, false }; break; // LIGHTS_BIG: fan housing lamp
+			case 3: cfg = { 0.95f, 1.20f, 1.00f, 0.85f, false }; break; // LIGHTS_TALL: rudder beacon
+			default: cfg = { 1.00f, 1.00f, 1.10f, 0.85f, false }; break;
+			}
+		} else {
+			switch (lightSize) {
+			case 1: cfg = { 0.75f, 1.00f, 0.85f, 0.70f, false }; break; // LIGHTS_SMALL: laser surface projector
+			case 0: cfg = { 1.10f, 1.10f, 1.35f, 0.90f, true };  break; // LIGHTS_LONG: skirt searchlight bar
+			case 2: cfg = { 1.35f, 1.25f, 1.25f, 0.90f, false }; break; // LIGHTS_BIG: marine floodlight
+			case 3: cfg = { 1.05f, 1.25f, 0.95f, 0.70f, false }; break; // LIGHTS_TALL: cockpit forward beacon
+			default: cfg = { 1.00f, 1.05f, 1.05f, 0.70f, false }; break;
+			}
 		}
+		break;
 	}
 
-	if (isRear) {
-		switch (lightSize) {
-		case 1: // LIGHTS_SMALL: tiny pinpoint dot
-			return { 0.35f, 0.50f, 0.50f };
-		case 0: // LIGHTS_LONG: wide horizontal light bar
-			return { 1.30f, 1.00f, 1.80f };
-		case 2: // LIGHTS_BIG: massive round glowing red aura
-			return { 3.50f, 2.00f, 2.00f };
-		case 3: // LIGHTS_TALL: vertically elongated tall light strip
-			return { 1.30f, 2.00f, 1.00f };
-		default:
-			return { 1.0f, 1.0f, 1.0f };
+	case eVehicleLightingCategory::TwoWheeler: {
+		// Motorcycles, Dirt Bikes, BMX, Quads
+		if (isRear) {
+			switch (lightSize) {
+			case 1: cfg = { 0.65f, 0.90f, 0.85f, 0.50f, false }; break; // LIGHTS_SMALL: compact sharp LED tail dot
+			case 0: cfg = { 0.75f, 1.00f, 1.05f, 0.50f, false }; break; // LIGHTS_LONG: sleek contained tail glow
+			case 2: cfg = { 1.05f, 1.15f, 1.10f, 0.50f, false }; break; // LIGHTS_BIG: classic round cafe/chopper tail lamp
+			case 3: cfg = { 0.75f, 1.15f, 0.90f, 0.50f, false }; break; // LIGHTS_TALL: vertical fender LED strip
+			default: cfg = { 0.85f, 1.00f, 1.00f, 0.50f, false }; break;
+			}
+		} else {
+			switch (lightSize) {
+			case 1: cfg = { 0.70f, 0.90f, 0.80f, 0.50f, false }; break; // LIGHTS_SMALL: pinpoint projector LED dot
+			case 0: cfg = { 0.90f, 1.05f, 1.10f, 0.50f, false }; break; // LIGHTS_LONG: sports bike horizontal slit
+			case 2: cfg = { 1.20f, 1.20f, 1.10f, 0.50f, false }; break; // LIGHTS_BIG: classic 7" chopper headlight
+			case 3: cfg = { 0.95f, 1.20f, 0.85f, 0.50f, false }; break; // LIGHTS_TALL: vertical streetfighter projector
+			default: cfg = { 0.85f, 1.00f, 0.85f, 0.50f, false }; break;
+			}
 		}
+		break;
 	}
 
-	switch (lightSize) {
-	case 1: // LIGHTS_SMALL: compact high-intensity projector / laser LED dot
-		return { 0.35f, 1.30f, 0.50f };
-	case 0: // LIGHTS_LONG: wide horizontal light bar / sleek horizontal blade
-		return { 1.35f, 1.35f, 2.50f };
-	case 2: // LIGHTS_BIG: colossal round rally spotlight / giant floodlight
-		return { 3.60f, 2.60f, 2.30f };
-	case 3: // LIGHTS_TALL: vertical light column / stacked vertical projector array
-		return { 1.35f, 2.90f, 0.90f };
-	default:
-		return { 1.0f, 1.0f, 1.0f };
+	case eVehicleLightingCategory::HeavyVehicle: {
+		// Monster Trucks, Semi Trucks, Buses, Heavy Machinery
+		if (isRear) {
+			switch (lightSize) {
+			case 1: cfg = { 0.85f, 1.05f, 1.05f, 0.80f, false }; break; // LIGHTS_SMALL: commercial LED clearance dot
+			case 0: cfg = { 1.00f, 1.15f, 1.30f, 0.90f, true };  break; // LIGHTS_LONG: wide heavy-duty bumper bar
+			case 2: cfg = { 1.35f, 1.30f, 1.25f, 1.00f, false }; break; // LIGHTS_BIG: heavy-duty rear lamp
+			case 3: cfg = { 1.00f, 1.30f, 1.10f, 0.90f, true };  break; // LIGHTS_TALL: vertical corner clearance pillars
+			default: cfg = { 1.10f, 1.10f, 1.10f, 1.00f, false }; break;
+			}
+		} else {
+			switch (lightSize) {
+			case 1: cfg = { 0.80f, 0.95f, 0.85f, 0.70f, false }; break; // LIGHTS_SMALL: heavy cab clearance projector
+			case 0: cfg = { 1.15f, 1.15f, 1.35f, 0.90f, true };  break; // LIGHTS_LONG: cross-grille light bar
+			case 2: cfg = { 1.40f, 1.35f, 1.30f, 0.90f, false }; break; // LIGHTS_BIG: 24V industrial floodlights
+			case 3: cfg = { 1.15f, 1.30f, 1.00f, 0.90f, true };  break; // LIGHTS_TALL: vertical heavy-truck grille columns
+			default: cfg = { 1.10f, 1.10f, 1.10f, 0.90f, false }; break;
+			}
+		}
+		break;
 	}
+
+	case eVehicleLightingCategory::Aircraft: {
+		// Airplanes, Jets, Helicopters
+		if (isRear) {
+			switch (lightSize) {
+			case 1: cfg = { 0.80f, 1.00f, 1.00f, 0.80f, false }; break; // LIGHTS_SMALL: wingtip position light
+			case 0: cfg = { 0.95f, 1.10f, 1.25f, 0.80f, false }; break; // LIGHTS_LONG: wing trailing edge glow
+			case 2: cfg = { 1.30f, 1.25f, 1.20f, 0.80f, false }; break; // LIGHTS_BIG: anti-collision tail strobe
+			case 3: cfg = { 0.95f, 1.25f, 1.00f, 0.80f, false }; break; // LIGHTS_TALL: vertical rudder beacon
+			default: cfg = { 1.00f, 1.00f, 1.00f, 0.80f, false }; break;
+			}
+		} else {
+			switch (lightSize) {
+			case 1: cfg = { 0.80f, 1.15f, 0.85f, 0.70f, false }; break; // LIGHTS_SMALL: nosegear taxi projector
+			case 0: cfg = { 1.15f, 1.20f, 1.35f, 0.70f, false }; break; // LIGHTS_LONG: runway turnoff lights
+			case 2: cfg = { 1.50f, 1.50f, 1.35f, 0.70f, false }; break; // LIGHTS_BIG: runway landing lights
+			case 3: cfg = { 1.15f, 1.40f, 0.95f, 0.70f, false }; break; // LIGHTS_TALL: searchlight
+			default: cfg = { 1.10f, 1.15f, 1.10f, 0.70f, false }; break;
+			}
+		}
+		break;
+	}
+
+	case eVehicleLightingCategory::Boat: {
+		// Boats, Speedboats, Yachts
+		if (isRear) {
+			switch (lightSize) {
+			case 1: cfg = { 0.75f, 0.90f, 0.90f, 0.80f, false }; break; // LIGHTS_SMALL: compact transom light
+			case 0: cfg = { 0.90f, 1.00f, 1.20f, 0.80f, false }; break; // LIGHTS_LONG: swim platform LED bar
+			case 2: cfg = { 1.20f, 1.15f, 1.15f, 0.80f, false }; break; // LIGHTS_BIG: stern floodlight
+			case 3: cfg = { 0.90f, 1.15f, 0.95f, 0.80f, false }; break; // LIGHTS_TALL: masthead white anchor light
+			default: cfg = { 0.95f, 0.95f, 0.95f, 0.80f, false }; break;
+			}
+		} else {
+			switch (lightSize) {
+			case 1: cfg = { 0.75f, 1.00f, 0.80f, 0.70f, false }; break; // LIGHTS_SMALL: bow navigation light
+			case 0: cfg = { 1.10f, 1.15f, 1.30f, 0.70f, false }; break; // LIGHTS_LONG: bow docking floodlight bar
+			case 2: cfg = { 1.30f, 1.25f, 1.20f, 0.70f, false }; break; // LIGHTS_BIG: marine bow searchlight
+			case 3: cfg = { 1.05f, 1.25f, 0.95f, 0.70f, false }; break; // LIGHTS_TALL: radar arch floodlight
+			default: cfg = { 1.00f, 1.05f, 1.05f, 0.70f, false }; break;
+			}
+		}
+		break;
+	}
+
+	case eVehicleLightingCategory::Trailer: {
+		// Trailers & Semi-trailers
+		if (isRear) {
+			switch (lightSize) {
+			case 1: cfg = { 0.80f, 1.00f, 1.00f, 0.85f, false }; break; // LIGHTS_SMALL: LED clearance marker dot
+			case 0: cfg = { 0.95f, 1.10f, 1.25f, 0.90f, true };  break; // LIGHTS_LONG: full-width trailer tail bar
+			case 2: cfg = { 1.25f, 1.25f, 1.20f, 0.90f, false }; break; // LIGHTS_BIG: trailer tail lamp
+			case 3: cfg = { 0.95f, 1.25f, 1.05f, 0.90f, true };  break; // LIGHTS_TALL: vertical rear corner clearance lights
+			default: cfg = { 1.00f, 1.00f, 1.00f, 0.90f, false }; break;
+			}
+		} else {
+			cfg = { 0.75f, 0.75f, 0.75f, 0.70f, false }; // Front amber corner markers
+		}
+		break;
+	}
+
+	case eVehicleLightingCategory::Automobile:
+	default: {
+		// Standard Automobiles (Sedans, Coupes, Sports, Wagons, SUVs)
+		if (isRear) {
+			switch (lightSize) {
+			case 1: cfg = { 0.75f, 1.00f, 1.00f, 0.70f, false }; break; // LIGHTS_SMALL: compact crisp LED tail dot
+			case 0: cfg = { 0.82f, 1.10f, 1.25f, 0.85f, true };  break; // LIGHTS_LONG: sleek horizontal light bar
+			case 2: cfg = { 1.25f, 1.25f, 1.20f, 1.00f, false }; break; // LIGHTS_BIG: bold circular tail lamp
+			case 3: cfg = { 0.82f, 1.25f, 1.05f, 0.85f, true };  break; // LIGHTS_TALL: vertical pillar tail strip
+			default: cfg = { 1.00f, 1.00f, 1.00f, 1.00f, false }; break;
+			}
+		} else {
+			switch (lightSize) {
+			case 1: cfg = { 0.75f, 0.90f, 0.80f, 0.60f, false }; break; // LIGHTS_SMALL: compact crisp LED projector dot
+			case 0: cfg = { 1.05f, 1.05f, 1.30f, 0.85f, true };  break; // LIGHTS_LONG: wide horizontal headlight bar
+			case 2: cfg = { 1.28f, 1.25f, 1.20f, 1.00f, false }; break; // LIGHTS_BIG: bold round headlight
+			case 3: cfg = { 1.05f, 1.25f, 0.90f, 0.85f, true };  break; // LIGHTS_TALL: vertical projector column
+			default: cfg = { 1.00f, 1.00f, 1.00f, 1.00f, false }; break;
+			}
+		}
+		break;
+	}
+	}
+
+	if (customMult > 0.05f && customMult != 1.0f) {
+		cfg.coronaScale *= customMult;
+		cfg.shadowFrontScale *= customMult;
+		cfg.shadowSideScale *= customMult;
+	}
+
+	return cfg;
 }
 
 static bool __fastcall Hooked_DoHeadLightEffect(CVehicle* thisVehicle, void* edx, int dummyId, CMatrix& vehicleMatrix, unsigned char lightId, unsigned char lightState)
@@ -340,7 +585,7 @@ static void __fastcall Hooked_AddExhaustParticles(CVehicle* thisVehicle, void* e
 		if (g_origAddExhaustParticles)
 			g_origAddExhaustParticles(thisVehicle, edx);
 
-		if (binding->backfireEnabled && thisVehicle->m_nVehicleSubClass == VEHICLE_AUTOMOBILE) {
+		if (binding->hasCustomLighting && binding->backfireEnabled && thisVehicle->m_nVehicleSubClass == VEHICLE_AUTOMOBILE) {
 			auto* car = reinterpret_cast<CAutomobile*>(thisVehicle);
 			float speed = car->m_vecMoveSpeed.Magnitude();
 			if (speed > 0.15f && car->m_fGasPedal < 0.05f && car->m_nCurrentGear > 1) {
@@ -399,8 +644,7 @@ static void __fastcall Hooked_SetRemap(CVehicle* thisVehicle, void* edx, int rem
 
 	auto* binding = CustomVehicleBindingManager::Instance().FindByVehicle(thisVehicle);
 	if (binding) {
-		binding->paintjobIndex = remapIndex;
-		CustomVehicleBindingManager::Instance().ApplyPaintjobToVehicle(thisVehicle, remapIndex);
+		CustomVehicleBindingManager::Instance().SetVehiclePaintjob(binding->sampVehicleId, remapIndex);
 		return;
 	}
 
@@ -602,47 +846,102 @@ static void __cdecl Hooked_RegisterCoronaTexture(
 
 	float scale = 1.0f;
 	uint8_t lightSize = 0;
-	bool isBike = IsTwoWheeler(pVeh);
+	float customMult = 1.0f;
+	eVehicleLightingCategory category = GetVehicleLightingCategory(pVeh, &customMult);
+	LightScaleConfig cfg {};
+
 	if (pVeh && pVeh->m_pHandlingData) {
 		lightSize = isFront
 			? static_cast<uint8_t>(pVeh->m_pHandlingData->m_nFrontLights)
 			: static_cast<uint8_t>(pVeh->m_pHandlingData->m_nRearLights);
-		LightScaleConfig cfg = GetVehicleLightScaleConfig(lightSize, isRear, isBike);
+		cfg = GetVehicleLightScaleConfig(lightSize, isRear, category, customMult);
 		scale = cfg.coronaScale;
 
 		static uint32_t s_lastLog = 0;
 		uint32_t now = GetTickCount();
 		if (scale != 1.0f && (now - s_lastLog > 2000)) {
 			s_lastLog = now;
-			ClientLog(std::format("[Client] Corona scaled: isFront={}, isRear={}, isBike={}, size={}, scale={:.2f}, radius={:.2f}->{:.2f}",
-				isFront, isRear, isBike, static_cast<int>(lightSize), scale, radius, radius * scale));
+			ClientLog(std::format("[Client] Corona scaled: cat={}, isFront={}, isRear={}, size={}, scale={:.2f}, radius={:.2f}->{:.2f}",
+				static_cast<int>(category), isFront, isRear, static_cast<int>(lightSize), scale, radius, radius * scale));
 		}
 	}
 
 	radius *= scale;
-	if (scale > 1.0f) {
-		farClip *= (1.0f + (scale - 1.0f) * 0.5f);
-		if (isRear) {
-			alpha = static_cast<unsigned char>(std::min(255, static_cast<int>(alpha * (isBike ? 1.25f : 1.6f))));
-			if (red < 200)
-				red = 220;
-		} else if (isFront) {
-			if (lightSize == 2) { // LIGHTS_BIG: blinding intensity & far reach
-				alpha = 255;
-				farClip *= 1.4f;
-			} else {
-				alpha = static_cast<unsigned char>(std::min(255, static_cast<int>(alpha * 1.25f)));
+	if (isRear) {
+		if (category == eVehicleLightingCategory::RCVehicle) {
+			radius = std::clamp(radius, 0.03f, 0.08f);
+		} else if (category == eVehicleLightingCategory::TwoWheeler) {
+			radius = std::clamp(radius, 0.14f, 0.28f);
+		} else {
+			radius = std::clamp(radius, 0.18f, 0.38f);
+		}
+
+		// Directional camera-facing check (MTA:SA approach):
+		// Taillights face backwards. When camera is in front of the vehicle or perpendicular,
+		// the taillights are occluded by the vehicle chassis/doors and must not bleed through.
+		if (pVeh) {
+			CVector vehBack = -pVeh->GetMatrix().GetForward();
+
+			CVector worldPos = posn;
+			if (attachTo) {
+				worldPos = attachTo->GetMatrix() * posn;
+			}
+
+			CVector toCam = TheCamera.GetPosition() - worldPos;
+			float camDist = toCam.Magnitude();
+			if (camDist > 0.001f) {
+				toCam /= camDist;
+				float dot = vehBack.x * toCam.x + vehBack.y * toCam.y + vehBack.z * toCam.z;
+				if (dot <= 0.02f) {
+					// Camera is in front or directly to the side: light hidden behind car body
+					return;
+				}
+				// Smooth directional Fresnel falloff
+				float viewFactor = std::clamp((dot - 0.02f) / 0.65f, 0.0f, 1.0f);
+				alpha = static_cast<unsigned char>(alpha * (0.40f + 0.60f * viewFactor));
 			}
 		}
-	} else if (scale < 1.0f) {
-		farClip *= scale;
+
+		// Calibrated automotive taillight alpha:
+		// Running lights (night driving): crisp, elegant, translucent red lens glow (~70 - 110).
+		// Brake lights: rich, intense stopping signal (~160 - 225).
+		if (alpha < 130) {
+			alpha = static_cast<unsigned char>(std::clamp(static_cast<int>(alpha * 1.15f), 70, 110));
+		} else {
+			alpha = static_cast<unsigned char>(std::clamp(static_cast<int>(alpha * 1.05f), 160, 225));
+		}
+
+		// Deep, vibrant crimson red color
+		if (red < 200) red = 230;
+		if (green > 35) green = 25;
+		if (blue > 35) blue = 25;
+
+		farClip *= 1.15f;
+	} else if (isFront) {
+		if (scale > 1.0f) {
+			farClip *= (1.0f + (scale - 1.0f) * 0.35f);
+			if (lightSize == 2) { // LIGHTS_BIG: slightly more luminous
+				float frontBoost = (category == eVehicleLightingCategory::Aircraft ? 1.25f : 1.12f);
+				alpha = static_cast<unsigned char>(std::min(255, static_cast<int>(alpha * frontBoost)));
+			}
+		} else if (scale < 1.0f) {
+			farClip *= (0.5f + scale * 0.5f);
+		}
 	}
 
 	if (g_origRegisterCoronaTexture) {
-		if (pVeh && (isFront || isRear) && !isBike) {
-			if (lightSize == 0) { // LIGHTS_LONG: horizontally elongated wide bar
-				float barRadius = radius * 0.75f;
-				g_origRegisterCoronaTexture(id, attachTo, red, green, blue, alpha, posn, barRadius, farClip, texture, flaretype, enableReflection, checkObstacles, _param_not_used, angle, longDistance, nearClip, fadeState, fadeSpeed, onlyFromBelow, reflectionDelay);
+		if (pVeh && (isFront || isRear) && cfg.allowClustering) {
+			// Explicit front vs rear geometry:
+			// Headlights have larger lens assemblies (6cm - 11cm offset).
+			// Taillights have compact, sleek lens housings (5.5cm - 9.5cm offset).
+			float barRadius = isFront ? (radius * 0.52f) : (radius * 0.50f);
+			unsigned char subAlpha = isFront ? static_cast<unsigned char>(alpha * 0.32f) : static_cast<unsigned char>(alpha * 0.40f);
+			float offsetDist = isFront
+				? (std::clamp(radius * 0.16f, 0.06f, 0.11f) * cfg.offsetSpacingMult)
+				: (std::clamp(radius * 0.32f, 0.055f, 0.095f) * cfg.offsetSpacingMult);
+
+			if (lightSize == 0) { // LIGHTS_LONG: horizontally elongated sleek bar
+				g_origRegisterCoronaTexture(id, attachTo, red, green, blue, alpha, posn, radius, farClip, texture, flaretype, enableReflection, checkObstacles, _param_not_used, angle, longDistance, nearClip, fadeState, fadeSpeed, onlyFromBelow, reflectionDelay);
 
 				// In local coordinates (when attachTo != nullptr), X is vehicle width (Right/Left).
 				// In world coordinates (when attachTo == nullptr), use vehicle matrix right vector.
@@ -655,19 +954,17 @@ static void __cdecl Hooked_RegisterCoronaTexture(
 					}
 				}
 
-				float offsetDist = isFront ? (radius * 0.65f) : (radius * 0.55f);
 				CVector posL = posn - dirRight * offsetDist;
 				CVector posR = posn + dirRight * offsetDist;
 
 				uint32_t subId1 = id ^ 0x24000001;
 				uint32_t subId2 = id ^ 0x48000001;
-				eCoronaFlareType subFlare = isFront ? FLARETYPE_NONE : flaretype;
+				eCoronaFlareType subFlare = FLARETYPE_NONE;
 
-				g_origRegisterCoronaTexture(subId1, attachTo, red, green, blue, alpha, posL, barRadius, farClip, texture, subFlare, enableReflection, checkObstacles, _param_not_used, angle, longDistance, nearClip, fadeState, fadeSpeed, onlyFromBelow, reflectionDelay);
-				g_origRegisterCoronaTexture(subId2, attachTo, red, green, blue, alpha, posR, barRadius, farClip, texture, subFlare, enableReflection, checkObstacles, _param_not_used, angle, longDistance, nearClip, fadeState, fadeSpeed, onlyFromBelow, reflectionDelay);
-			} else if (lightSize == 3) { // LIGHTS_TALL: vertically elongated tall column / blade
-				float barRadius = radius * 0.75f;
-				g_origRegisterCoronaTexture(id, attachTo, red, green, blue, alpha, posn, barRadius, farClip, texture, flaretype, enableReflection, checkObstacles, _param_not_used, angle, longDistance, nearClip, fadeState, fadeSpeed, onlyFromBelow, reflectionDelay);
+				g_origRegisterCoronaTexture(subId1, attachTo, red, green, blue, subAlpha, posL, barRadius, farClip, texture, subFlare, enableReflection, checkObstacles, _param_not_used, angle, longDistance, nearClip, fadeState, fadeSpeed, onlyFromBelow, reflectionDelay);
+				g_origRegisterCoronaTexture(subId2, attachTo, red, green, blue, subAlpha, posR, barRadius, farClip, texture, subFlare, enableReflection, checkObstacles, _param_not_used, angle, longDistance, nearClip, fadeState, fadeSpeed, onlyFromBelow, reflectionDelay);
+			} else if (lightSize == 3) { // LIGHTS_TALL: vertically elongated blade / pillar strip
+				g_origRegisterCoronaTexture(id, attachTo, red, green, blue, alpha, posn, radius, farClip, texture, flaretype, enableReflection, checkObstacles, _param_not_used, angle, longDistance, nearClip, fadeState, fadeSpeed, onlyFromBelow, reflectionDelay);
 
 				// In local coordinates (when attachTo != nullptr), Z is vehicle height (Up/Down).
 				// In world coordinates (when attachTo == nullptr), use vehicle matrix at (up) vector.
@@ -680,24 +977,16 @@ static void __cdecl Hooked_RegisterCoronaTexture(
 					}
 				}
 
-				float offsetDist = radius * 0.65f;
-				CVector pos1, pos2;
-				if (isFront) {
-					// Front headlights: center dummy with symmetrical vertical expansion above and below
-					pos1 = posn + dirUp * (offsetDist * 0.85f);
-					pos2 = posn - dirUp * (offsetDist * 0.85f);
-				} else {
-					// Rear taillights: extend upwards along the rear pillar
-					pos1 = posn + dirUp * (offsetDist * 0.70f);
-					pos2 = posn + dirUp * (offsetDist * 1.40f);
-				}
+				// Symmetrical vertical expansion centered on lamp dummy keeps lights inside the housing
+				CVector pos1 = posn + dirUp * offsetDist;
+				CVector pos2 = posn - dirUp * offsetDist;
 
 				uint32_t subId1 = id ^ 0x24000001;
 				uint32_t subId2 = id ^ 0x48000001;
-				eCoronaFlareType subFlare = isFront ? FLARETYPE_NONE : flaretype;
+				eCoronaFlareType subFlare = FLARETYPE_NONE;
 
-				g_origRegisterCoronaTexture(subId1, attachTo, red, green, blue, alpha, pos1, barRadius, farClip, texture, subFlare, enableReflection, checkObstacles, _param_not_used, angle, longDistance, nearClip, fadeState, fadeSpeed, onlyFromBelow, reflectionDelay);
-				g_origRegisterCoronaTexture(subId2, attachTo, red, green, blue, alpha, pos2, barRadius, farClip, texture, subFlare, enableReflection, checkObstacles, _param_not_used, angle, longDistance, nearClip, fadeState, fadeSpeed, onlyFromBelow, reflectionDelay);
+				g_origRegisterCoronaTexture(subId1, attachTo, red, green, blue, subAlpha, pos1, barRadius, farClip, texture, subFlare, enableReflection, checkObstacles, _param_not_used, angle, longDistance, nearClip, fadeState, fadeSpeed, onlyFromBelow, reflectionDelay);
+				g_origRegisterCoronaTexture(subId2, attachTo, red, green, blue, subAlpha, pos2, barRadius, farClip, texture, subFlare, enableReflection, checkObstacles, _param_not_used, angle, longDistance, nearClip, fadeState, fadeSpeed, onlyFromBelow, reflectionDelay);
 			} else {
 				// LIGHTS_SMALL (1), LIGHTS_BIG (2), or default:
 				g_origRegisterCoronaTexture(id, attachTo, red, green, blue, alpha, posn, radius, farClip, texture, flaretype, enableReflection, checkObstacles, _param_not_used, angle, longDistance, nearClip, fadeState, fadeSpeed, onlyFromBelow, reflectionDelay);
@@ -739,47 +1028,112 @@ static void __cdecl Hooked_RegisterCoronaType(
 
 	float scale = 1.0f;
 	uint8_t lightSize = 0;
-	bool isBike = IsTwoWheeler(pVeh);
+	float customMult = 1.0f;
+	eVehicleLightingCategory category = GetVehicleLightingCategory(pVeh, &customMult);
+	LightScaleConfig cfg {};
+
 	if (pVeh && pVeh->m_pHandlingData) {
 		lightSize = isFront
 			? static_cast<uint8_t>(pVeh->m_pHandlingData->m_nFrontLights)
 			: static_cast<uint8_t>(pVeh->m_pHandlingData->m_nRearLights);
-		LightScaleConfig cfg = GetVehicleLightScaleConfig(lightSize, isRear, isBike);
+		cfg = GetVehicleLightScaleConfig(lightSize, isRear, category, customMult);
 		scale = cfg.coronaScale;
 
 		static uint32_t s_lastLogType = 0;
 		uint32_t now = GetTickCount();
 		if (scale != 1.0f && (now - s_lastLogType > 2000)) {
 			s_lastLogType = now;
-			ClientLog(std::format("[Client] Corona[Type] scaled: isFront={}, isRear={}, isBike={}, size={}, scale={:.2f}, radius={:.2f}->{:.2f}",
-				isFront, isRear, isBike, static_cast<int>(lightSize), scale, radius, radius * scale));
+			ClientLog(std::format("[Client] Corona[Type] scaled: cat={}, isFront={}, isRear={}, size={}, scale={:.2f}, radius={:.2f}->{:.2f}",
+				static_cast<int>(category), isFront, isRear, static_cast<int>(lightSize), scale, radius, radius * scale));
 		}
 	}
 
 	radius *= scale;
-	if (scale > 1.0f) {
-		farClip *= (1.0f + (scale - 1.0f) * 0.5f);
-		if (isRear) {
-			alpha = static_cast<unsigned char>(std::min(255, static_cast<int>(alpha * (isBike ? 1.25f : 1.6f))));
-			if (red < 200)
-				red = 220;
-		} else if (isFront) {
-			if (lightSize == 2) { // LIGHTS_BIG: blinding intensity & far reach
-				alpha = 255;
-				farClip *= 1.4f;
+	if (isRear) {
+		if (category == eVehicleLightingCategory::RCVehicle) {
+			radius = std::clamp(radius, 0.03f, 0.08f);
+		} else if (category == eVehicleLightingCategory::TwoWheeler) {
+			radius = std::clamp(radius, 0.14f, 0.28f);
+		} else {
+			radius = std::clamp(radius, 0.18f, 0.38f);
+		}
+
+		// Directional camera-facing check (MTA:SA approach):
+		// Taillights face backwards. When camera is in front of the vehicle or perpendicular,
+		// the taillights are occluded by the vehicle chassis/doors and must not bleed through.
+		if (pVeh) {
+			CVector dirFwd(0.0f, 1.0f, 0.0f);
+			if (pVeh->m_matrix) {
+				dirFwd = pVeh->m_matrix->up;
 			} else {
-				alpha = static_cast<unsigned char>(std::min(255, static_cast<int>(alpha * 1.25f)));
+				dirFwd = pVeh->GetForward();
+			}
+			CVector vehBack = -dirFwd;
+
+			CVector worldPos = posn;
+			if (attachTo) {
+				if (attachTo->m_matrix) {
+					worldPos = *attachTo->m_matrix * posn;
+				} else {
+					worldPos = attachTo->GetPosition() + posn;
+				}
+			}
+
+			CVector toCam = TheCamera.GetPosition() - worldPos;
+			float camDist = toCam.Magnitude();
+			if (camDist > 0.001f) {
+				toCam /= camDist;
+				float dot = vehBack.x * toCam.x + vehBack.y * toCam.y + vehBack.z * toCam.z;
+				if (dot <= 0.02f) {
+					// Camera is in front or directly to the side: light hidden behind car body
+					return;
+				}
+				// Smooth directional Fresnel falloff
+				float viewFactor = std::clamp((dot - 0.02f) / 0.65f, 0.0f, 1.0f);
+				alpha = static_cast<unsigned char>(alpha * (0.40f + 0.60f * viewFactor));
 			}
 		}
-	} else if (scale < 1.0f) {
-		farClip *= scale;
+
+		// Calibrated automotive taillight alpha:
+		// Running lights (night driving): crisp, elegant, translucent red lens glow (~70 - 110).
+		// Brake lights: rich, intense stopping signal (~160 - 225).
+		if (alpha < 130) {
+			alpha = static_cast<unsigned char>(std::clamp(static_cast<int>(alpha * 1.15f), 70, 110));
+		} else {
+			alpha = static_cast<unsigned char>(std::clamp(static_cast<int>(alpha * 1.05f), 160, 225));
+		}
+
+		// Deep, vibrant crimson red color
+		if (red < 200) red = 230;
+		if (green > 35) green = 25;
+		if (blue > 35) blue = 25;
+
+		farClip *= 1.15f;
+	} else if (isFront) {
+		if (scale > 1.0f) {
+			farClip *= (1.0f + (scale - 1.0f) * 0.35f);
+			if (lightSize == 2) { // LIGHTS_BIG: slightly more luminous
+				float frontBoost = (category == eVehicleLightingCategory::Aircraft ? 1.25f : 1.12f);
+				alpha = static_cast<unsigned char>(std::min(255, static_cast<int>(alpha * frontBoost)));
+			}
+		} else if (scale < 1.0f) {
+			farClip *= (0.5f + scale * 0.5f);
+		}
 	}
 
 	if (g_origRegisterCoronaType) {
-		if (pVeh && (isFront || isRear) && !isBike) {
-			if (lightSize == 0) { // LIGHTS_LONG: horizontally elongated wide bar
-				float barRadius = radius * 0.75f;
-				g_origRegisterCoronaType(id, attachTo, red, green, blue, alpha, posn, barRadius, farClip, coronaType, flaretype, enableReflection, checkObstacles, _param_not_used, angle, longDistance, nearClip, fadeState, fadeSpeed, onlyFromBelow, reflectionDelay);
+		if (pVeh && (isFront || isRear) && cfg.allowClustering) {
+			// Explicit front vs rear geometry:
+			// Headlights have larger lens assemblies (6cm - 11cm offset).
+			// Taillights have compact, sleek lens housings (5.5cm - 9.5cm offset).
+			float barRadius = isFront ? (radius * 0.52f) : (radius * 0.50f);
+			unsigned char subAlpha = isFront ? static_cast<unsigned char>(alpha * 0.32f) : static_cast<unsigned char>(alpha * 0.40f);
+			float offsetDist = isFront
+				? (std::clamp(radius * 0.16f, 0.06f, 0.11f) * cfg.offsetSpacingMult)
+				: (std::clamp(radius * 0.32f, 0.055f, 0.095f) * cfg.offsetSpacingMult);
+
+			if (lightSize == 0) { // LIGHTS_LONG: horizontally elongated sleek bar
+				g_origRegisterCoronaType(id, attachTo, red, green, blue, alpha, posn, radius, farClip, coronaType, flaretype, enableReflection, checkObstacles, _param_not_used, angle, longDistance, nearClip, fadeState, fadeSpeed, onlyFromBelow, reflectionDelay);
 
 				CVector dirRight(1.0f, 0.0f, 0.0f);
 				if (!attachTo) {
@@ -790,19 +1144,17 @@ static void __cdecl Hooked_RegisterCoronaType(
 					}
 				}
 
-				float offsetDist = isFront ? (radius * 0.65f) : (radius * 0.55f);
 				CVector posL = posn - dirRight * offsetDist;
 				CVector posR = posn + dirRight * offsetDist;
 
 				uint32_t subId1 = id ^ 0x24000001;
 				uint32_t subId2 = id ^ 0x48000001;
-				eCoronaFlareType subFlare = isFront ? FLARETYPE_NONE : flaretype;
+				eCoronaFlareType subFlare = FLARETYPE_NONE;
 
-				g_origRegisterCoronaType(subId1, attachTo, red, green, blue, alpha, posL, barRadius, farClip, coronaType, subFlare, enableReflection, checkObstacles, _param_not_used, angle, longDistance, nearClip, fadeState, fadeSpeed, onlyFromBelow, reflectionDelay);
-				g_origRegisterCoronaType(subId2, attachTo, red, green, blue, alpha, posR, barRadius, farClip, coronaType, subFlare, enableReflection, checkObstacles, _param_not_used, angle, longDistance, nearClip, fadeState, fadeSpeed, onlyFromBelow, reflectionDelay);
-			} else if (lightSize == 3) { // LIGHTS_TALL: vertically elongated tall column / blade
-				float barRadius = radius * 0.75f;
-				g_origRegisterCoronaType(id, attachTo, red, green, blue, alpha, posn, barRadius, farClip, coronaType, flaretype, enableReflection, checkObstacles, _param_not_used, angle, longDistance, nearClip, fadeState, fadeSpeed, onlyFromBelow, reflectionDelay);
+				g_origRegisterCoronaType(subId1, attachTo, red, green, blue, subAlpha, posL, barRadius, farClip, coronaType, subFlare, enableReflection, checkObstacles, _param_not_used, angle, longDistance, nearClip, fadeState, fadeSpeed, onlyFromBelow, reflectionDelay);
+				g_origRegisterCoronaType(subId2, attachTo, red, green, blue, subAlpha, posR, barRadius, farClip, coronaType, subFlare, enableReflection, checkObstacles, _param_not_used, angle, longDistance, nearClip, fadeState, fadeSpeed, onlyFromBelow, reflectionDelay);
+			} else if (lightSize == 3) { // LIGHTS_TALL: vertically elongated blade / pillar strip
+				g_origRegisterCoronaType(id, attachTo, red, green, blue, alpha, posn, radius, farClip, coronaType, flaretype, enableReflection, checkObstacles, _param_not_used, angle, longDistance, nearClip, fadeState, fadeSpeed, onlyFromBelow, reflectionDelay);
 
 				CVector dirUp(0.0f, 0.0f, 1.0f);
 				if (!attachTo) {
@@ -813,24 +1165,16 @@ static void __cdecl Hooked_RegisterCoronaType(
 					}
 				}
 
-				float offsetDist = radius * 0.65f;
-				CVector pos1, pos2;
-				if (isFront) {
-					// Front headlights: center dummy with symmetrical vertical expansion above and below
-					pos1 = posn + dirUp * (offsetDist * 0.85f);
-					pos2 = posn - dirUp * (offsetDist * 0.85f);
-				} else {
-					// Rear taillights: extend upwards along the rear pillar
-					pos1 = posn + dirUp * (offsetDist * 0.70f);
-					pos2 = posn + dirUp * (offsetDist * 1.40f);
-				}
+				// Symmetrical vertical expansion centered on lamp dummy keeps lights inside the housing
+				CVector pos1 = posn + dirUp * offsetDist;
+				CVector pos2 = posn - dirUp * offsetDist;
 
 				uint32_t subId1 = id ^ 0x24000001;
 				uint32_t subId2 = id ^ 0x48000001;
-				eCoronaFlareType subFlare = isFront ? FLARETYPE_NONE : flaretype;
+				eCoronaFlareType subFlare = FLARETYPE_NONE;
 
-				g_origRegisterCoronaType(subId1, attachTo, red, green, blue, alpha, pos1, barRadius, farClip, coronaType, subFlare, enableReflection, checkObstacles, _param_not_used, angle, longDistance, nearClip, fadeState, fadeSpeed, onlyFromBelow, reflectionDelay);
-				g_origRegisterCoronaType(subId2, attachTo, red, green, blue, alpha, pos2, barRadius, farClip, coronaType, subFlare, enableReflection, checkObstacles, _param_not_used, angle, longDistance, nearClip, fadeState, fadeSpeed, onlyFromBelow, reflectionDelay);
+				g_origRegisterCoronaType(subId1, attachTo, red, green, blue, subAlpha, pos1, barRadius, farClip, coronaType, subFlare, enableReflection, checkObstacles, _param_not_used, angle, longDistance, nearClip, fadeState, fadeSpeed, onlyFromBelow, reflectionDelay);
+				g_origRegisterCoronaType(subId2, attachTo, red, green, blue, subAlpha, pos2, barRadius, farClip, coronaType, subFlare, enableReflection, checkObstacles, _param_not_used, angle, longDistance, nearClip, fadeState, fadeSpeed, onlyFromBelow, reflectionDelay);
 			} else {
 				// LIGHTS_SMALL (1), LIGHTS_BIG (2), or default:
 				g_origRegisterCoronaType(id, attachTo, red, green, blue, alpha, posn, radius, farClip, coronaType, flaretype, enableReflection, checkObstacles, _param_not_used, angle, longDistance, nearClip, fadeState, fadeSpeed, onlyFromBelow, reflectionDelay);
@@ -859,12 +1203,13 @@ static void __cdecl Hooked_StoreCarLightShadow(
 
 	if (pVeh && pVeh->m_pHandlingData) {
 		bool isFront = (s_pCurrentHeadLightVehicle != nullptr) || !(red > 100 && green < 50 && blue < 50);
-		bool isBike = IsTwoWheeler(pVeh);
+		float customMult = 1.0f;
+		eVehicleLightingCategory category = GetVehicleLightingCategory(pVeh, &customMult);
 		uint8_t lightSize = isFront
 			? static_cast<uint8_t>(pVeh->m_pHandlingData->m_nFrontLights)
 			: static_cast<uint8_t>(pVeh->m_pHandlingData->m_nRearLights);
 
-		LightScaleConfig cfg = GetVehicleLightScaleConfig(lightSize, !isFront, isBike);
+		LightScaleConfig cfg = GetVehicleLightScaleConfig(lightSize, !isFront, category, customMult);
 
 		// Because posn is the center of the shadow quad, scaling frontX/frontY expands the shadow symmetrically
 		// both forward and backward. To prevent the light from spilling backward under the vehicle chassis,
@@ -884,8 +1229,8 @@ static void __cdecl Hooked_StoreCarLightShadow(
 		uint32_t now = GetTickCount();
 		if ((cfg.shadowFrontScale != 1.0f || cfg.shadowSideScale != 1.0f) && (now - s_lastShadowLog > 2000)) {
 			s_lastShadowLog = now;
-			ClientLog(std::format("[Client] CarLightShadow scaled: isFront={}, size={}, frontScale={:.2f}, sideScale={:.2f}",
-				isFront, static_cast<int>(lightSize), cfg.shadowFrontScale, cfg.shadowSideScale));
+			ClientLog(std::format("[Client] CarLightShadow scaled: cat={}, isFront={}, size={}, frontScale={:.2f}, sideScale={:.2f}",
+				static_cast<int>(category), isFront, static_cast<int>(lightSize), cfg.shadowFrontScale, cfg.shadowSideScale));
 		}
 	}
 
@@ -1338,6 +1683,8 @@ public:
 
 	void HandleCustomVehicleDef(const CustomVeh::Protocol::VehicleDefinition& def)
 	{
+		CustomVehicleBindingManager::SetBaseModelId(def.customModelId, def.visualBaseModel);
+
 		auto pending = std::make_shared<PendingCustomVehicle>();
 		pending->def = def;
 
@@ -1552,7 +1899,7 @@ static void OnGameProcess()
 			CMatrixLink& mat = pVeh->GetMatrix();
 
 			// 1. Render chassis neon underglow if enabled
-			if (b.neonEnabled) {
+			if (b.hasNeon && b.neonEnabled) {
 				// CMatrix has no TransformPoint(); use operator*(CMatrix, CVector) from CMatrix.h:95
 				// which performs: mat.pos + mat.right*v.x + mat.forward*v.y + mat.up*v.z
 				CVector worldLeft  = mat * CVector(-0.85f, 0.0f, -0.35f);

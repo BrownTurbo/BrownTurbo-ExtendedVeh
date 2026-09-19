@@ -2300,6 +2300,77 @@ SCRIPT_API(GetVehicleSiren, bool(IVehicle& vehicle, bool& enabled, int& sirenTyp
 
 namespace CustomVehicleNatives
 {
+inline bool SetCustomVehicleLighting(IVehicle& vehicle, int category, float scale)
+{
+	int vehicleid = vehicle.getID();
+	if (!CVehicleMgr::VehicleRegistry::Get().IsValidVehicleID(vehicleid))
+		return false;
+
+	uint16_t vId = static_cast<uint16_t>(vehicleid);
+	CustomVehicleBindingRegistry::Instance().SetLights(vId, static_cast<int8_t>(category), scale);
+
+	CustomVeh::Protocol::VehicleLightsPacket pkt {};
+	pkt.sampVehicleId = vId;
+	pkt.lightingCategory = static_cast<int8_t>(category);
+	pkt.lightScaleMult = (scale > 0.05f) ? scale : 1.0f;
+
+	ExtendedVehCompo* compo = ExtendedVehCompo::get();
+	ICore* core_ = compo ? compo->getCore() : nullptr;
+	if (core_)
+	{
+		for (IPlayer* player : core_->getPlayers().players())
+		{
+			if (player && gPlayers.HasExtendedVeh(player->getID()))
+			{
+				CustomVehicleTransport::SendVehicleLights(*player, pkt);
+			}
+		}
+	}
+	return true;
+}
+
+inline bool GetCustomVehicleLighting(IVehicle& vehicle, int& category, float& scale)
+{
+	int vehicleid = vehicle.getID();
+	if (!CVehicleMgr::VehicleRegistry::Get().IsValidVehicleID(vehicleid))
+		return false;
+
+	auto lightsOpt = CustomVehicleBindingRegistry::Instance().GetLights(static_cast<uint16_t>(vehicleid));
+	if (!lightsOpt)
+		return false;
+
+	category = static_cast<int>(lightsOpt->lightingCategory);
+	scale = lightsOpt->lightScaleMult;
+	return true;
+}
+}
+
+// native SetCustomVehicleLighting(vehicleid, category, Float:scale = 1.0);
+SCRIPT_API(SetCustomVehicleLighting, bool(IVehicle& vehicle, int category, float scale))
+{
+	return CustomVehicleNatives::SetCustomVehicleLighting(vehicle, category, scale);
+}
+
+// Legacy alias: SetVehicleLighting -> SetCustomVehicleLighting
+SCRIPT_API(SetVehicleLighting, bool(IVehicle& vehicle, int category, float scale))
+{
+	return CustomVehicleNatives::SetCustomVehicleLighting(vehicle, category, scale);
+}
+
+// native GetCustomVehicleLighting(vehicleid, &category, &Float:scale);
+SCRIPT_API(GetCustomVehicleLighting, bool(IVehicle& vehicle, int& category, float& scale))
+{
+	return CustomVehicleNatives::GetCustomVehicleLighting(vehicle, category, scale);
+}
+
+// Legacy alias: GetVehicleLighting -> GetCustomVehicleLighting
+SCRIPT_API(GetVehicleLighting, bool(IVehicle& vehicle, int& category, float& scale))
+{
+	return CustomVehicleNatives::GetCustomVehicleLighting(vehicle, category, scale);
+}
+
+namespace CustomVehicleNatives
+{
 inline bool SetCustomVehicleModelHorn(int customModelId, int hornSoundId, float hornPitch)
 {
 	if (customModelId < 0 || !CVehicleMgr::IsCustomVehicleModel(static_cast<uint32_t>(customModelId)))

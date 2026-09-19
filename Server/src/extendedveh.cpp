@@ -391,6 +391,12 @@ void ExtendedVehCompo::onVehicleStreamIn(IVehicle& vehicle, IPlayer& player)
 		{
 			CustomVehicleTransport::SendVehicleSiren(player, *sirenOpt);
 		}
+
+		auto lightsOpt = CustomVehicleBindingRegistry::Instance().GetLights(vId);
+		if (lightsOpt)
+		{
+			CustomVehicleTransport::SendVehicleLights(player, *lightsOpt);
+		}
 	}
 }
 

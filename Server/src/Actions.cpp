@@ -217,6 +217,11 @@ bool Actions::Process(CustomVehAction id, NetworkBitStream& bs, IPlayer& player)
 				core_->logLn(LogLevel::Warning, "[ExtendedVeh] ACTION_ASSET_REQUEST: Malformed request from player %d", playerid);
 			return false;
 		}
+		if (!gPlayers.HasExtendedVeh(playerid)) {
+			if (core_)
+				core_->logLn( LogLevel::Warning, "[ExtendedVeh] ACTION_ASSET_REQUEST: Unauthorized player %d", playerid);
+			return false;
+		}
 		if (core_)
 			core_->logLn(LogLevel::Debug, "[ExtendedVeh] ACTION_ASSET_REQUEST: Player %d requested model %u kind %u", playerid, modelId, kindByte);
 		ModelTransferMgr::OnRequestFile(player, modelId, static_cast<ModelFileKind>(kindByte));

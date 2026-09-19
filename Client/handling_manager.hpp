@@ -229,3 +229,5 @@ public:
 	static void SendHandlingPacket(CustomVehAction action, RakNet::BitStream* bs);
 	static void SendInitPacket();
 };
+
+bool IsVehicleInFlightMode(CVehicle* pVehicle);

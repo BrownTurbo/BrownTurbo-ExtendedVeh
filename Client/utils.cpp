@@ -458,3 +458,51 @@ std::string Sha256HexOfBuffer(const unsigned char* data, unsigned int size)
 	}
 	return hash;
 }
+
+bool IsRcVehicleModel(int modelIndex)
+{
+	switch (modelIndex) {
+	case 441: // RC Bandit
+	case 464: // RC Baron
+	case 465: // RC Raider
+	case 501: // RC Goblin
+	case 564: // RC Tiger
+	case 594: // RC Cam
+		return true;
+	default:
+		return false;
+	}
+}
+
+bool IsHeavyVehicleModel(int modelIndex)
+{
+	switch (modelIndex) {
+	case 403: // Linerunner
+	case 406: // Dumper
+	case 407: // Firetruck
+	case 408: // Trashmaster
+	case 414: // Mule
+	case 431: // Bus
+	case 433: // Barracks
+	case 437: // Coach
+	case 443: // Packer
+	case 444: // Monster
+	case 455: // Flatbed
+	case 456: // Yankee
+	case 486: // Dozer
+	case 498: // Boxville
+	case 499: // Benson
+	case 514: // Roadtrain
+	case 515: // Tanker
+	case 524: // Cement Truck
+	case 532: // Combine Harvester
+	case 544: // Firetruck Ladd
+	case 556: // Monster A
+	case 557: // Monster B
+	case 573: // Dune
+	case 578: // DFT-30
+		return true;
+	default:
+		return false;
+	}
+}

@@ -1647,9 +1647,23 @@ bool HandlingManager::ProcessAction(CustomVehAction action, RakNet::BitStream* b
 		}
 		return false;
 	}
+	case static_cast<CustomVehAction>(CustomVeh::Protocol::Action::SetVehicleLights): {
+		CustomVeh::Protocol::VehicleLightsPacket lights {};
+		if (bs->Read(reinterpret_cast<char*>(&lights), sizeof(lights))) {
+			ClientLog(std::format("[Client] SetVehicleLights: vehId={}, category={}, scale={:.2f}",
+				lights.sampVehicleId, lights.lightingCategory, lights.lightScaleMult));
+			CustomVehicleBindingManager::Instance().SetVehicleLights(lights.sampVehicleId, lights.lightingCategory, lights.lightScaleMult);
+		}
+		return false;
+	}
 	default:
 		ClientLog(std::format("[Client] ProcessAction: Unknown or unhandled action {}", static_cast<int>(action)));
 		break;
 	}
 	return true;
+}
+
+bool IsVehicleInFlightMode(CVehicle* pVehicle)
+{
+	return HandlingManager::IsVehicleFlying(pVehicle);
 }

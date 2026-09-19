@@ -506,7 +506,12 @@ bool CollisionLoader::LoadCollisionFromMemory(uint8_t* data, size_t size, CVehic
 		return false;
 
 	FileBuffer fileBuf;
-	fileBuf.bytes.assign(data, data + size);
+	try {
+		fileBuf.bytes.assign(data, data + size);
+	}
+	catch (...) {
+		return false;
+	}
 
 	Statistics stats;
 	std::vector<RecordInfo> records;
@@ -522,9 +527,30 @@ bool CollisionLoader::LoadCollisionFromMemory(uint8_t* data, size_t size, CVehic
 			pRecord = matched;
 	}
 
-	if (!modelInfo->m_pColModel) {
-		modelInfo->m_pColModel = new CColModel();
+	if (modelInfo->m_pColModel && !modelInfo->bDoWeOwnTheColModel) {
+		return false;
 	}
+
+	CColModel* newCollision = nullptr;
+	try {
+		newCollision = new CColModel();
+	} catch (...) {
+		return false;
+	}
+
+	const Result loadResult = LoadRecordIntoGta(fileBuf, *pRecord, *newCollision, stats, err);
+	if (loadResult != Result::Success) {
+		delete newCollision;
+		return false;
+	}
+
+	newCollision->m_nColSlot = 0xFF;
+
+	if (modelInfo->m_pColModel && modelInfo->bDoWeOwnTheColModel) {
+		delete modelInfo->m_pColModel;
+		modelInfo->m_pColModel = nullptr;
+	}
+	modelInfo->m_pColModel = newCollision;
 	modelInfo->bDoWeOwnTheColModel = 1;
 
 	return LoadRecordIntoGta(fileBuf, *pRecord, *modelInfo->m_pColModel, stats, err) == Result::Success;

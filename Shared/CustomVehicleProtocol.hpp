@@ -38,6 +38,7 @@ namespace CustomVeh::Protocol {
 		SetVehicleBackfire = 66,
 		SetVehicleHorn = 67,
 		SetVehicleSiren = 68,
+		SetVehicleLights = 69,
 		AssetManifest = 50,
 		AssetRequest = 51,
 		AssetResume = 52,
@@ -182,6 +183,12 @@ namespace CustomVeh::Protocol {
 		uint16_t sampVehicleId = 0;
 		uint8_t enabled = 0;
 		int8_t sirenType = 1;
+	};
+
+	struct VehicleLightsPacket {
+		uint16_t sampVehicleId = 0;
+		int8_t lightingCategory = -1; // -1 = auto-detect, or explicit 0..7
+		float lightScaleMult = 1.0f;
 	};
 
 	struct AssetRequest {

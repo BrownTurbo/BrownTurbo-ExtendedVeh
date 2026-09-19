@@ -240,13 +240,14 @@ void ModelTransferClient::OnTransferBegin(RakNet::BitStream* bs)
 	if (!bs->Read(shaBuf, CustomVeh::Protocol::SHA256_BUFFER_SIZE))
 		return;
 
-	if (uncompressedSize == 0 || uncompressedSize > TransferConfig::Instance().clientMaxUncompressedSize) {
-		// Reject: unexpected uncompressed size (too large or zero)
+	const auto& cfg = TransferConfig::Instance();
+	if (compressedSize == 0 || compressedSize > cfg.clientMaxCompressedSize || uncompressedSize == 0 || uncompressedSize > cfg.clientMaxUncompressedSize || totalChunks == 0) {
+		// Reject: unexpected size (too large or zero)
 		std::lock_guard<std::mutex> lock(m_mutex);
 		auto it = m_active.find(Key(modelId, static_cast<ModelFileKind>(kindByte)));
 		if (it != m_active.end()) {
 			it->second.progress.statusText = "rejected: size";
-			it->second.progress.lastError = "uncompressed size out of bounds";
+			it->second.progress.lastError = "transfer size/chunk count out of bounds";
 			// schedule an immediate retry with backoff via existing scheduling logic:
 			it->second.nextRetryTime = std::chrono::steady_clock::now() + std::chrono::milliseconds(it->second.backoffMs ? it->second.backoffMs : 500);
 			it->second.attempts++;

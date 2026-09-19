@@ -29,6 +29,7 @@ public:
 	int WorkerSleepMs = 250;
 
 	uint32_t clientMaxUncompressedSize = 200u * 1024u * 1024u; // 200 MB
+	uint32_t clientMaxCompressedSize = 160u * 1024u * 1024u; // 160MB
 
 	static TransferConfig& Instance()
 	{
@@ -75,6 +76,7 @@ public:
 		retryMaxBackoffMs = static_cast<int>(GetInt("RetryMaxBackoffMs", retryMaxBackoffMs));
 		retryResponseTimeoutMs = static_cast<int>(GetInt("RetryResponseTimeoutMs", retryResponseTimeoutMs));
 		clientMaxUncompressedSize = static_cast<uint32_t>(GetInt("ClientMaxUncompressedSize", clientMaxUncompressedSize));
+		clientMaxCompressedSize = static_cast<uint32_t>(GetInt("ClientMaxCompressedSize", clientMaxCompressedSize));
 		RequestChannel = static_cast<uint32_t>(GetInt("RequestChannel", RequestChannel));
 		WorkerSleepMs = static_cast<uint32_t>(GetInt("WorkerSleepMs", WorkerSleepMs));
 	}
@@ -104,6 +106,7 @@ private:
 			 << "RetryMaxBackoffMs=60000\n"
 			 << "RetryResponseTimeoutMs=8000\n"
 			 << "ClientMaxUncompressedSize=209715200\n" // 200 * 1024 * 1024
+			 << "ClientMaxCompressedSize=167772160\n" // 160 * 1024 * 1024
 			 << "WorkerSleepMs=250\n"
 			 << "RequestChannel=1\n";
 	}

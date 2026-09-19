@@ -75,9 +75,49 @@ static void ApplyExtrasToClump(RpClump* clump, uint8_t mask)
 	}
 }
 
+void CustomVehicleBindingManager::SetBaseModelId(uint32_t customModelId, uint32_t baseModelId)
+{
+	{
+		std::lock_guard lock(s_baseModelMutex);
+		s_baseModelIds[customModelId] = baseModelId;
+	}
+
+	std::lock_guard lock(m_mutex);
+	for (auto& [vehicleId, binding] : m_bindings) {
+		if (binding.customModelId == customModelId) {
+			binding.baseModelId = baseModelId;
+			binding.hasBaseModelId = true;
+		}
+	}
+}
+
 void CustomVehicleBindingManager::Bind(uint16_t vehicleId, uint32_t customModelId)
 {
+	uint32_t baseModelId = 0;
+	bool hasBaseModelId = false;
+
+	{
+		std::lock_guard baseLock(s_baseModelMutex);
+
+		const auto it = s_baseModelIds.find(customModelId);
+		if (it != s_baseModelIds.end()) {
+			baseModelId = it->second;
+			hasBaseModelId = true;
+		}
+	}
+
 	std::lock_guard lock(m_mutex);
+
+	auto existing = m_bindings.find(vehicleId);
+	if (existing != m_bindings.end() && existing->second.customModelId == customModelId) {
+		existing->second.baseModelId = baseModelId;
+		existing->second.hasBaseModelId = hasBaseModelId;
+		return;
+	}
+	if (existing != m_bindings.end()) {
+		HandlingManager::DecrementModelUse(existing->second.customModelId);
+		m_bindings.erase(existing);
+	}
 
 	Binding binding;
 	binding.sampVehicleId = vehicleId;
@@ -86,6 +126,9 @@ void CustomVehicleBindingManager::Bind(uint16_t vehicleId, uint32_t customModelI
 	binding.originalModelId = -1;
 	binding.appliedGameVehicle = nullptr;
 	binding.modelApplied = false;
+
+	binding.baseModelId = baseModelId;
+	binding.hasBaseModelId = hasBaseModelId;
 
 	m_bindings[vehicleId] = binding;
 	HandlingManager::IncrementModelUse(customModelId);
@@ -187,6 +230,7 @@ void CustomVehicleBindingManager::SetVehicleStance(uint16_t vehicleId, float fro
 	std::lock_guard lock(m_mutex);
 	auto it = m_bindings.find(vehicleId);
 	if (it != m_bindings.end()) {
+		it->second.hasStance = true;
 		it->second.frontWheelScale = frontScale;
 		it->second.rearWheelScale = rearScale;
 		it->second.frontCamber = frontCamber;
@@ -201,6 +245,7 @@ void CustomVehicleBindingManager::SetVehicleExtras(uint16_t vehicleId, uint8_t m
 	std::lock_guard lock(m_mutex);
 	auto it = m_bindings.find(vehicleId);
 	if (it != m_bindings.end()) {
+		it->second.hasExtras = true;
 		it->second.extrasMask = mask;
 		if (it->second.modelApplied && it->second.appliedGameVehicle && IsVehiclePointerValid(it->second.appliedGameVehicle)) {
 			RpClump* clump = reinterpret_cast<RpClump*>(it->second.appliedGameVehicle->m_pRwObject);
@@ -224,6 +269,7 @@ void CustomVehicleBindingManager::Process()
 		if (!vehicle || !IsVehiclePointerValid(vehicle)) {
 			binding.appliedGameVehicle = nullptr;
 			binding.modelApplied = false;
+			binding.originalModelId = -1;
 			continue;
 		}
 
@@ -243,7 +289,9 @@ void CustomVehicleBindingManager::Process()
 					CCustomCarPlateMgr::SetupClump(newClump, plateText, 0);
 				}
 
-				ApplyExtrasToClump(newClump, binding.extrasMask);
+				if (binding.hasExtras) {
+					ApplyExtrasToClump(newClump, binding.extrasMask);
+				}
 
 				vehicle->DeleteRwObject();
 				vehicle->AttachToRwObject(reinterpret_cast<RwObject*>(newClump), true);
@@ -266,7 +314,7 @@ void CustomVehicleBindingManager::Process()
 				binding.lastTertiaryColor = vehicle->m_nTertiaryColor;
 				binding.lastQuaternaryColor = vehicle->m_nQuaternaryColor;
 
-				if (binding.paintjobIndex != -1) {
+				if (binding.hasPaintjob) {
 					ApplyPaintjobToVehicle(vehicle, binding.paintjobIndex);
 				}
 				if (binding.hasWindowTint) {
@@ -296,7 +344,7 @@ void CustomVehicleBindingManager::Process()
 				if (clump && model) {
 					model->SetVehicleColour(vehicle->m_nPrimaryColor, vehicle->m_nSecondaryColor, vehicle->m_nTertiaryColor, vehicle->m_nQuaternaryColor);
 					model->SetEditableMaterials(clump);
-					if (binding.paintjobIndex != -1) {
+					if (binding.hasPaintjob) {
 						ApplyPaintjobToVehicle(vehicle, binding.paintjobIndex);
 					}
 					if (binding.hasWindowTint) {
@@ -316,6 +364,7 @@ void CustomVehicleBindingManager::SetVehiclePaintjob(uint16_t vehicleId, int pai
 	std::lock_guard lock(m_mutex);
 	auto it = m_bindings.find(vehicleId);
 	if (it != m_bindings.end()) {
+		it->second.hasPaintjob = true;
 		it->second.paintjobIndex = paintjobIndex;
 		if (it->second.modelApplied && it->second.appliedGameVehicle && IsVehiclePointerValid(it->second.appliedGameVehicle)) {
 			ApplyPaintjobToVehicle(it->second.appliedGameVehicle, paintjobIndex);
@@ -328,6 +377,7 @@ void CustomVehicleBindingManager::SetVehicleNeon(uint16_t vehicleId, bool enable
 	std::lock_guard lock(m_mutex);
 	auto it = m_bindings.find(vehicleId);
 	if (it != m_bindings.end()) {
+		it->second.hasNeon = true;
 		it->second.neonEnabled = enabled;
 		it->second.neonR = r;
 		it->second.neonG = g;
@@ -372,6 +422,7 @@ void CustomVehicleBindingManager::SetVehicleBackfire(uint16_t vehicleId, bool en
 	std::lock_guard lock(m_mutex);
 	auto it = m_bindings.find(vehicleId);
 	if (it != m_bindings.end()) {
+		it->second.hasBackfire = true;
 		it->second.backfireEnabled = enabled;
 	}
 }
@@ -401,6 +452,17 @@ void CustomVehicleBindingManager::SetVehicleSiren(uint16_t vehicleId, bool enabl
 		if (it->second.appliedGameVehicle) {
 			ApplyAudioSettingsToVehicle(it->second.appliedGameVehicle);
 		}
+	}
+}
+
+void CustomVehicleBindingManager::SetVehicleLights(uint16_t vehicleId, int8_t lightingCategory, float scaleMult)
+{
+	std::lock_guard lock(m_mutex);
+	auto it = m_bindings.find(vehicleId);
+	if (it != m_bindings.end()) {
+		it->second.hasCustomLighting = true;
+		it->second.customLightingCategory = lightingCategory;
+		it->second.customLightScaleMult = (scaleMult > 0.05f) ? scaleMult : 1.0f;
 	}
 }
 
@@ -693,4 +755,3 @@ void CustomVehicleBindingManager::ApplyWheelColorToVehicle(CVehicle* vehicle, ui
 		return atomic;
 	}, &ctx);
 }
-

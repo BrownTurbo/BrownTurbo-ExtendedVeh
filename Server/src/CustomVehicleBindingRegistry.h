@@ -20,6 +20,7 @@ public:
 		CustomVeh::Protocol::VehicleBackfirePacket backfire {};
 		CustomVeh::Protocol::VehicleHornPacket horn {};
 		CustomVeh::Protocol::VehicleSirenPacket siren {};
+		CustomVeh::Protocol::VehicleLightsPacket lights {};
 		bool hasCustomStance { false };
 		bool hasCustomExtras { false };
 		bool hasCustomPaintjob { false };
@@ -29,6 +30,7 @@ public:
 		bool hasCustomBackfire { false };
 		bool hasCustomHorn { false };
 		bool hasCustomSiren { false };
+		bool hasCustomLights { false };
 	};
 
 	struct ModelAudioDefaults {
@@ -49,7 +51,12 @@ public:
 	void Bind(uint16_t sampVehicleId, uint32_t customModelId)
 	{
 		std::lock_guard<std::mutex> lock(m_mutex);
-		auto& state = m_states[sampVehicleId];
+		auto existing = m_states.find(sampVehicleId);
+		if (existing != m_states.end() && existing->second.customModelId == customModelId)
+		{
+			return;
+		}
+		VehicleCustomState state = m_states[sampVehicleId];
 		state.customModelId = customModelId;
 		auto modelIt = m_modelAudio.find(customModelId);
 		if (modelIt != m_modelAudio.end()) {
@@ -66,6 +73,7 @@ public:
 				state.hasCustomSiren = true;
 			}
 		}
+		m_states.insert_or_assign(sampVehicleId, std::move(state));
 	}
 
 	void Unbind(uint16_t sampVehicleId)
@@ -240,6 +248,25 @@ public:
 		auto it = m_states.find(sampVehicleId);
 		if (it != m_states.end() && it->second.hasCustomSiren)
 			return it->second.siren;
+		return std::nullopt;
+	}
+
+	void SetLights(uint16_t sampVehicleId, int8_t lightingCategory, float scaleMult = 1.0f)
+	{
+		std::lock_guard<std::mutex> lock(m_mutex);
+		auto& state = m_states[sampVehicleId];
+		state.lights.sampVehicleId = sampVehicleId;
+		state.lights.lightingCategory = lightingCategory;
+		state.lights.lightScaleMult = (scaleMult > 0.05f) ? scaleMult : 1.0f;
+		state.hasCustomLights = true;
+	}
+
+	std::optional<CustomVeh::Protocol::VehicleLightsPacket> GetLights(uint16_t sampVehicleId) const
+	{
+		std::lock_guard<std::mutex> lock(m_mutex);
+		auto it = m_states.find(sampVehicleId);
+		if (it != m_states.end() && it->second.hasCustomLights)
+			return it->second.lights;
 		return std::nullopt;
 	}
 
