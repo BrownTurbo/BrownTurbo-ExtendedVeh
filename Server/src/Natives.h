@@ -1836,7 +1836,6 @@ inline int GetCustomVehiclePaintjob(IVehicle& vehicle)
 }
 
 // native GetCustomVehiclePaintjob(vehicleid);
-// NOTE: Replaces colliding GetVehiclePaintjob to prevent duplicate native errors with open.mp
 SCRIPT_API(GetCustomVehiclePaintjob, int(IVehicle& vehicle))
 {
 	return CustomVehicleNatives::GetCustomVehiclePaintjob(vehicle);

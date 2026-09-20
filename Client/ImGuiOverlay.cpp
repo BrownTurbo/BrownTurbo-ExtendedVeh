@@ -9,10 +9,35 @@ _Reset oReset = nullptr;
 std::atomic<bool> g_shutdownRequested = false;
 bool g_wndProcHooked = false;
 std::thread g_initializationThread;
+IDirect3DDevice9* g_imguiDevice = nullptr;
+
+static inline void LogImGuiStage(const char* stage)
+{
+	ClientLog(std::format("[Client] ImGui Stage: {}", stage));
+}
+
+static inline const char* GetModelFileKindName(ModelFileKind kind)
+{
+	switch (kind) {
+	case ModelFileKind::Dff:
+		return "DFF";
+
+	case ModelFileKind::Txd:
+		return "TXD";
+
+	case ModelFileKind::Col:
+		return "COL";
+	}
+
+	return "UNKNOWN";
+}
 
 void RenderTransferWindow()
 {
-	ImGui::SetNextWindowSize(ImVec2(700, 280), ImGuiCond_FirstUseEver);
+
+	LogImGuiStage("RenderTransferWindow begin");
+
+	ImGui::SetNextWindowSize(ImVec2(700.0f, 280.0f), ImGuiCond_FirstUseEver);
 	if (!ImGui::Begin("Model Transfers", nullptr)) {
 		ImGui::End();
 		return;
@@ -29,8 +54,6 @@ void RenderTransferWindow()
 		ImGui::TableSetupColumn("Status", ImGuiTableColumnFlags_WidthFixed, 150.0f);
 		ImGui::TableHeadersRow();
 
-		static const char* kKindNames[] = { "DFF", "TXD", "COL" };
-
 		for (auto& t : transfers) {
 			ImGui::TableNextRow();
 
@@ -38,7 +61,7 @@ void RenderTransferWindow()
 			ImGui::Text("%u", t.modelId);
 
 			ImGui::TableSetColumnIndex(1);
-			ImGui::TextUnformatted(kKindNames[static_cast<int>(t.kind)]);
+			ImGui::TextUnformatted(GetModelFileKindName(t.kind));
 
 			ImGui::TableSetColumnIndex(2);
 			if (t.fromCache) {
@@ -62,7 +85,9 @@ void RenderTransferWindow()
 				std::string etaStr = "estimating";
 				if (t.receivedBytes > 0 && elapsedSec > 0.001) {
 					double rate = static_cast<double>(t.receivedBytes) / elapsedSec; // bytes/sec
-					double remaining = static_cast<double>(t.compressedSize - t.receivedBytes);
+					const double received = static_cast<double>((std::min)(t.receivedBytes, t.compressedSize));
+					const double total = static_cast<double>(t.compressedSize);
+					const double remaining = (std::max)(0.0, total - received);
 					if (rate > 1.0 && remaining > 0.0) {
 						int eta = static_cast<int>(std::ceil(remaining / rate)); // seconds
 						int m = eta / 60;
@@ -116,12 +141,17 @@ HRESULT __stdcall hkReset(IDirect3DDevice9* pDevice, D3DPRESENT_PARAMETERS* pp)
 		return D3DERR_INVALIDCALL;
 
 	const bool wasInitialized = g_bwasInitialized;
-	if (wasInitialized) {
-		ImGui_ImplDX9_InvalidateDeviceObjects();
+	if (!wasInitialized || pDevice != g_imguiDevice) {
+		return oReset(pDevice, pp);
 	}
+	LogImGuiStage("Reset begin");
+
+	ImGui_ImplDX9_InvalidateDeviceObjects();
+
 	HRESULT result = oReset(pDevice, pp);
-	if (SUCCEEDED(result) && wasInitialized)
+	if (SUCCEEDED(result))
 		ImGui_ImplDX9_CreateDeviceObjects();
+	LogImGuiStage(SUCCEEDED(result) ? "Reset success" : "Reset failed");
 	g_bwasInitialized = wasInitialized && SUCCEEDED(result);
 
 	return result;
@@ -129,19 +159,21 @@ HRESULT __stdcall hkReset(IDirect3DDevice9* pDevice, D3DPRESENT_PARAMETERS* pp)
 
 LRESULT CALLBACK hkWndProc(HWND hwnd, UINT u_msg, WPARAM w_param, LPARAM l_param)
 {
-	if (u_msg == WM_KEYDOWN && static_cast<int>(w_param) == TransferConfig::Instance().toggleKey)
+	if (u_msg == WM_KEYDOWN && static_cast<int>(w_param) == TransferConfig::Instance().toggleKey) {
 		g_windowVisible = !g_windowVisible;
+		return 0;
+	}
 
-	if (g_windowVisible && imGuiOn && ImGui_ImplWin32_WndProcHandler(hwnd, u_msg, w_param, l_param)) {
-		if (oWndProc) {
-			CallWindowProcA(oWndProc, hwnd, u_msg, w_param, l_param);
+	if (g_windowVisible && g_bwasInitialized && ImGui::GetCurrentContext() != nullptr) {
+		if (ImGui_ImplWin32_WndProcHandler(hwnd, u_msg, w_param, l_param)) {
+			return 0;
 		}
-		return true;
 	}
 
 	if (oWndProc) {
 		return CallWindowProcA(oWndProc, hwnd, u_msg, w_param, l_param);
 	}
+
 	return DefWindowProcA(hwnd, u_msg, w_param, l_param);
 }
 
@@ -151,23 +183,52 @@ HRESULT __stdcall hkEndScene(IDirect3DDevice9* pDevice)
 		if (!pDevice)
 			return oEndScene ? oEndScene(pDevice) : D3DERR_INVALIDCALL;
 
+		LogImGuiStage("initialization begin");
+
 		D3DDEVICE_CREATION_PARAMETERS d3dcp {};
-		if (FAILED(pDevice->GetCreationParameters(&d3dcp)) || !IsWindow(d3dcp.hFocusWindow))
+		if (FAILED(pDevice->GetCreationParameters(&d3dcp)) || !IsWindow(d3dcp.hFocusWindow)) {
+			LogImGuiStage("GetCreationParameters failed.");
 			return oEndScene ? oEndScene(pDevice) : D3DERR_INVALIDCALL;
+		}
 
 		hWnd = d3dcp.hFocusWindow;
+		g_imguiDevice = pDevice;
 
 		ImGui::CreateContext();
 		auto& io = ImGui::GetIO();
 
 		io.IniFilename = nullptr;
 		io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
-		io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;
 
-		if (!ImGui_ImplWin32_Init(hWnd) || !ImGui_ImplDX9_Init(pDevice)) {
+		LogImGuiStage("Win32 backend init");
+
+		if (!ImGui_ImplWin32_Init(hWnd)) {
+			LogImGuiStage("ImGui_ImplWin32_Init failed.");
+
 			ImGui::DestroyContext();
+
+			g_imguiDevice = nullptr;
+			g_bwasInitialized = false;
 			return oEndScene ? oEndScene(pDevice) : D3DERR_INVALIDCALL;
 		}
+
+		LogImGuiStage("DX9 backend init");
+		if (!ImGui_ImplDX9_Init(pDevice)) {
+			LogImGuiStage("ImGui_ImplDX9_Init failed.");
+
+			ImGui_ImplWin32_Shutdown();
+			if (ImGui::GetCurrentContext() != nullptr)
+				ImGui::DestroyContext();
+
+			g_imguiDevice = nullptr;
+			g_bwasInitialized = false;
+
+			LogImGuiStage("initialization failed; all ImGui state rolled back.");
+			return false;
+		}
+
+		LogImGuiStage("adding tahoma font.");
+		ImGui::StyleColorsDark();
 
 		ImVector<ImWchar> ranges;
 		ImFontGlyphRangesBuilder builder;
@@ -183,22 +244,74 @@ HRESULT __stdcall hkEndScene(IDirect3DDevice9* pDevice)
 		io.Fonts->Build();
 		io.FontDefault = imFnt;
 
+		LogImGuiStage("tahoma font ready");
+
 		if (!g_wndProcHooked) {
-			oWndProc = reinterpret_cast<WNDPROC>(SetWindowLongPtrA(
-				hWnd, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(hkWndProc)));
-			g_wndProcHooked = oWndProc != nullptr;
+			SetLastError(ERROR_SUCCESS);
+
+			const LONG_PTR previousWndProc = GetWindowLongPtrW(hWnd, GWLP_WNDPROC);
+			DWORD getError = GetLastError();
+
+			if (previousWndProc == 0 && getError != ERROR_SUCCESS) {
+				LogImGuiStage(std::format("GetWindowLongPtrW failed. HWND=0x{:X}, error={} ({})", reinterpret_cast<std::uintptr_t>(hWnd), getError, std::system_category().message(static_cast<int>(getError))).c_str());
+				ImGui_ImplDX9_Shutdown();
+				ImGui_ImplWin32_Shutdown();
+				if (ImGui::GetCurrentContext() != nullptr)
+					ImGui::DestroyContext();
+
+				g_imguiDevice = nullptr;
+				g_bwasInitialized = false;
+
+				LogImGuiStage("initialization failed; all ImGui state rolled back.");
+				return false;
+			}
+
+			// ...
+			oWndProc = reinterpret_cast<WNDPROC>(SetWindowLongPtrA(hWnd, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(hkWndProc)));
+			const DWORD getWndProcError = GetLastError();
+			g_wndProcHooked = (oWndProc != nullptr && getWndProcError == ERROR_SUCCESS);
+			if (!g_wndProcHooked) {
+				LogImGuiStage(std::format("GetWindowLongPtrW(GWLP_WNDPROC) failed. HWND=0x{:X}, error={} ({})", reinterpret_cast<std::uintptr_t>(hWnd), getWndProcError, std::system_category().message(static_cast<int>(getWndProcError))).c_str());
+
+				ImGui_ImplDX9_Shutdown();
+				ImGui_ImplWin32_Shutdown();
+				if (ImGui::GetCurrentContext() != nullptr)
+					ImGui::DestroyContext();
+
+				g_imguiDevice = nullptr;
+				g_bwasInitialized = false;
+
+				LogImGuiStage("initialization failed; all ImGui state rolled back.");
+
+				const LONG_PTR restoreResult = SetWindowLongPtrW(hWnd, GWLP_WNDPROC, previousWndProc);
+				getError = GetLastError();
+				if (restoreResult == 0 && getError != ERROR_SUCCESS) {
+					ClientLog(std::format("Failed to restore WndProc. HWND=0x{:X}, error={} ({})", reinterpret_cast<std::uintptr_t>(hWnd), getError, std::system_category().message(static_cast<int>(getError))));
+				} else {
+					LogImGuiStage("Original WndProc restored.");
+				}
+				return false;
+			}
+			else
+			{
+				const LONG_PTR installedWndProc = GetWindowLongPtrW(hWnd, GWLP_WNDPROC);
+				LogImGuiStage(std::format("WndProc hooked successfully. HWND=0x{:X}, oldWndProc=0x{:X}, newWndProc=0x{:X}", reinterpret_cast<std::uintptr_t>(hWnd), static_cast<std::uintptr_t>(reinterpret_cast<uintptr_t>(oWndProc)), static_cast<uintptr_t>(installedWndProc)).c_str());
+			}
 		}
+
+		LogImGuiStage("initialization complete");
 
 		g_windowVisible = TransferConfig::Instance().showTransferWindow;
 		g_bwasInitialized = true;
-		imGuiOn = true;
 	}
 
-	if (imGuiOn && g_windowVisible) {
+	if (ImGui::GetCurrentContext() != nullptr && g_windowVisible) {
 		IDirect3DStateBlock9* stateBlock = nullptr;
 		if (pDevice->CreateStateBlock(D3DSBT_ALL, &stateBlock) == D3D_OK && stateBlock) {
 			stateBlock->Capture();
 		}
+
+		LogImGuiStage("frame begin");
 
 		ImGui_ImplDX9_NewFrame();
 		ImGui_ImplWin32_NewFrame();
@@ -206,13 +319,16 @@ HRESULT __stdcall hkEndScene(IDirect3DDevice9* pDevice)
 
 		RenderTransferWindow();
 
-		ImGui::EndFrame();
 		ImGui::Render();
 		ImGui_ImplDX9_RenderDrawData(ImGui::GetDrawData());
 
+		LogImGuiStage("frame end");
+
 		if (stateBlock) {
 			stateBlock->Apply();
+			LogImGuiStage("stateBlock apply");
 			stateBlock->Release();
+			LogImGuiStage("stateBlock release");
 		}
 	}
 	return oEndScene ? oEndScene(pDevice) : D3DERR_INVALIDCALL;
@@ -228,7 +344,6 @@ void BackgroundInitializationWorker()
 	}
 
 	if (deviceAddr != 0) {
-		MH_Initialize();
 		void** vTableDevice = *(void***)(deviceAddr);
 		g_targetEndScene = vTableDevice[ENDSCENE_INDEX];
 		g_targetReset = vTableDevice[RESET_INDEX];
@@ -283,18 +398,33 @@ void c_plugin::shutdown_for_unload()
 	}
 
 	if (hWnd && g_wndProcHooked && oWndProc) {
-		SetWindowLongPtrA(hWnd, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(oWndProc));
+		const WNDPROC result = reinterpret_cast<WNDPROC>(SetWindowLongPtrA(hWnd, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(oWndProc)));
+		const DWORD getWndProcError = GetLastError();
+		g_wndProcHooked = (result != nullptr && getWndProcError == ERROR_SUCCESS);
+		if (!g_wndProcHooked) {
+			LogImGuiStage(std::format("GetWindowLongPtrW(GWLP_WNDPROC) failed. HWND=0x{:X}, error={} ({})", reinterpret_cast<std::uintptr_t>(hWnd), getWndProcError, std::system_category().message(static_cast<int>(getWndProcError))).c_str());
+
+			ImGui_ImplDX9_Shutdown();
+			ImGui_ImplWin32_Shutdown();
+			if (ImGui::GetCurrentContext() != nullptr)
+				ImGui::DestroyContext();
+
+			g_imguiDevice = nullptr;
+			g_bwasInitialized = false;
+
+			LogImGuiStage("initialization failed; all ImGui state rolled back.");
+			return;
+		}
 		oWndProc = nullptr;
 		g_wndProcHooked = false;
 	}
 
-	if (imGuiOn) {
-		ImGui_ImplDX9_Shutdown();
-		ImGui_ImplWin32_Shutdown();
+	ImGui_ImplDX9_Shutdown();
+	ImGui_ImplWin32_Shutdown();
+	if (ImGui::GetCurrentContext() != nullptr)
 		ImGui::DestroyContext();
-		imGuiOn = false;
-		g_bwasInitialized = false;
-	}
+	g_imguiDevice = nullptr;
+	g_bwasInitialized = false;
 }
 
 c_plugin::c_plugin(HMODULE hmodule)
