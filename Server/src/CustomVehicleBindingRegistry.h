@@ -88,7 +88,7 @@ public:
 		auto it = m_states.find(sampVehicleId);
 		if (it == m_states.end() || it->second.customModelId == 0)
 			return std::nullopt;
-		return it->second.customModelId;
+		return std::optional<uint32_t>(it->second.customModelId);
 	}
 
 	void SetStance(uint16_t sampVehicleId, const CustomVeh::Protocol::VehicleStancePacket& stance)

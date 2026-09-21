@@ -28,7 +28,8 @@ std::map<uint16_t, std::vector<HandlingManager::HandlingAttribEntry>> HandlingMa
 std::unordered_map<uint16_t, uint8_t> HandlingManager::m_vehicleDoorStates;
 std::unordered_map<uint16_t, bool> HandlingManager::m_vehicleFlying;
 std::unordered_map<CVehicle*, bool> HandlingManager::m_vehicleFlyingByPtr;
-bool HandlingManager::m_isServerAuthorized = false;
+std::atomic<bool> HandlingManager::m_isServerAuthorized { true };
+std::atomic<bool> HandlingManager::m_initSent { true };
 std::recursive_mutex HandlingManager::m_handlingMutex;
 std::deque<HandlingManager::PendingCommand> HandlingManager::m_pendingCommands;
 std::mutex HandlingManager::m_pendingMutex;
@@ -1270,8 +1271,19 @@ void HandlingManager::SendHandlingPacket(CustomVehAction action, RakNet::BitStre
 	ClientLog(std::format("[Client] SendHandlingPacket: action={}, bytes={}, sent={}", static_cast<int>(action), packet.GetNumberOfBytesUsed(), sent));
 }
 
+void HandlingManager::ResetInitState()
+{
+	HandlingManager::m_initSent.store(false, std::memory_order_release);
+	HandlingManager::m_isServerAuthorized.store(false, std::memory_order_release);
+}
+
 void HandlingManager::SendInitPacket()
 {
+	if (m_initSent.exchange(true, std::memory_order_acq_rel)) {
+		ClientLog("[Client] ACTION_INIT already sent for current session.");
+		return;
+	}
+
 	ClientLog(std::format("[Client] Sending ACTION_INIT packet (compat_ver=0x{:X})...", EXTENDEDVEH_COMPAT_VERSION));
 	RakNet::BitStream bs;
 	bs.Write(static_cast<uint32_t>(EXTENDEDVEH_COMPAT_VERSION));
@@ -1296,7 +1308,8 @@ bool HandlingManager::ProcessAction(CustomVehAction action, RakNet::BitStream* b
 
 		ClientLog(std::format("[Client] ACTION_INIT_RESPONSE: allowed={}, server_compat_ver=0x{:X}", allowed, compat_ver));
 		if (allowed && compat_ver == EXTENDEDVEH_COMPAT_VERSION) {
-			m_isServerAuthorized = true;
+			m_isServerAuthorized.store(true, std::memory_order_release);
+			ClientLog("[Client] authorization established.");
 			SendMsg(-1, "{00FF00}[ExtendedVeh]{FFFFFF} Server authorized handling modifications.");
 		} else {
 			SendMsg(-1, "{FF0000}[ExtendedVeh] Version mismatch with server.");
@@ -1305,7 +1318,7 @@ bool HandlingManager::ProcessAction(CustomVehAction action, RakNet::BitStream* b
 	}
 
 	case ACTION_SET_VEHICLE_HANDLING: {
-		if (!m_isServerAuthorized) {
+		if (!m_isServerAuthorized.load(std::memory_order_acquire)) {
 			ClientLog("[Client] ACTION_SET_VEHICLE_HANDLING: rejected (server not authorized)");
 			return false;
 		}
@@ -1351,7 +1364,7 @@ bool HandlingManager::ProcessAction(CustomVehAction action, RakNet::BitStream* b
 	}
 
 	case ACTION_SET_MODEL_HANDLING: {
-		if (!m_isServerAuthorized) {
+		if (!m_isServerAuthorized.load(std::memory_order_acquire)) {
 			ClientLog("[Client] ACTION_SET_MODEL_HANDLING: rejected (server not authorized)");
 			return false;
 		}
@@ -1379,7 +1392,7 @@ bool HandlingManager::ProcessAction(CustomVehAction action, RakNet::BitStream* b
 	}
 
 	case ACTION_SET_PLAYER_HANDLING: {
-		if (!m_isServerAuthorized) {
+		if (!m_isServerAuthorized.load(std::memory_order_acquire)) {
 			ClientLog("[Client] ACTION_SET_PLAYER_HANDLING: rejected (server not authorized)");
 			return false;
 		}
@@ -1401,7 +1414,7 @@ bool HandlingManager::ProcessAction(CustomVehAction action, RakNet::BitStream* b
 			ClientLog("[Client] ACTION_RESET_PLAYER_HANDLING: Failed to read playerId");
 			return false;
 		}
-		if (!m_isServerAuthorized) {
+		if (!m_isServerAuthorized.load(std::memory_order_acquire)) {
 			ClientLog("[Client] ACTION_RESET_PLAYER_HANDLING: rejected (server not authorized)");
 			return false;
 		}

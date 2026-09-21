@@ -1326,8 +1326,21 @@ private:
 	std::queue<uint32_t> m_destructionQueue;
 	std::mutex m_destructionMutex;
 	bool m_runtimeInitialized = false;
+	std::atomic<bool> g_localPlayerSpawned { false };
 
 public:
+	bool IsLocalPlayerSpawned() const
+	{
+		return g_localPlayerSpawned.load(std::memory_order_acquire);
+	}
+
+	void SetLocalPlayerSpawned(bool spawned)
+	{
+		g_localPlayerSpawned.store(spawned, std::memory_order_release);
+
+		ClientLog(std::format("[CustomVeh] Local player spawned={}", spawned));
+	}
+
 	bool ReadAssetDescriptor(RakNet::BitStream& bs, CustomVeh::Protocol::AssetDescriptor& asset)
 	{
 		if (!bs.Read(asset.type))
@@ -1389,10 +1402,11 @@ public:
 private:
 	void CreateModelAndBeginTransfers(std::shared_ptr<PendingCustomVehicle> pending)
 	{
-		pending->modelInfo = StreamingExtender::CreateCustomModel(pending->def);
-		if (!pending->modelInfo) {
+		if (!pending) {
 			return;
 		}
+
+		ClientLog(std::format("[CustomVeh] Starting asset transfer for model {}", pending->def.customModelId));
 
 		auto pushToQueue = [this, pending]() {
 			if (pending->queuedForFinalize)
@@ -1518,10 +1532,29 @@ private:
 
 	void FinalizeCustomVehicle(std::shared_ptr<PendingCustomVehicle> pending)
 	{
+		if (!pending)
+			return;
+
+		if (!_customVehInstance.IsLocalPlayerSpawned()) {
+			ClientLog(std::format("[CustomVeh] Deferring finalization of model {} because local player has not spawned.", pending->def.customModelId));
+
+			std::lock_guard<std::mutex> lock(m_pendingDefMutex);
+			m_pendingDefQueue.push(std::move(pending));
+			return;
+		}
+
 		if (pending->dffState != AssetState::Ready || pending->txdState != AssetState::Ready) {
 			StreamingExtender::DestroyCustomModel(pending->def.customModelId);
-			SendMsg(0xFF0000, std::format("[CustomVeh] Failed to load essential assets for model {}", pending->def.customModelId).c_str());
+			SendMsg(0xFF0000, std::format("[Client] Failed to load essential assets for model {}", pending->def.customModelId).c_str());
 			return;
+		}
+
+		if (!pending->modelInfo) {
+			pending->modelInfo = StreamingExtender::CreateCustomModel(pending->def);
+			if (!pending->modelInfo) {
+				SendMsg(0xFF0000, std::format("[CustomVeh] Failed to create GTA model for custom model {}", pending->def.customModelId).c_str());
+				return;
+			}
 		}
 
 		CVehicleModelInfo* newModel = pending->modelInfo;
@@ -1542,7 +1575,7 @@ private:
 
 		if (pending->txd.empty()) {
 			StreamingExtender::DestroyCustomModel(pending->def.customModelId);
-			SendMsg(0xFF0000, std::format("[CustomVeh] TXD file empty or unreadable for model {}", pending->def.customModelId).c_str());
+			SendMsg(0xFF0000, std::format("[Client] TXD file empty or unreadable for model {}", pending->def.customModelId).c_str());
 			return;
 		}
 
@@ -1556,7 +1589,7 @@ private:
 
 		if (txdSlot < 0) {
 			StreamingExtender::DestroyCustomModel(pending->def.customModelId);
-			SendMsg(0xFF0000, std::format("[CustomVeh] Failed to allocate TXD slot for model {}", pending->def.customModelId).c_str());
+			SendMsg(0xFF0000, std::format("[Client] Failed to allocate TXD slot for model {}", pending->def.customModelId).c_str());
 			return;
 		}
 
@@ -1567,14 +1600,14 @@ private:
 
 		if (!txdStream) {
 			StreamingExtender::DestroyCustomModel(pending->def.customModelId);
-			SendMsg(0xFF0000, std::format("[CustomVeh] Failed to open TXD stream for model {}", pending->def.customModelId).c_str());
+			SendMsg(0xFF0000, std::format("[Client] Failed to open TXD stream for model {}", pending->def.customModelId).c_str());
 			return;
 		}
 
 		if (!CTxdStore::LoadTxd(txdSlot, txdStream)) {
 			RwStreamClose(txdStream, nullptr);
 			StreamingExtender::DestroyCustomModel(pending->def.customModelId);
-			SendMsg(0xFF0000, std::format("[CustomVeh] Failed to load TXD for model {}", pending->def.customModelId).c_str());
+			SendMsg(0xFF0000, std::format("[Client] Failed to load TXD for model {}", pending->def.customModelId).c_str());
 			return;
 		}
 
@@ -1594,7 +1627,7 @@ private:
 				if (!StreamingExtender::FinalizeClump(newModel, pClump)) {
 					CTxdStore::PopCurrentTxd();
 					StreamingExtender::DestroyCustomModel(pending->def.customModelId);
-					SendMsg(0xFF0000, std::format("[CustomVeh] Failed to finalize clump for model {}", pending->def.customModelId).c_str());
+					SendMsg(0xFF0000, std::format("[Client] Failed to finalize clump for model {}", pending->def.customModelId).c_str());
 					return;
 				}
 				if (pending->colState == AssetState::Ready && (pending->def.flags & CustomVeh::Protocol::HasCol) != 0) {
@@ -1612,20 +1645,20 @@ private:
 					if (!pending->col.empty()) {
 						ExtendedVeh::Collision::CollisionLoader* colLoader = &ExtendedVeh::Collision::CollisionLoader::Instance();
 						if (!colLoader->LoadCollisionFromMemory(pending->col.data(), pending->col.size(), newModel)) {
-							SendMsg(0xFF8800, std::format("[CustomVeh] Warning: Failed to parse COL for model {}", pending->def.customModelId).c_str());
+							SendMsg(0xFF8800, std::format("[Client] Warning: Failed to parse COL for model {}", pending->def.customModelId).c_str());
 						}
 					}
 				}
 			} else {
 				CTxdStore::PopCurrentTxd();
 				StreamingExtender::DestroyCustomModel(pending->def.customModelId);
-				SendMsg(0xFF0000, std::format("[CustomVeh] Failed to parse DFF for model {}", pending->def.customModelId).c_str());
+				SendMsg(0xFF0000, std::format("[Client] Failed to parse DFF for model {}", pending->def.customModelId).c_str());
 				return;
 			}
 		} else {
 			CTxdStore::PopCurrentTxd();
 			StreamingExtender::DestroyCustomModel(pending->def.customModelId);
-			SendMsg(0xFF0000, std::format("[CustomVeh] Failed to open DFF stream for model {}", pending->def.customModelId).c_str());
+			SendMsg(0xFF0000, std::format("[Client] Failed to open DFF stream for model {}", pending->def.customModelId).c_str());
 			return;
 		}
 
@@ -1683,13 +1716,14 @@ public:
 
 	void HandleCustomVehicleDef(const CustomVeh::Protocol::VehicleDefinition& def)
 	{
+		ClientLog(std::format("[Client] Received definition for model {} (DFF='{}', TXD='{}', COL='{}'); queued until player spawn.", def.customModelId, def.dff.filename, def.txd.filename, def.col.filename));
 		CustomVehicleBindingManager::SetBaseModelId(def.customModelId, def.visualBaseModel);
 
 		auto pending = std::make_shared<PendingCustomVehicle>();
 		pending->def = def;
 
 		std::lock_guard<std::mutex> lock(m_pendingDefMutex);
-		m_pendingDefQueue.push(pending);
+		m_pendingDefQueue.push(std::move(pending));
 	}
 
 	void PushDestructionCommand(uint32_t modelId)
@@ -1711,6 +1745,7 @@ public:
 		while (!localQueue.empty()) {
 			auto pending = localQueue.front();
 			localQueue.pop();
+			ClientLog(std::format("[Client] Activating custom model {} after local player spawn.", pending->def.customModelId));
 			AudioExtender::RegisterVehicleAudio(pending->def.customModelId, pending->def.audioBaseModel, pending->def.engineSoundId.OnSound, pending->def.engineSoundId.OffSound, pending->def.celerateSoundId.accelerateSound, pending->def.celerateSoundId.decelerateSound);
 			CreateModelAndBeginTransfers(pending);
 		}
@@ -1718,6 +1753,9 @@ public:
 
 	void ProcessPendingDestructions()
 	{
+		if (!_customVehInstance.IsLocalPlayerSpawned())
+			return;
+
 		std::queue<uint32_t> localQueue;
 		{
 			std::lock_guard<std::mutex> lock(m_destructionMutex);
@@ -1789,10 +1827,19 @@ void InitializeHooks()
 		std::this_thread::sleep_for(std::chrono::milliseconds(100));
 	}
 
+	static std::chrono::steady_clock::time_point lastInitTry = std::chrono::steady_clock::now();
 	rakhook::on_receive_rpc += [](unsigned char& id, RakNet::BitStream* bs) -> bool {
 		if (id == RPC_InitGame) {
 			ClientLog("[Client] Received RPC_InitGame (139), sending init packet...");
-			HandlingManager::SendInitPacket();
+			_customVehInstance.SetLocalPlayerSpawned(false);
+			_customVehInstance.RequestClearAllCustomModels();
+			HandlingManager::ProcessAction(ACTION_RESET_ALL, nullptr);
+			std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
+			if (std::chrono::duration_cast<std::chrono::milliseconds>(now - lastInitTry).count() >= 1500) {
+				lastInitTry = now;
+				HandlingManager::ResetInitState();
+				HandlingManager::SendInitPacket();
+			}
 		} else if (id == RPC_WorldPlayerAdd) {
 			size_t originalOffset = bs->GetReadOffset();
 			uint16_t playerId = 0;
@@ -1805,6 +1852,21 @@ void InitializeHooks()
 			bs->Read(playerId);
 			bs->SetReadOffset(originalOffset);
 			_customVehInstance.onPlayerStreamOut(playerId);
+		} else if (id == RPC_Spawn) {
+			ClientLog("[ClientSession] RPC_Spawn received.");
+
+			_customVehInstance.SetLocalPlayerSpawned(true);
+			return true;
+		} else if (id == RPC_RequestClass) {
+			ClientLog("[ClientSession] RPC_RequestClass received.");
+
+			_customVehInstance.SetLocalPlayerSpawned(false);
+			return true;
+		} else if (id == RPC_RequestSpawn) {
+			ClientLog("[ClientSession] RPC_RequestSpawn received.");
+
+			_customVehInstance.SetLocalPlayerSpawned(false);
+			return true;
 		}
 		return true;
 	};
@@ -1820,7 +1882,7 @@ void InitializeHooks()
 			if (actionID == CustomVehAction::CustomVehicleDefine) {
 				CustomVeh::Protocol::VehicleDefinition def;
 				if (!_customVehInstance.ReadVehicleDefinition(bs, def)) {
-					SendMsg(0xFF0000, "[CustomVeh] Failed to read vehicle definition from packet");
+					SendMsg(0xFF0000, "[Client] Failed to read vehicle definition from packet");
 					return false;
 				}
 				_customVehInstance.HandleCustomVehicleDef(def);
@@ -1828,7 +1890,7 @@ void InitializeHooks()
 			} else if (actionID == CustomVehAction::CustomVehicleDestroy) {
 				uint32_t customModelId;
 				if (!bs.Read(customModelId)) {
-					SendMsg(0xFF0000, "[CustomVeh] Failed to read vehicle modelId from packet");
+					SendMsg(0xFF0000, "[Client] Failed to read vehicle modelId from packet");
 					return false;
 				}
 				ModelTransferClient::Instance().CancelModelTransfers(customModelId);
@@ -1838,21 +1900,24 @@ void InitializeHooks()
 			return HandlingManager::ProcessAction(actionID, &bs);
 		} else if (packetId == ID_CONNECTION_REQUEST_ACCEPTED) {
 			ClientLog("[Client] Received ID_CONNECTION_REQUEST_ACCEPTED, sending init packet...");
-			HandlingManager::SendInitPacket();
+			if (!HandlingManager::m_isServerAuthorized.load(std::memory_order_acquire) && rakhook::orig && rakhook::orig->IsConnected()) {
+				std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
+				if (std::chrono::duration_cast<std::chrono::milliseconds>(now - lastInitTry).count() >= 1500) {
+					lastInitTry = now;
+					HandlingManager::ResetInitState();
+					HandlingManager::SendInitPacket();
+				}
+			}
 		} else if (packetId == ID_DISCONNECTION_NOTIFICATION || packetId == ID_CONNECTION_LOST || packetId == ID_CONNECTION_BANNED) {
 			ClientLog("[Client] Disconnected from server");
-			HandlingManager::m_isServerAuthorized = false;
+			_customVehInstance.SetLocalPlayerSpawned(false);
+			HandlingManager::m_isServerAuthorized.store(false, std::memory_order_release);
 			_customVehInstance.RequestClearAllCustomModels();
 			HandlingManager::ProcessAction(ACTION_RESET_ALL, nullptr);
 			ModelTransferClient::Instance().CancelAll("server connection lost");
 		}
 		return true;
 	};
-
-	if (rakhook::orig && rakhook::orig->IsConnected()) {
-		ClientLog("[Client] Already connected upon hook init, sending init packet...");
-		HandlingManager::SendInitPacket();
-	}
 }
 
 std::unique_ptr<c_plugin> Plugn;
@@ -2000,15 +2065,6 @@ static void OnGameProcess()
 
 		_customVehInstance.ProcessPendingDestructions();
 		_customVehInstance.ProcessPendingClearAll();
-
-		static auto lastInitTry = std::chrono::steady_clock::now();
-		if (!HandlingManager::m_isServerAuthorized && rakhook::orig && rakhook::orig->IsConnected()) {
-			auto now = std::chrono::steady_clock::now();
-			if (std::chrono::duration_cast<std::chrono::milliseconds>(now - lastInitTry).count() >= 1500) {
-				lastInitTry = now;
-				HandlingManager::SendInitPacket();
-			}
-		}
 
 		// Update vehicle cache and model use counts
 		struct VehicleEntry {
@@ -2406,8 +2462,10 @@ static void OnGameProcess()
 				s_pluginEnabledWaterDrive = false;
 			}
 		}
+	} catch (const std::exception& e) {
+		ClientLog(std::format("[Client] Exception in OnGameProcess: {}", e.what()));
 	} catch (...) {
-		// Prevent unhandled exception termination
+		ClientLog("[Client] Unknown exception in OnGameProcess");
 	}
 }
 

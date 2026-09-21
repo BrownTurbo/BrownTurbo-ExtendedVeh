@@ -19,6 +19,7 @@
 #include <memory>
 #include <mutex>
 #include <vector>
+#include <atomic>
 
 #include "defs.h"
 
@@ -149,7 +150,8 @@ public:
 	static bool IsVehicleFlying(CVehicle* pVehicle);
 	static void SetVehicleFlyingState(uint16_t sampVehicleId, bool flying, CVehicle* pVehicle = nullptr);
 
-	static bool m_isServerAuthorized; // declared, defined in .cpp
+	static std::atomic<bool> m_isServerAuthorized;
+	static std::atomic<bool> m_initSent;
 	static std::recursive_mutex m_handlingMutex;
 
 	// Derived properties calculation
@@ -227,6 +229,7 @@ public:
 	static void ProcessPendingCommands();
 
 	static void SendHandlingPacket(CustomVehAction action, RakNet::BitStream* bs);
+	static void ResetInitState();
 	static void SendInitPacket();
 };
 

@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <cstring>
 #include <sdk.hpp>
+#include <optional>
 
 #include "PlayerAttrs.h"
 #include "CVehicleManager.hpp"
@@ -1553,9 +1554,16 @@ SCRIPT_API(IsCustomVehicleModel, bool(int modelid))
 SCRIPT_API(IsVehicleCustom, bool(IVehicle& vehicle))
 {
 	int vehicleid = vehicle.getID();
-	if (!CVehicleMgr::VehicleRegistry::Get().IsValidVehicleID(vehicleid))
-		return false;
-	return CustomVehicleBindingRegistry::Instance().Get(static_cast<uint16_t>(vehicleid)).has_value();
+    if (!CVehicleMgr::VehicleRegistry::Get().IsValidVehicleID(vehicleid))
+        return false;
+
+    std::optional<uint32_t> customModelId = 0;
+	customModelId = CustomVehicleBindingRegistry::Instance().Get(static_cast<uint16_t>(vehicleid)).has_value();
+	if (customModelId == std::nullopt)
+	{
+        return HandlingMgr::IsCustomVehicle(customModelId.value());
+	}
+    return false;
 }
 
 namespace CustomVehicleNatives
