@@ -600,7 +600,7 @@ static void __fastcall Hooked_AddExhaustParticles(CVehicle* thisVehicle, void* e
 						// Verified: CMultiplayerSA_VehicleDummies.cpp line 116: "EXHAUST is at index 6, offset = 6*12 = 0x48"
 						exhaustLocal = customModel->m_pVehicleStruct->m_avDummyPos[6];
 					}
-					// CMatrix has no TransformPoint() — use operator*(CMatrix, CVector) from CMatrix.h:95
+					// CMatrix has no TransformPoint() - use operator*(CMatrix, CVector) from CMatrix.h:95
 					// which performs: pos + right*v.x + forward*v.y + up*v.z (i.e. local-to-world transform)
 					CVector exhaustWorld = thisVehicle->GetMatrix() * exhaustLocal;
 					CVector backwardDir = -thisVehicle->GetMatrix().GetForward();
@@ -1770,7 +1770,7 @@ public:
 	}
 
 	// Process models that finished downloading while the player was not yet spawned.
-	// These go directly to FinalizeCustomVehicle — no re-download needed.
+	// These go directly to FinalizeCustomVehicle - no re-download needed.
 	void ProcessPendingFinalizations()
 	{
 		if (!IsLocalPlayerSpawned())
@@ -1787,7 +1787,7 @@ public:
 		while (!localQueue.empty()) {
 			auto pending = localQueue.front();
 			localQueue.pop();
-			ClientLog(std::format("[Client] Player spawned — finalizing deferred model {}.", pending->def.customModelId));
+			ClientLog(std::format("[Client] Player spawned - finalizing deferred model {}.", pending->def.customModelId));
 			FinalizeCustomVehicle(pending);
 		}
 	}
@@ -1908,7 +1908,7 @@ void InitializeHooks()
 		} else if (id == RPC_Spawn) {
 			ClientLog("[Client] RPC_Spawn received.");
 			_customVehInstance.SetLocalPlayerSpawned(true);
-			// Show the download table now — player has spawned, custom models are loading
+			// Show the download table now - player has spawned, custom models are loading
 			g_windowVisible.store(true, std::memory_order_relaxed);
 			_customVehInstance.ProcessPendingDefinitions();
 			CustomVehicleBindingManager::Instance().Process();
@@ -1920,13 +1920,13 @@ void InitializeHooks()
 		if (id == RPC_RequestClass) {
 			ClientLog("[Client] RPC_RequestClass received.");
 			_customVehInstance.SetLocalPlayerSpawned(false);
-			// Player is in class selection — hide the download window
+			// Player is in class selection - hide the download window
 			g_windowVisible.store(false, std::memory_order_relaxed);
 			return true;
 		} else if (id == RPC_RequestSpawn) {
 			ClientLog("[Client] RPC_RequestSpawn received.");
 			_customVehInstance.SetLocalPlayerSpawned(false);
-			// Player is on the spawn confirmation screen — keep window hidden
+			// Player is on the spawn confirmation screen - keep window hidden
 			g_windowVisible.store(false, std::memory_order_relaxed);
 			return true;
 		}
@@ -2018,7 +2018,7 @@ static void OnGameProcess()
 				return;
 
 			CVehicle* pVeh = b.appliedGameVehicle;
-			// 'bIsVisible' is a bitfield in CEntity — no m_ prefix (CEntity.h:36)
+			// 'bIsVisible' is a bitfield in CEntity - no m_ prefix (CEntity.h:36)
 			if (!pVeh->m_pRwObject || !pVeh->bIsVisible)
 				return;
 
@@ -2059,7 +2059,7 @@ static void OnGameProcess()
 
 				// Chassis ambient ground shadow
 				if (gpShadowCarTex) {
-					CVector chassisBottom = mat * CVector(0.0f, 0.0f, -0.45f);   // operator*(CMatrix, CVector) — local-to-world
+					CVector chassisBottom = mat * CVector(0.0f, 0.0f, -0.45f);   // operator*(CMatrix, CVector) - local-to-world
 					CVector forward = mat.GetForward();
 					CVector right = mat.GetRight();
 					CShadows::StoreCarLightShadow(

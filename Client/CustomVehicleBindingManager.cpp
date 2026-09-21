@@ -194,7 +194,7 @@ void CustomVehicleBindingManager::Unbind(uint16_t vehicleId)
 				}
 				// CVehicle doesn't expose m_pColModel directly; use CEntity::GetColModel().
 				// Restoring the original model's collision: GTA:SA looks up the col model
-				// via the model info when it next needs it — resetting the vehicle's model
+				// via the model info when it next needs it - resetting the vehicle's model
 				// index (which was never changed for custom vehicles) keeps it correct.
 				// Nothing extra to do here.
 			}
@@ -334,7 +334,7 @@ void CustomVehicleBindingManager::Process()
 				}
 
 				// CVehicle doesn't expose m_pColModel directly (CEntity::GetColModel() is the API).
-				// Custom model collision is managed via model info — no manual vehicle pointer update needed.
+				// Custom model collision is managed via model info - no manual vehicle pointer update needed.
 
 				binding.appliedGameVehicle = vehicle;
 				binding.modelApplied = true;
@@ -358,7 +358,7 @@ void CustomVehicleBindingManager::Process()
 				HandlingManager::OnVehicleStreamIn(vehicle, static_cast<uint16_t>(vehicleId));
 			}
 		} else {
-			// Model is already applied — check if vehicle colors changed (e.g. ChangeVehicleColor or Respray)
+			// Model is already applied - check if vehicle colors changed (e.g. ChangeVehicleColor or Respray)
 			if (vehicle->m_nPrimaryColor != binding.lastPrimaryColor ||
 				vehicle->m_nSecondaryColor != binding.lastSecondaryColor ||
 				vehicle->m_nTertiaryColor != binding.lastTertiaryColor ||

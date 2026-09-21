@@ -332,7 +332,7 @@ void ProcessTick()
 
 		for (IPlayer* player : core_->getPlayers().players())
 		{
-			// Same guard as above — only send to confirmed-alive ExtendedVeh players.
+			// Same guard as above - only send to confirmed-alive ExtendedVeh players.
 			if (player && gPlayers.HasExtendedVeh(player->getID()))
 				player->sendPacket(Span<uint8_t>(p.data.GetData(), p.data.GetNumberOfBitsUsed()), 0, true);
 		}
