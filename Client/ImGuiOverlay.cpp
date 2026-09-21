@@ -34,7 +34,6 @@ static inline const char* GetModelFileKindName(ModelFileKind kind)
 
 void RenderTransferWindow()
 {
-
 	LogImGuiStage("RenderTransferWindow begin");
 
 	ImGui::SetNextWindowSize(ImVec2(700.0f, 280.0f), ImGuiCond_FirstUseEver);
@@ -160,7 +159,7 @@ HRESULT __stdcall hkReset(IDirect3DDevice9* pDevice, D3DPRESENT_PARAMETERS* pp)
 LRESULT CALLBACK hkWndProc(HWND hwnd, UINT u_msg, WPARAM w_param, LPARAM l_param)
 {
 	if (u_msg == WM_KEYDOWN && static_cast<int>(w_param) == TransferConfig::Instance().toggleKey) {
-		g_windowVisible = !g_windowVisible;
+		g_windowVisible.store(!g_windowVisible.load(std::memory_order_relaxed), std::memory_order_relaxed);
 		return 0;
 	}
 
@@ -301,11 +300,11 @@ HRESULT __stdcall hkEndScene(IDirect3DDevice9* pDevice)
 
 		LogImGuiStage("initialization complete");
 
-		g_windowVisible = TransferConfig::Instance().showTransferWindow;
+		g_windowVisible.store(false, std::memory_order_relaxed);
 		g_bwasInitialized = true;
 	}
 
-	if (ImGui::GetCurrentContext() != nullptr && g_windowVisible) {
+	if (ImGui::GetCurrentContext() != nullptr && g_windowVisible.load(std::memory_order_acquire)) {
 		IDirect3DStateBlock9* stateBlock = nullptr;
 		if (pDevice->CreateStateBlock(D3DSBT_ALL, &stateBlock) == D3D_OK && stateBlock) {
 			stateBlock->Capture();
@@ -325,10 +324,10 @@ HRESULT __stdcall hkEndScene(IDirect3DDevice9* pDevice)
 		LogImGuiStage("frame end");
 
 		if (stateBlock) {
-			stateBlock->Apply();
 			LogImGuiStage("stateBlock apply");
-			stateBlock->Release();
+			stateBlock->Apply();
 			LogImGuiStage("stateBlock release");
+			stateBlock->Release();
 		}
 	}
 	return oEndScene ? oEndScene(pDevice) : D3DERR_INVALIDCALL;

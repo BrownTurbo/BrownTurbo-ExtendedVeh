@@ -38,4 +38,4 @@ private:
 };
 inline bool g_bwasInitialized = false;
 inline bool imGuiOn = false;
-inline bool g_windowVisible = false;
+inline std::atomic<bool> g_windowVisible { false };

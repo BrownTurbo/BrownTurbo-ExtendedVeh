@@ -140,5 +140,5 @@ private:
 		m_bindings;
 
 	static inline std::mutex s_baseModelMutex;
-	static inline std::unordered_map<uint32_t, bool> s_baseModelIds;
+	static inline std::unordered_map<uint32_t, uint32_t> s_baseModelIds;
 };

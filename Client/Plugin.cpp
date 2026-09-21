@@ -1321,7 +1321,9 @@ private:
 	std::queue<std::shared_ptr<PendingCustomVehicle>> m_completedQueue;
 	std::mutex m_queueMutex;
 	std::mutex m_pendingDefMutex;
-	std::queue<std::shared_ptr<PendingCustomVehicle>> m_pendingDefQueue;
+	std::queue<std::shared_ptr<PendingCustomVehicle>> m_pendingDefQueue;     // raw defs awaiting CreateModelAndBeginTransfers
+	std::mutex m_pendingFinalizeMutex;
+	std::queue<std::shared_ptr<PendingCustomVehicle>> m_pendingFinalizeQueue; // downloaded, awaiting player-spawn to finalize
 	std::atomic<bool> m_pendingClearAll { false };
 	std::queue<uint32_t> m_destructionQueue;
 	std::mutex m_destructionMutex;
@@ -1329,6 +1331,11 @@ private:
 	std::atomic<bool> g_localPlayerSpawned { false };
 
 public:
+	bool IsServerAuthorized() const
+	{
+		return HandlingManager::m_isServerAuthorized.load(std::memory_order_acquire);
+	}
+
 	bool IsLocalPlayerSpawned() const
 	{
 		return g_localPlayerSpawned.load(std::memory_order_acquire);
@@ -1338,7 +1345,7 @@ public:
 	{
 		g_localPlayerSpawned.store(spawned, std::memory_order_release);
 
-		ClientLog(std::format("[CustomVeh] Local player spawned={}", spawned));
+		ClientLog(std::format("[Client] Local player spawned={}", spawned));
 	}
 
 	bool ReadAssetDescriptor(RakNet::BitStream& bs, CustomVeh::Protocol::AssetDescriptor& asset)
@@ -1406,7 +1413,7 @@ private:
 			return;
 		}
 
-		ClientLog(std::format("[CustomVeh] Starting asset transfer for model {}", pending->def.customModelId));
+		ClientLog(std::format("[Client] Starting asset transfer for model {}", pending->def.customModelId));
 
 		auto pushToQueue = [this, pending]() {
 			if (pending->queuedForFinalize)
@@ -1535,11 +1542,11 @@ private:
 		if (!pending)
 			return;
 
-		if (!_customVehInstance.IsLocalPlayerSpawned()) {
-			ClientLog(std::format("[CustomVeh] Deferring finalization of model {} because local player has not spawned.", pending->def.customModelId));
+		if (!IsLocalPlayerSpawned()) {
+			ClientLog(std::format("[Client] Deferring finalization of model {} because local player has not spawned.", pending->def.customModelId));
 
-			std::lock_guard<std::mutex> lock(m_pendingDefMutex);
-			m_pendingDefQueue.push(std::move(pending));
+			std::lock_guard<std::mutex> lock(m_pendingFinalizeMutex);
+			m_pendingFinalizeQueue.push(std::move(pending));
 			return;
 		}
 
@@ -1552,7 +1559,7 @@ private:
 		if (!pending->modelInfo) {
 			pending->modelInfo = StreamingExtender::CreateCustomModel(pending->def);
 			if (!pending->modelInfo) {
-				SendMsg(0xFF0000, std::format("[CustomVeh] Failed to create GTA model for custom model {}", pending->def.customModelId).c_str());
+				SendMsg(0xFF0000, std::format("[Client] Failed to create GTA model for custom model {}", pending->def.customModelId).c_str());
 				return;
 			}
 		}
@@ -1610,6 +1617,7 @@ private:
 			SendMsg(0xFF0000, std::format("[Client] Failed to load TXD for model {}", pending->def.customModelId).c_str());
 			return;
 		}
+		ClientLog(std::format("[Client] TXD loaded: model={} slot={} name='{}'", pending->def.customModelId, txdSlot, txdName));
 
 		RwStreamClose(txdStream, nullptr);
 
@@ -1621,7 +1629,9 @@ private:
 		RwMemory dffMem { pending->dff.data(), static_cast<RwUInt32>(pending->dff.size()) };
 		RwStream* dffStream = RwStreamOpen(rwSTREAMMEMORY, rwSTREAMREAD, &dffMem);
 		if (dffStream != nullptr) {
+			ClientLog(std::format("[Client] Loading DFF for model {}: bytes={}, txdSlot={}", pending->def.customModelId, pending->dff.size(), txdSlot));
 			RpClump* pClump = RpClumpStreamRead(dffStream);
+			ClientLog(std::format("[Client] RpClumpStreamRead model {} -> clump=0x{:X}", pending->def.customModelId, reinterpret_cast<std::uintptr_t>(pClump)));
 			RwStreamClose(dffStream, nullptr);
 			if (pClump) {
 				if (!StreamingExtender::FinalizeClump(newModel, pClump)) {
@@ -1663,6 +1673,7 @@ private:
 		}
 
 		CTxdStore::PopCurrentTxd();
+		ClientLog(std::format("[Client] Model {} finalized successfully. modelInfo=0x{:X}, rwClump=0x{:X}, txdSlot={}", pending->def.customModelId, reinterpret_cast<std::uintptr_t>(newModel), reinterpret_cast<std::uintptr_t>(newModel->m_pRwClump), newModel->m_nTxdIndex));
 	}
 
 	bool IsCustomModelCurrentlyInUse(uint32_t customModelId)
@@ -1734,6 +1745,9 @@ public:
 
 	void ProcessPendingDefinitions()
 	{
+		if (!IsLocalPlayerSpawned())
+			return;
+
 		std::queue<std::shared_ptr<PendingCustomVehicle>> localQueue;
 		{
 			std::lock_guard<std::mutex> lock(m_pendingDefMutex);
@@ -1745,15 +1759,42 @@ public:
 		while (!localQueue.empty()) {
 			auto pending = localQueue.front();
 			localQueue.pop();
+			if (StreamingExtender::IsCustomModel(pending->def.customModelId)) {
+				ClientLog(std::format("[Client] Custom model {} already exists; skipping creation.", pending->def.customModelId));
+				continue;
+			}
 			ClientLog(std::format("[Client] Activating custom model {} after local player spawn.", pending->def.customModelId));
 			AudioExtender::RegisterVehicleAudio(pending->def.customModelId, pending->def.audioBaseModel, pending->def.engineSoundId.OnSound, pending->def.engineSoundId.OffSound, pending->def.celerateSoundId.accelerateSound, pending->def.celerateSoundId.decelerateSound);
 			CreateModelAndBeginTransfers(pending);
 		}
 	}
 
+	// Process models that finished downloading while the player was not yet spawned.
+	// These go directly to FinalizeCustomVehicle — no re-download needed.
+	void ProcessPendingFinalizations()
+	{
+		if (!IsLocalPlayerSpawned())
+			return;
+
+		std::queue<std::shared_ptr<PendingCustomVehicle>> localQueue;
+		{
+			std::lock_guard<std::mutex> lock(m_pendingFinalizeMutex);
+			if (m_pendingFinalizeQueue.empty())
+				return;
+			localQueue.swap(m_pendingFinalizeQueue);
+		}
+
+		while (!localQueue.empty()) {
+			auto pending = localQueue.front();
+			localQueue.pop();
+			ClientLog(std::format("[Client] Player spawned — finalizing deferred model {}.", pending->def.customModelId));
+			FinalizeCustomVehicle(pending);
+		}
+	}
+
 	void ProcessPendingDestructions()
 	{
-		if (!_customVehInstance.IsLocalPlayerSpawned())
+		if (!IsLocalPlayerSpawned())
 			return;
 
 		std::queue<uint32_t> localQueue;
@@ -1784,6 +1825,19 @@ public:
 	void ProcessPendingClearAll()
 	{
 		if (m_pendingClearAll.exchange(false, std::memory_order_relaxed)) {
+			// Drop all queued model work before destroying streaming data
+			{
+				std::lock_guard<std::mutex> lock(m_pendingDefMutex);
+				while (!m_pendingDefQueue.empty()) m_pendingDefQueue.pop();
+			}
+			{
+				std::lock_guard<std::mutex> lock(m_pendingFinalizeMutex);
+				while (!m_pendingFinalizeQueue.empty()) m_pendingFinalizeQueue.pop();
+			}
+			{
+				std::lock_guard<std::mutex> lock(m_queueMutex);
+				while (!m_completedQueue.empty()) m_completedQueue.pop();
+			}
 			StreamingExtender::ClearAllCustomModels();
 		}
 	}
@@ -1827,18 +1881,17 @@ void InitializeHooks()
 		std::this_thread::sleep_for(std::chrono::milliseconds(100));
 	}
 
-	static std::chrono::steady_clock::time_point lastInitTry = std::chrono::steady_clock::now();
 	rakhook::on_receive_rpc += [](unsigned char& id, RakNet::BitStream* bs) -> bool {
 		if (id == RPC_InitGame) {
 			ClientLog("[Client] Received RPC_InitGame (139), sending init packet...");
 			_customVehInstance.SetLocalPlayerSpawned(false);
+			g_windowVisible.store(false, std::memory_order_relaxed);
 			_customVehInstance.RequestClearAllCustomModels();
 			HandlingManager::ProcessAction(ACTION_RESET_ALL, nullptr);
-			std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
-			if (std::chrono::duration_cast<std::chrono::milliseconds>(now - lastInitTry).count() >= 1500) {
-				lastInitTry = now;
+			if (!_customVehInstance.IsServerAuthorized()) {
 				HandlingManager::ResetInitState();
 				HandlingManager::SendInitPacket();
+				ClientLog("[Client] Game session initialized; handshake sent.");
 			}
 		} else if (id == RPC_WorldPlayerAdd) {
 			size_t originalOffset = bs->GetReadOffset();
@@ -1853,19 +1906,28 @@ void InitializeHooks()
 			bs->SetReadOffset(originalOffset);
 			_customVehInstance.onPlayerStreamOut(playerId);
 		} else if (id == RPC_Spawn) {
-			ClientLog("[ClientSession] RPC_Spawn received.");
-
+			ClientLog("[Client] RPC_Spawn received.");
 			_customVehInstance.SetLocalPlayerSpawned(true);
+			// Show the download table now — player has spawned, custom models are loading
+			g_windowVisible.store(true, std::memory_order_relaxed);
+			_customVehInstance.ProcessPendingDefinitions();
+			CustomVehicleBindingManager::Instance().Process();
 			return true;
-		} else if (id == RPC_RequestClass) {
-			ClientLog("[ClientSession] RPC_RequestClass received.");
-
+		}
+		return true;
+	};
+	rakhook::on_send_rpc += [](int& id, RakNet::BitStream* bs, PacketPriority& priority, PacketReliability& reliability, char& ord_channel, bool& sh_timestamp) -> bool {
+		if (id == RPC_RequestClass) {
+			ClientLog("[Client] RPC_RequestClass received.");
 			_customVehInstance.SetLocalPlayerSpawned(false);
+			// Player is in class selection — hide the download window
+			g_windowVisible.store(false, std::memory_order_relaxed);
 			return true;
 		} else if (id == RPC_RequestSpawn) {
-			ClientLog("[ClientSession] RPC_RequestSpawn received.");
-
+			ClientLog("[Client] RPC_RequestSpawn received.");
 			_customVehInstance.SetLocalPlayerSpawned(false);
+			// Player is on the spawn confirmation screen — keep window hidden
+			g_windowVisible.store(false, std::memory_order_relaxed);
 			return true;
 		}
 		return true;
@@ -1900,17 +1962,15 @@ void InitializeHooks()
 			return HandlingManager::ProcessAction(actionID, &bs);
 		} else if (packetId == ID_CONNECTION_REQUEST_ACCEPTED) {
 			ClientLog("[Client] Received ID_CONNECTION_REQUEST_ACCEPTED, sending init packet...");
-			if (!HandlingManager::m_isServerAuthorized.load(std::memory_order_acquire) && rakhook::orig && rakhook::orig->IsConnected()) {
-				std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
-				if (std::chrono::duration_cast<std::chrono::milliseconds>(now - lastInitTry).count() >= 1500) {
-					lastInitTry = now;
-					HandlingManager::ResetInitState();
-					HandlingManager::SendInitPacket();
-				}
+			if (!_customVehInstance.IsServerAuthorized() && rakhook::orig && rakhook::orig->IsConnected()) {
+				HandlingManager::ResetInitState();
+				HandlingManager::SendInitPacket();
 			}
 		} else if (packetId == ID_DISCONNECTION_NOTIFICATION || packetId == ID_CONNECTION_LOST || packetId == ID_CONNECTION_BANNED) {
 			ClientLog("[Client] Disconnected from server");
 			_customVehInstance.SetLocalPlayerSpawned(false);
+			// Hide download window on disconnect
+			g_windowVisible.store(false, std::memory_order_relaxed);
 			HandlingManager::m_isServerAuthorized.store(false, std::memory_order_release);
 			_customVehInstance.RequestClearAllCustomModels();
 			HandlingManager::ProcessAction(ACTION_RESET_ALL, nullptr);
@@ -1949,6 +2009,7 @@ static void OnGameProcess()
 
 		_customVehInstance.ProcessPendingDefinitions();
 		_customVehInstance.ProcessCompletedDownloads();
+		_customVehInstance.ProcessPendingFinalizations();
 		CustomVehicleBindingManager::Instance().Process();
 
 		// Render visual effects (neon underglow and emergency roof strobes) for custom vehicles

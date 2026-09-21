@@ -28,8 +28,8 @@ std::map<uint16_t, std::vector<HandlingManager::HandlingAttribEntry>> HandlingMa
 std::unordered_map<uint16_t, uint8_t> HandlingManager::m_vehicleDoorStates;
 std::unordered_map<uint16_t, bool> HandlingManager::m_vehicleFlying;
 std::unordered_map<CVehicle*, bool> HandlingManager::m_vehicleFlyingByPtr;
-std::atomic<bool> HandlingManager::m_isServerAuthorized { true };
-std::atomic<bool> HandlingManager::m_initSent { true };
+std::atomic<bool> HandlingManager::m_isServerAuthorized { false };
+std::atomic<bool> HandlingManager::m_initSent { false };
 std::recursive_mutex HandlingManager::m_handlingMutex;
 std::deque<HandlingManager::PendingCommand> HandlingManager::m_pendingCommands;
 std::mutex HandlingManager::m_pendingMutex;
