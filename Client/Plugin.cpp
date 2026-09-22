@@ -59,39 +59,6 @@ static inline void SetWaterDriveCheatActive(bool active)
 }
 
 // Hook function pointers
-using SetColModel_t = void(__thiscall*)(
-	CBaseModelInfo* self,
-	CColModel* colModel,
-	bool initPairedModel);
-
-static SetColModel_t g_originalSetColModel = nullptr;
-
-static void __fastcall HookedSetColModel(
-	CBaseModelInfo* self, // ECX
-	void* /*edx*/, // EDX - dummy
-	CColModel* colModel, // [ESP+4]
-	bool initPairedModel // [ESP+8]
-)
-{
-	const uintptr_t returnAddress = reinterpret_cast<uintptr_t>(_ReturnAddress());
-
-	ClientLog(std::format(
-		"[SetColModel] this=0x{:08X} col=0x{:08X} paired={} return=0x{:08X}",
-		reinterpret_cast<uintptr_t>(self),
-		reinterpret_cast<uintptr_t>(colModel),
-		initPairedModel ? 1 : 0,
-		returnAddress));
-
-	if (!self) {
-		ClientLog("[SetColModel] ERROR: NULL this pointer.");
-		return;
-	}
-
-	g_originalSetColModel(
-		self,
-		colModel,
-		initPairedModel);
-}
 
 static void(__fastcall* g_origUpdateWheelMatrix)(CAutomobile* thisCar, void* edx, int nodeIndex, int flags) = nullptr;
 
@@ -1592,7 +1559,10 @@ private:
 			return;
 		}
 
+		ClientLog(std::format("[Client] FinalizeCustomVehicle: model={} dffState={} txdState={} txdPath='{}' dffBytes={}", pending->def.customModelId, (int)pending->dffState, (int)pending->txdState, pending->txdPath.string(), pending->dff.size()));
+
 		if (pending->dffState != AssetState::Ready || pending->txdState != AssetState::Ready) {
+			ClientLog(std::format("[Client] FinalizeCustomVehicle: ABORT model={} - assets not ready (dff={} txd={})", pending->def.customModelId, (int)pending->dffState, (int)pending->txdState));
 			StreamingExtender::DestroyCustomModel(pending->def.customModelId);
 			SendMsg(0xFF0000, std::format("[Client] Failed to load essential assets for model {}", pending->def.customModelId).c_str());
 			return;
@@ -1610,6 +1580,8 @@ private:
 		if (!newModel)
 			return;
 
+		ClientLog(std::format("[Client] FinalizeCustomVehicle: model={} modelInfo=0x{:X} txdPath='{}' txdBytes={}", pending->def.customModelId, reinterpret_cast<uintptr_t>(newModel), pending->txdPath.string(), pending->txd.size()));
+
 		if (pending->txd.empty() && !pending->txdPath.empty()) {
 			std::ifstream file(pending->txdPath, std::ios::binary | std::ios::ate);
 			if (file) {
@@ -1623,6 +1595,7 @@ private:
 		}
 
 		if (pending->txd.empty()) {
+			ClientLog(std::format("[Client] FinalizeCustomVehicle: ABORT model={} - txd empty after read attempt (txdPath='{}')", pending->def.customModelId, pending->txdPath.string()));
 			StreamingExtender::DestroyCustomModel(pending->def.customModelId);
 			SendMsg(0xFF0000, std::format("[Client] TXD file empty or unreadable for model {}", pending->def.customModelId).c_str());
 			return;
@@ -2636,18 +2609,6 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD dwReason, LPVOID lpReserved)
 			ClientLog(std::format("[Client] Failed to hook CAutomobile::UpdateWheelMatrix (0x6AA290): {}", MH_StatusToString(whlStatus)));
 		}
 
-		MH_STATUS colmodelStatus = MH_CreateHook(reinterpret_cast<void*>(0x004C4BC0), reinterpret_cast<void*>(&HookedSetColModel), reinterpret_cast<void**>(&g_originalSetColModel));
-		if (colmodelStatus == MH_OK) {
-			MH_STATUS enableStatus = MH_EnableHook(reinterpret_cast<void*>(0x004C4BC0));
-			if (enableStatus == MH_OK) {
-				ClientLog("[Client] SetColModel (0x004C4BC0) hooked successfully via MinHook");
-			} else {
-				ClientLog(std::format("[Client] Failed to enable SetColModel hook: {}", MH_StatusToString(enableStatus)));
-			}
-		} else {
-			ClientLog(std::format("[Client] Failed to hook SetColModel (0x004C4BC0): {}", MH_StatusToString(colmodelStatus)));
-		}
-
 		MH_STATUS hlStatus = MH_CreateHook(reinterpret_cast<void*>(0x6E0A50), reinterpret_cast<void*>(&Hooked_DoHeadLightEffect), reinterpret_cast<void**>(&g_origDoHeadLightEffect));
 		if (hlStatus == MH_OK) {
 			MH_STATUS enableStatus = MH_EnableHook(reinterpret_cast<void*>(0x6E0A50));
@@ -2817,12 +2778,6 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD dwReason, LPVOID lpReserved)
 			MH_DisableHook(reinterpret_cast<void*>(0x53BEE0));
 			MH_RemoveHook(reinterpret_cast<void*>(0x53BEE0));
 			orig_game_loop = nullptr;
-		}
-
-		if (g_originalSetColModel) {
-			MH_DisableHook(reinterpret_cast<void*>(0x004C4BC0));
-			MH_RemoveHook(reinterpret_cast<void*>(0x004C4BC0));
-			g_originalSetColModel = nullptr;
 		}
 
 		if (g_origUpdateWheelMatrix) {

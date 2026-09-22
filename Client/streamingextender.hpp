@@ -36,7 +36,16 @@ private:
 		for (int slot = CUSTOM_GTA_MODEL_BASE;
 			slot < CModelInfo::ms_modelInfoCount;
 			++slot) {
-			if (CModelInfo::ms_modelInfoPtrs[slot] == nullptr)
+			if (CModelInfo::ms_modelInfoPtrs[slot] != nullptr)
+				continue;
+			bool alreadyClaimed = false;
+			for (auto& [id, e] : s_customModels) {
+				if (e && e->gtaModelSlot == slot) {
+					alreadyClaimed = true;
+					break;
+				}
+			}
+			if (!alreadyClaimed)
 				return slot;
 		}
 
@@ -118,30 +127,26 @@ public:
 			return nullptr;
 		}
 
-		ClientLog(std::format(
-			"[Streaming] Creating custom model {} using GTA model slot {} (base={}).",
-			def.customModelId,
-			gtaSlot,
-			def.visualBaseModel));
+		CustomModelEntry* entry = new CustomModelEntry();
+		entry->gtaModelSlot = gtaSlot;
+		entry->modelInfo = nullptr;
+		s_customModels[def.customModelId] = entry;
 
-		CVehicleModelInfo* newModel = CModelInfo::AddVehicleModel(gtaSlot);
+		ClientLog(std::format("[Streaming] Creating custom model {} using GTA model slot {} (base={}).", def.customModelId, gtaSlot, def.visualBaseModel));
 
+		CVehicleModelInfo* newModel = new CVehicleModelInfo();
 		if (!newModel) {
 			ClientLog(std::format(
-				"[Streaming] ERROR: CModelInfo::AddVehicleModel({}) returned NULL.",
-				gtaSlot));
-
+				"[Streaming] ERROR: failed to allocate CVehicleModelInfo for custom model {}.",
+				def.customModelId));
+			s_customModels.erase(def.customModelId);
+			delete entry;
 			return nullptr;
 		}
+
 		memcpy(newModel, vBaseInfo, sizeof(CVehicleModelInfo));
 		newModel->m_pRwClump = nullptr;
 		newModel->m_pRwObject = nullptr;
-		// CRITICAL: Do NOT pre-allocate m_pVehicleStruct with CRT new.
-		// GTA:SA's SetClump (0x4C95C0) calls PreprocessHierarchy (0x4C8E60) which
-		// allocates from CPool<CVehicleStructure> at 0xC1CC18 automatically.
-		// Pre-allocating causes a double-alloc pool leak, and later deleting a pool
-		// pointer with CRT delete is UB / heap corruption.
-		// Verified against MTA:SA CRenderWareSA::ReplaceModel (CRenderWareSA.cpp:406-417).
 		newModel->m_pVehicleStruct = nullptr;
 		newModel->m_nTxdIndex = -1;
 		newModel->m_pColModel = nullptr;
@@ -154,17 +159,11 @@ public:
 			newModel->m_nHandlingId = reinterpret_cast<CVehicleModelInfo*>(handlingBase)->m_nHandlingId;
 		}
 
-		CustomModelEntry* entry;
-		entry->gtaModelSlot = gtaSlot;
+		CModelInfo::ms_modelInfoPtrs[gtaSlot] = newModel;
+
 		entry->modelInfo = newModel;
 
-		s_customModels[def.customModelId] = entry;
-
-		ClientLog(std::format(
-			"[Streaming] Custom model {} registered: gtaSlot={} modelInfo=0x{:08X}",
-			def.customModelId,
-			gtaSlot,
-			reinterpret_cast<std::uintptr_t>(newModel)));
+		ClientLog(std::format("[Streaming] Custom model {} registered: gtaSlot={} modelInfo=0x{:08X}", def.customModelId, gtaSlot, reinterpret_cast<std::uintptr_t>(newModel)));
 		return newModel;
 	}
 
@@ -309,8 +308,11 @@ public:
 			return;
 
 		CustomModelEntry* modelEntry = it->second;
-		CVehicleModelInfo* pInfo = modelEntry->modelInfo;
+		CVehicleModelInfo* pInfo = modelEntry ? modelEntry->modelInfo : nullptr;
 		if (pInfo) {
+			if (modelEntry->gtaModelSlot >= 0 && modelEntry->gtaModelSlot < CModelInfo::ms_modelInfoCount)
+				CModelInfo::ms_modelInfoPtrs[modelEntry->gtaModelSlot] = nullptr;
+
 			pInfo->DeleteRwObject();
 			if (pInfo->bDoWeOwnTheColModel && pInfo->m_pColModel) {
 				delete pInfo->m_pColModel;
@@ -332,33 +334,37 @@ public:
 			// heap corruption / double-free. Verified: MTA:SA CRenderWareSA.cpp:406-417.
 			delete pInfo;
 		}
+		delete modelEntry;
 		s_customModels.erase(it);
 		AudioExtender::UnregisterVehicleAudio(customId);
 	}
 
 	static void ClearAllCustomModels()
 	{
-		for (auto& [id, pInfo] : s_customModels) {
+		for (auto& [id, entry] : s_customModels) {
+			if (!entry) continue;
+			CVehicleModelInfo* pInfo = entry->modelInfo;
 			if (pInfo) {
-				pInfo->modelInfo->DeleteRwObject();
-				if (pInfo->modelInfo->bDoWeOwnTheColModel && pInfo->modelInfo->m_pColModel) {
-					delete pInfo->modelInfo->m_pColModel;
-					pInfo->modelInfo->m_pColModel = nullptr;
-					pInfo->modelInfo->bDoWeOwnTheColModel = 0;
+				if (entry->gtaModelSlot >= 0 && entry->gtaModelSlot < CModelInfo::ms_modelInfoCount)
+					CModelInfo::ms_modelInfoPtrs[entry->gtaModelSlot] = nullptr;
+
+				pInfo->DeleteRwObject();
+				if (pInfo->bDoWeOwnTheColModel && pInfo->m_pColModel) {
+					delete pInfo->m_pColModel;
+					pInfo->m_pColModel = nullptr;
+					pInfo->bDoWeOwnTheColModel = 0;
 				}
-				pInfo->modelInfo->m_pColModel = nullptr;
-				if (pInfo->modelInfo->m_nTxdIndex >= 0) {
+				pInfo->m_pColModel = nullptr;
+				if (pInfo->m_nTxdIndex >= 0) {
 					auto* pool = CTxdStore::ms_pTxdPool;
-					if (pool && pInfo->modelInfo->m_nTxdIndex < pool->m_nSize && !pool->IsFreeSlotAtIndex(pInfo->modelInfo->m_nTxdIndex) && pool->GetAt(pInfo->modelInfo->m_nTxdIndex) != nullptr) {
-						CTxdStore::RemoveTxdSlot(pInfo->modelInfo->m_nTxdIndex);
+					if (pool && pInfo->m_nTxdIndex < pool->m_nSize && !pool->IsFreeSlotAtIndex(pInfo->m_nTxdIndex) && pool->GetAt(pInfo->m_nTxdIndex) != nullptr) {
+						CTxdStore::RemoveTxdSlot(pInfo->m_nTxdIndex);
 					}
-					pInfo->modelInfo->m_nTxdIndex = -1;
+					pInfo->m_nTxdIndex = -1;
 				}
-				// NOTE: Do NOT delete pInfo->m_pVehicleStruct here.
-				// DeleteRwObject() already released it via CPool<CVehicleStructure>.
-				// CRT delete on a pool pointer = heap corruption / double-free.
-				delete pInfo->modelInfo;
+				delete pInfo;
 			}
+			delete entry;
 			AudioExtender::UnregisterVehicleAudio(id);
 		}
 		s_customModels.clear();
