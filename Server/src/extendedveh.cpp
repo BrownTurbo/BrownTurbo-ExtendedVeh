@@ -52,11 +52,13 @@ IVehicle* ExtendedVehCompo::GetVehicleByID(int vehicleid)
 	if (!CVehicleMgr::IS_VALID_VEHICLEID(vehicleid))
 		return nullptr;
 
-	if (get() && get()->vehicles_)
-	{
-		return get()->vehicles_->get(vehicleid);
-	}
-	return nullptr;
+	ExtendedVehCompo*& compo = get();
+	if (!compo)
+		return nullptr;
+	IVehiclesComponent* vehicles = compo->vehicles_;
+	if (!vehicles)
+		return nullptr;
+	return vehicles->get(vehicleid);
 }
 
 bool ExtendedVehCompo::IsValidVehicle(int vehicleid)

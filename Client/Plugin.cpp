@@ -16,6 +16,7 @@
 #include <game_sa/CTxdStore.h>
 #include <game_sa/CVehicle.h>
 #include <game_sa/CVisibilityPlugins.h>
+#include <game_sa/CPlayerPed.h>
 #include <game_sa/CWaterLevel.h>
 #include <game_sa/rw/rpworld.h>
 #include <MinHook.h>
@@ -24,6 +25,7 @@
 #include <intrin.h>
 #include <shared/game/CVector.h>
 #include <string>
+#include <unordered_set>
 
 #include "utils.h"
 #include "CustomVehicleBindingManager.h"
@@ -1322,6 +1324,7 @@ private:
 	std::mutex m_queueMutex;
 	std::mutex m_pendingDefMutex;
 	std::queue<std::shared_ptr<PendingCustomVehicle>> m_pendingDefQueue;     // raw defs awaiting CreateModelAndBeginTransfers
+	std::unordered_set<uint32_t> m_activeModelIds;                           // model IDs with active/completed transfer; guards against duplicate defs
 	std::mutex m_pendingFinalizeMutex;
 	std::queue<std::shared_ptr<PendingCustomVehicle>> m_pendingFinalizeQueue; // downloaded, awaiting player-spawn to finalize
 	std::atomic<bool> m_pendingClearAll { false };
@@ -1338,7 +1341,12 @@ public:
 
 	bool IsLocalPlayerSpawned() const
 	{
-		return g_localPlayerSpawned.load(std::memory_order_acquire);
+		// Primary: set by RPC_Spawn. Fallback: GTA actually has a local player ped in world.
+		// This handles servers that skip RPC_Spawn (e.g. direct SetPlayerPos spawns).
+		if (g_localPlayerSpawned.load(std::memory_order_acquire))
+			return true;
+		CPlayerPed* ped = FindPlayerPed(-1);
+		return ped != nullptr;
 	}
 
 	void SetLocalPlayerSpawned(bool spawned)
@@ -1629,40 +1637,49 @@ private:
 		RwMemory dffMem { pending->dff.data(), static_cast<RwUInt32>(pending->dff.size()) };
 		RwStream* dffStream = RwStreamOpen(rwSTREAMMEMORY, rwSTREAMREAD, &dffMem);
 		if (dffStream != nullptr) {
-			ClientLog(std::format("[Client] Loading DFF for model {}: bytes={}, txdSlot={}", pending->def.customModelId, pending->dff.size(), txdSlot));
-			RpClump* pClump = RpClumpStreamRead(dffStream);
-			ClientLog(std::format("[Client] RpClumpStreamRead model {} -> clump=0x{:X}", pending->def.customModelId, reinterpret_cast<std::uintptr_t>(pClump)));
-			RwStreamClose(dffStream, nullptr);
-			if (pClump) {
-				if (!StreamingExtender::FinalizeClump(newModel, pClump)) {
-					CTxdStore::PopCurrentTxd();
-					StreamingExtender::DestroyCustomModel(pending->def.customModelId);
-					SendMsg(0xFF0000, std::format("[Client] Failed to finalize clump for model {}", pending->def.customModelId).c_str());
-					return;
-				}
-				if (pending->colState == AssetState::Ready && (pending->def.flags & CustomVeh::Protocol::HasCol) != 0) {
-					if (pending->col.empty() && !pending->colPath.empty()) {
-						std::ifstream colFile(pending->colPath, std::ios::binary | std::ios::ate);
-						if (colFile) {
-							const auto cSize = colFile.tellg();
-							if (cSize > 0) {
-								colFile.seekg(0, std::ios::beg);
-								pending->col.resize(static_cast<std::size_t>(cSize));
-								colFile.read(reinterpret_cast<char*>(pending->col.data()), cSize);
+			if (RwStreamFindChunk(dffStream, rwID_CLUMP, nullptr, nullptr)) {
+				ClientLog(std::format("[Client] Loading DFF for model {}: bytes={}, txdSlot={}", pending->def.customModelId, pending->dff.size(), txdSlot));
+				RpClump* pClump = RpClumpStreamRead(dffStream);
+				ClientLog(std::format("[Client] RpClumpStreamRead model {} -> clump=0x{:X}", pending->def.customModelId, reinterpret_cast<std::uintptr_t>(pClump)));
+				RwStreamClose(dffStream, nullptr);
+				if (pClump) {
+					if (!StreamingExtender::FinalizeClump(newModel, pClump)) {
+						CTxdStore::PopCurrentTxd();
+						StreamingExtender::DestroyCustomModel(pending->def.customModelId);
+						SendMsg(0xFF0000, std::format("[Client] Failed to finalize clump for model {}", pending->def.customModelId).c_str());
+						return;
+					}
+					if (pending->colState == AssetState::Ready && (pending->def.flags & CustomVeh::Protocol::HasCol) != 0) {
+						if (pending->col.empty() && !pending->colPath.empty()) {
+							std::ifstream colFile(pending->colPath, std::ios::binary | std::ios::ate);
+							if (colFile) {
+								const auto cSize = colFile.tellg();
+								if (cSize > 0) {
+									colFile.seekg(0, std::ios::beg);
+									pending->col.resize(static_cast<std::size_t>(cSize));
+									colFile.read(reinterpret_cast<char*>(pending->col.data()), cSize);
+								}
+							}
+						}
+						if (!pending->col.empty()) {
+							ExtendedVeh::Collision::CollisionLoader* colLoader = &ExtendedVeh::Collision::CollisionLoader::Instance();
+							if (!colLoader->LoadCollisionFromMemory(pending->col.data(), pending->col.size(), newModel)) {
+								SendMsg(0xFF8800, std::format("[Client] Warning: Failed to parse COL for model {}", pending->def.customModelId).c_str());
 							}
 						}
 					}
-					if (!pending->col.empty()) {
-						ExtendedVeh::Collision::CollisionLoader* colLoader = &ExtendedVeh::Collision::CollisionLoader::Instance();
-						if (!colLoader->LoadCollisionFromMemory(pending->col.data(), pending->col.size(), newModel)) {
-							SendMsg(0xFF8800, std::format("[Client] Warning: Failed to parse COL for model {}", pending->def.customModelId).c_str());
-						}
-					}
+				} else {
+					CTxdStore::PopCurrentTxd();
+					StreamingExtender::DestroyCustomModel(pending->def.customModelId);
+					SendMsg(0xFF0000, std::format("[Client] Failed to parse DFF for model {}", pending->def.customModelId).c_str());
+					return;
 				}
-			} else {
+			}
+			else {
+				RwStreamClose(dffStream, nullptr);
 				CTxdStore::PopCurrentTxd();
 				StreamingExtender::DestroyCustomModel(pending->def.customModelId);
-				SendMsg(0xFF0000, std::format("[Client] Failed to parse DFF for model {}", pending->def.customModelId).c_str());
+				SendMsg(0xFF0000, std::format("[CustomVeh] No CLUMP chunk in DFF for model {}", pending->def.customModelId).c_str());
 				return;
 			}
 		} else {
@@ -1727,14 +1744,29 @@ public:
 
 	void HandleCustomVehicleDef(const CustomVeh::Protocol::VehicleDefinition& def)
 	{
-		ClientLog(std::format("[Client] Received definition for model {} (DFF='{}', TXD='{}', COL='{}'); queued until player spawn.", def.customModelId, def.dff.filename, def.txd.filename, def.col.filename));
+		ClientLog(std::format("[Client] Received definition for model {} (DFF='{}', TXD='{}', COL='{}').", def.customModelId, def.dff.filename, def.txd.filename, def.col.filename));
 		CustomVehicleBindingManager::SetBaseModelId(def.customModelId, def.visualBaseModel);
+		AudioExtender::RegisterVehicleAudio(def.customModelId, def.audioBaseModel, def.engineSoundId.OnSound, def.engineSoundId.OffSound, def.celerateSoundId.accelerateSound, def.celerateSoundId.decelerateSound);
+
+		// Guard: if we already started a transfer for this model ID, ignore the duplicate.
+		{
+			std::lock_guard<std::mutex> lock(m_pendingDefMutex);
+			if (m_activeModelIds.count(def.customModelId)) {
+				ClientLog(std::format("[Client] Ignoring duplicate VehicleDefinition for model {}.", def.customModelId));
+				return;
+			}
+			m_activeModelIds.insert(def.customModelId);
+		}
 
 		auto pending = std::make_shared<PendingCustomVehicle>();
 		pending->def = def;
 
-		std::lock_guard<std::mutex> lock(m_pendingDefMutex);
-		m_pendingDefQueue.push(std::move(pending));
+		// Dispatch to the main game thread - CreateModelAndBeginTransfers sends RakNet packets
+		// and must not run on the network receive thread.
+		MainThreadQueue::Instance().Push([this, pending]() {
+			ClientLog(std::format("[Client] Starting asset transfer for model {} (dispatched to main thread).", pending->def.customModelId));
+			CreateModelAndBeginTransfers(pending);
+		});
 	}
 
 	void PushDestructionCommand(uint32_t modelId)
@@ -1829,6 +1861,7 @@ public:
 			{
 				std::lock_guard<std::mutex> lock(m_pendingDefMutex);
 				while (!m_pendingDefQueue.empty()) m_pendingDefQueue.pop();
+				m_activeModelIds.clear(); // allow fresh VehicleDefinitions after reconnect
 			}
 			{
 				std::lock_guard<std::mutex> lock(m_pendingFinalizeMutex);

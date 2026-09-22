@@ -1559,7 +1559,7 @@ SCRIPT_API(IsVehicleCustom, bool(IVehicle& vehicle))
 
     std::optional<uint32_t> customModelId = 0;
 	customModelId = CustomVehicleBindingRegistry::Instance().Get(static_cast<uint16_t>(vehicleid)).has_value();
-	if (customModelId == std::nullopt)
+	if (customModelId != std::nullopt)
 	{
         return HandlingMgr::IsCustomVehicle(customModelId.value());
 	}
