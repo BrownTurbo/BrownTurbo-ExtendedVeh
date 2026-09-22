@@ -24,7 +24,30 @@ inline CBaseModelInfo* GetEngineModelInfo(int modelId);
 
 class StreamingExtender {
 private:
-	static inline std::unordered_map<uint32_t, CVehicleModelInfo*> s_customModels;
+	struct CustomModelEntry {
+		int gtaModelSlot = -1;
+		CVehicleModelInfo* modelInfo = nullptr;
+	};
+	static inline std::unordered_map<uint32_t, CustomModelEntry*> s_customModels;
+	static constexpr int CUSTOM_GTA_MODEL_BASE = 19000;
+
+	static int AllocateGtaModelSlot()
+	{
+		for (int slot = CUSTOM_GTA_MODEL_BASE;
+			slot < CModelInfo::ms_modelInfoCount;
+			++slot) {
+			if (CModelInfo::ms_modelInfoPtrs[slot] == nullptr)
+				return slot;
+		}
+
+		return -1;
+	}
+
+	static bool IsValidGtaModelSlot(int slot)
+	{
+		return slot >= 0 && slot < CModelInfo::ms_modelInfoCount;
+	}
+
 	inline static void (*s_destructionRequeueCallback)(uint32_t) = nullptr;
 
 	using RemoveTxdSlotFn = void(__cdecl*)(int);
@@ -66,19 +89,50 @@ public:
 	static CVehicleModelInfo* CreateCustomModel(const CustomVeh::Protocol::VehicleDefinition& def)
 	{
 		auto it = s_customModels.find(def.customModelId);
-		if (it != s_customModels.end() && it->second != nullptr) {
-			return it->second;
+		if (it != s_customModels.end() && it->second->modelInfo != nullptr) {
+			return it->second->modelInfo;
 		}
 
-		CBaseModelInfo* visualBase = GetEngineModelInfo(def.visualBaseModel);
-		if (!visualBase)
+		CBaseModelInfo* visualBase = GetEngineModelInfo(static_cast<int>(def.visualBaseModel));
+		if (!visualBase) {
+			ClientLog(std::format(
+				"[Client] Streaming ERROR: visual base model {} not found.",
+				def.visualBaseModel));
 			return nullptr;
+		}
+
+		if (visualBase->GetModelType() != MODEL_INFO_VEHICLE) {
+			ClientLog(std::format(
+				"[Streaming] ERROR: visual base model {} is not a vehicle model.",
+				def.visualBaseModel));
+			return nullptr;
+		}
 
 		auto* vBaseInfo = reinterpret_cast<CVehicleModelInfo*>(visualBase);
 
-		CVehicleModelInfo* newModel = new CVehicleModelInfo();
-		if (!newModel)
+		const int gtaSlot = AllocateGtaModelSlot();
+		if (!IsValidGtaModelSlot(gtaSlot)) {
+			ClientLog(std::format(
+				"[Streaming] ERROR: no free GTA model-info slot available for custom model {}.",
+				def.customModelId));
 			return nullptr;
+		}
+
+		ClientLog(std::format(
+			"[Streaming] Creating custom model {} using GTA model slot {} (base={}).",
+			def.customModelId,
+			gtaSlot,
+			def.visualBaseModel));
+
+		CVehicleModelInfo* newModel = CModelInfo::AddVehicleModel(gtaSlot);
+
+		if (!newModel) {
+			ClientLog(std::format(
+				"[Streaming] ERROR: CModelInfo::AddVehicleModel({}) returned NULL.",
+				gtaSlot));
+
+			return nullptr;
+		}
 		memcpy(newModel, vBaseInfo, sizeof(CVehicleModelInfo));
 		newModel->m_pRwClump = nullptr;
 		newModel->m_pRwObject = nullptr;
@@ -95,12 +149,22 @@ public:
 		newModel->SetIsLod(0);
 		newModel->bDoWeOwnTheColModel = 0;
 
-		CBaseModelInfo* handlingBase = GetEngineModelInfo(def.handlingBaseModel);
-		if (handlingBase) {
+		CBaseModelInfo* handlingBase = GetEngineModelInfo(static_cast<int>(def.handlingBaseModel));
+		if (handlingBase && handlingBase->GetModelType() == MODEL_INFO_VEHICLE) {
 			newModel->m_nHandlingId = reinterpret_cast<CVehicleModelInfo*>(handlingBase)->m_nHandlingId;
 		}
 
-		s_customModels[def.customModelId] = newModel;
+		CustomModelEntry* entry;
+		entry->gtaModelSlot = gtaSlot;
+		entry->modelInfo = newModel;
+
+		s_customModels[def.customModelId] = entry;
+
+		ClientLog(std::format(
+			"[Streaming] Custom model {} registered: gtaSlot={} modelInfo=0x{:08X}",
+			def.customModelId,
+			gtaSlot,
+			reinterpret_cast<std::uintptr_t>(newModel)));
 		return newModel;
 	}
 
@@ -212,15 +276,15 @@ public:
 		return pInfo->m_pRwClump == pClump;
 	}
 
-	static void RegisterModel(uint32_t customId, CVehicleModelInfo* pInfo)
+	static void RegisterModel(uint32_t customId, CustomModelEntry* pInfo)
 	{
-		s_customModels[customId] = pInfo;
+		s_customModels[customId]->modelInfo = pInfo->modelInfo;
 	}
 
 	static CVehicleModelInfo* GetCustomModel(uint32_t id)
 	{
 		auto it = s_customModels.find(id);
-		return (it != s_customModels.end()) ? it->second : nullptr;
+		return (it != s_customModels.end()) ? it->second->modelInfo : nullptr;
 	}
 
 	static bool IsCustomModel(uint32_t id)
@@ -244,7 +308,8 @@ public:
 		if (it == s_customModels.end())
 			return;
 
-		CVehicleModelInfo* pInfo = it->second;
+		CustomModelEntry* modelEntry = it->second;
+		CVehicleModelInfo* pInfo = modelEntry->modelInfo;
 		if (pInfo) {
 			pInfo->DeleteRwObject();
 			if (pInfo->bDoWeOwnTheColModel && pInfo->m_pColModel) {
@@ -275,24 +340,24 @@ public:
 	{
 		for (auto& [id, pInfo] : s_customModels) {
 			if (pInfo) {
-				pInfo->DeleteRwObject();
-				if (pInfo->bDoWeOwnTheColModel && pInfo->m_pColModel) {
-					delete pInfo->m_pColModel;
-					pInfo->m_pColModel = nullptr;
-					pInfo->bDoWeOwnTheColModel = 0;
+				pInfo->modelInfo->DeleteRwObject();
+				if (pInfo->modelInfo->bDoWeOwnTheColModel && pInfo->modelInfo->m_pColModel) {
+					delete pInfo->modelInfo->m_pColModel;
+					pInfo->modelInfo->m_pColModel = nullptr;
+					pInfo->modelInfo->bDoWeOwnTheColModel = 0;
 				}
-				pInfo->m_pColModel = nullptr;
-				if (pInfo->m_nTxdIndex >= 0) {
+				pInfo->modelInfo->m_pColModel = nullptr;
+				if (pInfo->modelInfo->m_nTxdIndex >= 0) {
 					auto* pool = CTxdStore::ms_pTxdPool;
-					if (pool && pInfo->m_nTxdIndex < pool->m_nSize && !pool->IsFreeSlotAtIndex(pInfo->m_nTxdIndex) && pool->GetAt(pInfo->m_nTxdIndex) != nullptr) {
-						CTxdStore::RemoveTxdSlot(pInfo->m_nTxdIndex);
+					if (pool && pInfo->modelInfo->m_nTxdIndex < pool->m_nSize && !pool->IsFreeSlotAtIndex(pInfo->modelInfo->m_nTxdIndex) && pool->GetAt(pInfo->modelInfo->m_nTxdIndex) != nullptr) {
+						CTxdStore::RemoveTxdSlot(pInfo->modelInfo->m_nTxdIndex);
 					}
-					pInfo->m_nTxdIndex = -1;
+					pInfo->modelInfo->m_nTxdIndex = -1;
 				}
 				// NOTE: Do NOT delete pInfo->m_pVehicleStruct here.
 				// DeleteRwObject() already released it via CPool<CVehicleStructure>.
 				// CRT delete on a pool pointer = heap corruption / double-free.
-				delete pInfo;
+				delete pInfo->modelInfo;
 			}
 			AudioExtender::UnregisterVehicleAudio(id);
 		}

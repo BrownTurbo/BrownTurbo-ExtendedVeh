@@ -133,8 +133,8 @@ void CustomVehicleBindingManager::Bind(uint16_t vehicleId, uint32_t customModelI
 		std::lock_guard baseLock(s_baseModelMutex);
 		auto baseIt = s_baseModelIds.find(customModelId);
 		if (baseIt != s_baseModelIds.end()) {
-			binding.baseModelId = baseModelId;
-			binding.hasBaseModelId = hasBaseModelId;
+			binding.baseModelId = baseIt->second;
+			binding.hasBaseModelId = true;
 		}
 	}
 

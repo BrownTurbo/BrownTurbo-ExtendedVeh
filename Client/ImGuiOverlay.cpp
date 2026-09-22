@@ -349,19 +349,27 @@ void BackgroundInitializationWorker()
 
 		MH_STATUS statusES = MH_CreateHook(g_targetEndScene, reinterpret_cast<void*>(&hkEndScene), reinterpret_cast<void**>(&oEndScene));
 		if (statusES == MH_OK) {
-			MH_EnableHook(g_targetEndScene);
+			MH_STATUS enableStatus =MH_EnableHook(g_targetEndScene);
+			if (enableStatus == MH_OK) {
+				ClientLog("[Client] Direct3D 9 hkEndScene hooked successfully via MinHook");
+			} else {
+				ClientLog(std::format("[Client] Failed to enable Direct3D 9 hkEndScene hook: {}", MH_StatusToString(enableStatus)));
+			}
 		} else {
-			ClientLog(std::format("[Client] Failed to hook EndScene via MinHook: {}", MH_StatusToString(statusES)));
+			ClientLog(std::format("[Client] Failed to hook Direct3D 9 hkEndScene via MinHook: {}", MH_StatusToString(statusES)));
 		}
 
 		MH_STATUS statusReset = MH_CreateHook(g_targetReset, reinterpret_cast<void*>(&hkReset), reinterpret_cast<void**>(&oReset));
 		if (statusReset == MH_OK) {
-			MH_EnableHook(g_targetReset);
+			MH_STATUS enableStatus = MH_EnableHook(g_targetReset);
+			if (enableStatus == MH_OK) {
+				ClientLog("[Client] Direct3D 9 hkReset hooked successfully via MinHook");
+			} else {
+				ClientLog(std::format("[Client] Failed to enable Direct3D 9 hkReset hook: {}", MH_StatusToString(enableStatus)));
+			}
 		} else {
-			ClientLog(std::format("[Client] Failed to hook Reset via MinHook: {}", MH_StatusToString(statusReset)));
+			ClientLog(std::format("[Client] Failed to hook Direct3D 9 hkReset via MinHook: {}", MH_StatusToString(statusReset)));
 		}
-
-		ClientLog("[Client] Direct3D 9 hooks installed successfully via MinHook (hkEndScene/hkReset)");
 	} else {
 		ClientLog("[Client] Failed to hook Direct3D 9: DEVICE_PTR was 0 after timeout");
 	}

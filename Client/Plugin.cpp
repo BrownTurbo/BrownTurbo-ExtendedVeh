@@ -59,6 +59,40 @@ static inline void SetWaterDriveCheatActive(bool active)
 }
 
 // Hook function pointers
+using SetColModel_t = void(__thiscall*)(
+	CBaseModelInfo* self,
+	CColModel* colModel,
+	bool initPairedModel);
+
+static SetColModel_t g_originalSetColModel = nullptr;
+
+static void __fastcall HookedSetColModel(
+	CBaseModelInfo* self, // ECX
+	void* /*edx*/, // EDX - dummy
+	CColModel* colModel, // [ESP+4]
+	bool initPairedModel // [ESP+8]
+)
+{
+	const uintptr_t returnAddress = reinterpret_cast<uintptr_t>(_ReturnAddress());
+
+	ClientLog(std::format(
+		"[SetColModel] this=0x{:08X} col=0x{:08X} paired={} return=0x{:08X}",
+		reinterpret_cast<uintptr_t>(self),
+		reinterpret_cast<uintptr_t>(colModel),
+		initPairedModel ? 1 : 0,
+		returnAddress));
+
+	if (!self) {
+		ClientLog("[SetColModel] ERROR: NULL this pointer.");
+		return;
+	}
+
+	g_originalSetColModel(
+		self,
+		colModel,
+		initPairedModel);
+}
+
 static void(__fastcall* g_origUpdateWheelMatrix)(CAutomobile* thisCar, void* edx, int nodeIndex, int flags) = nullptr;
 
 static void __fastcall Hooked_UpdateWheelMatrix(CAutomobile* thisCar, void* edx, int nodeIndex, int flags)
@@ -2580,112 +2614,180 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD dwReason, LPVOID lpReserved)
 		MH_Initialize();
 		MH_STATUS mhStatus = MH_CreateHook(reinterpret_cast<void*>(0x53BEE0), reinterpret_cast<void*>(&hooked_game_loop), reinterpret_cast<void**>(&orig_game_loop));
 		if (mhStatus == MH_OK) {
-			MH_EnableHook(reinterpret_cast<void*>(0x53BEE0));
-			ClientLog("[Client] CGame::Process (0x53BEE0) hooked successfully via MinHook");
+			MH_STATUS enableStatus = MH_EnableHook(reinterpret_cast<void*>(0x53BEE0));
+			if (enableStatus == MH_OK) {
+				ClientLog("[Client] CGame::Process (0x53BEE0) hooked successfully via MinHook");
+			} else {
+				ClientLog(std::format("[Client] Failed to enable CGame::Process hook: {}", MH_StatusToString(enableStatus)));
+			}
 		} else {
 			ClientLog(std::format("[Client] Failed to hook CGame::Process (0x53BEE0): {}", MH_StatusToString(mhStatus)));
 		}
 
 		MH_STATUS whlStatus = MH_CreateHook(reinterpret_cast<void*>(0x6AA290), reinterpret_cast<void*>(&Hooked_UpdateWheelMatrix), reinterpret_cast<void**>(&g_origUpdateWheelMatrix));
 		if (whlStatus == MH_OK) {
-			MH_EnableHook(reinterpret_cast<void*>(0x6AA290));
-			ClientLog("[Client] CAutomobile::UpdateWheelMatrix (0x6AA290) hooked successfully via MinHook");
+			MH_STATUS enableStatus = MH_EnableHook(reinterpret_cast<void*>(0x6AA290));
+			if (enableStatus == MH_OK) {
+				ClientLog("[Client] CAutomobile::UpdateWheelMatrix (0x6AA290) hooked successfully via MinHook");
+			} else {
+				ClientLog(std::format("[Client] Failed to enable CAutomobile::UpdateWheelMatrix hook: {}", MH_StatusToString(enableStatus)));
+			}
 		} else {
 			ClientLog(std::format("[Client] Failed to hook CAutomobile::UpdateWheelMatrix (0x6AA290): {}", MH_StatusToString(whlStatus)));
 		}
 
+		MH_STATUS colmodelStatus = MH_CreateHook(reinterpret_cast<void*>(0x004C4BC0), reinterpret_cast<void*>(&HookedSetColModel), reinterpret_cast<void**>(&g_originalSetColModel));
+		if (colmodelStatus == MH_OK) {
+			MH_STATUS enableStatus = MH_EnableHook(reinterpret_cast<void*>(0x004C4BC0));
+			if (enableStatus == MH_OK) {
+				ClientLog("[Client] SetColModel (0x004C4BC0) hooked successfully via MinHook");
+			} else {
+				ClientLog(std::format("[Client] Failed to enable SetColModel hook: {}", MH_StatusToString(enableStatus)));
+			}
+		} else {
+			ClientLog(std::format("[Client] Failed to hook SetColModel (0x004C4BC0): {}", MH_StatusToString(colmodelStatus)));
+		}
+
 		MH_STATUS hlStatus = MH_CreateHook(reinterpret_cast<void*>(0x6E0A50), reinterpret_cast<void*>(&Hooked_DoHeadLightEffect), reinterpret_cast<void**>(&g_origDoHeadLightEffect));
 		if (hlStatus == MH_OK) {
-			MH_EnableHook(reinterpret_cast<void*>(0x6E0A50));
-			ClientLog("[Client] CVehicle::DoHeadLightEffect (0x6E0A50) hooked successfully via MinHook");
+			MH_STATUS enableStatus = MH_EnableHook(reinterpret_cast<void*>(0x6E0A50));
+			if (enableStatus == MH_OK) {
+				ClientLog("[Client] CVehicle::DoHeadLightEffect (0x6E0A50) hooked successfully via MinHook");
+			} else {
+				ClientLog(std::format("[Client] Failed to enable CVehicle::DoHeadLightEffect hook: {}", MH_StatusToString(enableStatus)));
+			}
 		} else {
 			ClientLog(std::format("[Client] Failed to hook CVehicle::DoHeadLightEffect (0x6E0A50): {}", MH_StatusToString(hlStatus)));
 		}
 
 		MH_STATUS tlStatus = MH_CreateHook(reinterpret_cast<void*>(0x6E1780), reinterpret_cast<void*>(&Hooked_DoTailLightEffect), reinterpret_cast<void**>(&g_origDoTailLightEffect));
 		if (tlStatus == MH_OK) {
-			MH_EnableHook(reinterpret_cast<void*>(0x6E1780));
-			ClientLog("[Client] CVehicle::DoTailLightEffect (0x6E1780) hooked successfully via MinHook");
+			MH_STATUS enableStatus = MH_EnableHook(reinterpret_cast<void*>(0x6E1780));
+			if (enableStatus == MH_OK) {
+				ClientLog("[Client] CVehicle::DoTailLightEffect (0x6E1780) hooked successfully via MinHook");
+			} else {
+				ClientLog(std::format("[Client] Failed to enable CVehicle::DoTailLightEffect hook: {}", MH_StatusToString(enableStatus)));
+			}
 		} else {
 			ClientLog(std::format("[Client] Failed to hook CVehicle::DoTailLightEffect (0x6E1780): {}", MH_StatusToString(tlStatus)));
 		}
 
 		MH_STATUS exhStatus = MH_CreateHook(reinterpret_cast<void*>(0x6DE240), reinterpret_cast<void*>(&Hooked_AddExhaustParticles), reinterpret_cast<void**>(&g_origAddExhaustParticles));
 		if (exhStatus == MH_OK) {
-			MH_EnableHook(reinterpret_cast<void*>(0x6DE240));
-			ClientLog("[Client] CVehicle::AddExhaustParticles (0x6DE240) hooked successfully via MinHook");
+			MH_STATUS enableStatus = MH_EnableHook(reinterpret_cast<void*>(0x6DE240));
+			if (enableStatus == MH_OK) {
+				ClientLog("[Client] CVehicle::AddExhaustParticles (0x6DE240) hooked successfully via MinHook");
+			} else {
+				ClientLog(std::format("[Client] Failed to enable CVehicle::AddExhaustParticles hook: {}", MH_StatusToString(enableStatus)));
+			}
 		} else {
 			ClientLog(std::format("[Client] Failed to hook CVehicle::AddExhaustParticles (0x6DE240): {}", MH_StatusToString(exhStatus)));
 		}
 
 		MH_STATUS rcTexStatus = MH_CreateHook(reinterpret_cast<void*>(0x6FC180), reinterpret_cast<void*>(&Hooked_RegisterCoronaTexture), reinterpret_cast<void**>(&g_origRegisterCoronaTexture));
 		if (rcTexStatus == MH_OK) {
-			MH_EnableHook(reinterpret_cast<void*>(0x6FC180));
-			ClientLog("[Client] CCoronas::RegisterCorona[Texture] (0x6FC180) hooked successfully via MinHook");
+			MH_STATUS enableStatus = MH_EnableHook(reinterpret_cast<void*>(0x6FC180));
+			if (enableStatus == MH_OK) {
+				ClientLog("[Client] CCoronas::RegisterCorona[Texture] (0x6FC180) hooked successfully via MinHook");
+			} else {
+				ClientLog(std::format("[Client] Failed to enable CCoronas::RegisterCorona[Texture] hook: {}", MH_StatusToString(enableStatus)));
+			}
 		} else {
 			ClientLog(std::format("[Client] Failed to hook CCoronas::RegisterCorona[Texture] (0x6FC180): {}", MH_StatusToString(rcTexStatus)));
 		}
 
 		MH_STATUS rcTypeStatus = MH_CreateHook(reinterpret_cast<void*>(0x6FC580), reinterpret_cast<void*>(&Hooked_RegisterCoronaType), reinterpret_cast<void**>(&g_origRegisterCoronaType));
 		if (rcTypeStatus == MH_OK) {
-			MH_EnableHook(reinterpret_cast<void*>(0x6FC580));
-			ClientLog("[Client] CCoronas::RegisterCorona[Type] (0x6FC580) hooked successfully via MinHook");
+			MH_STATUS enableStatus = MH_EnableHook(reinterpret_cast<void*>(0x6FC580));
+			if (enableStatus == MH_OK) {
+				ClientLog("[Client] CCoronas::RegisterCorona[Type] (0x6FC580) hooked successfully via MinHook");
+			} else {
+				ClientLog(std::format("[Client] Failed to enable CCoronas::RegisterCorona[Type] hook: {}", MH_StatusToString(enableStatus)));
+			}
 		} else {
 			ClientLog(std::format("[Client] Failed to hook CCoronas::RegisterCorona[Type] (0x6FC580): {}", MH_StatusToString(rcTypeStatus)));
 		}
 
 		MH_STATUS clsStatus = MH_CreateHook(reinterpret_cast<void*>(0x70C500), reinterpret_cast<void*>(&Hooked_StoreCarLightShadow), reinterpret_cast<void**>(&g_origStoreCarLightShadow));
 		if (clsStatus == MH_OK) {
-			MH_EnableHook(reinterpret_cast<void*>(0x70C500));
-			ClientLog("[Client] CShadows::StoreCarLightShadow (0x70C500) hooked successfully via MinHook");
+			MH_STATUS enableStatus = MH_EnableHook(reinterpret_cast<void*>(0x70C500));
+			if (enableStatus == MH_OK) {
+				ClientLog("[Client] CShadows::StoreCarLightShadow (0x70C500) hooked successfully via MinHook");
+			} else {
+				ClientLog(std::format("[Client] Failed to enable CShadows::StoreCarLightShadow hook: {}", MH_StatusToString(enableStatus)));
+			}
 		} else {
 			ClientLog(std::format("[Client] Failed to hook CShadows::StoreCarLightShadow (0x70C500): {}", MH_StatusToString(clsStatus)));
 		}
 
 		MH_STATUS remapStatus = MH_CreateHook(reinterpret_cast<void*>(0x6D0C00), reinterpret_cast<void*>(&Hooked_SetRemap), reinterpret_cast<void**>(&g_origSetRemap));
 		if (remapStatus == MH_OK) {
-			MH_EnableHook(reinterpret_cast<void*>(0x6D0C00));
-			ClientLog("[Client] CVehicle::SetRemap (0x6D0C00) hooked successfully via MinHook");
+			MH_STATUS enableStatus = MH_EnableHook(reinterpret_cast<void*>(0x6D0C00));
+			if (enableStatus == MH_OK) {
+				ClientLog("[Client] CVehicle::SetRemap (0x6D0C00) hooked successfully via MinHook");
+			} else {
+				ClientLog(std::format("[Client] Failed to enable CVehicle::SetRemap hook: {}", MH_StatusToString(enableStatus)));
+			}
 		} else {
 			ClientLog(std::format("[Client] Failed to hook CVehicle::SetRemap (0x6D0C00): {}", MH_StatusToString(remapStatus)));
 		}
 
 		MH_STATUS addUpgStatus = MH_CreateHook(reinterpret_cast<void*>(0x6DFA20), reinterpret_cast<void*>(&Hooked_AddUpgrade), reinterpret_cast<void**>(&g_origAddUpgrade));
 		if (addUpgStatus == MH_OK) {
-			MH_EnableHook(reinterpret_cast<void*>(0x6DFA20));
-			ClientLog("[Client] CVehicle::AddUpgrade (0x6DFA20) hooked successfully via MinHook");
+			MH_STATUS enableStatus = MH_EnableHook(reinterpret_cast<void*>(0x6DFA20));
+			if (enableStatus == MH_OK) {
+				ClientLog("[Client] CVehicle::AddUpgrade (0x6DFA20) hooked successfully via MinHook");
+			} else {
+				ClientLog(std::format("[Client] Failed to enable CVehicle::AddUpgrade hook: {}", MH_StatusToString(enableStatus)));
+			}
 		} else {
 			ClientLog(std::format("[Client] Failed to hook CVehicle::AddUpgrade (0x6DFA20): {}", MH_StatusToString(addUpgStatus)));
 		}
 
 		MH_STATUS remUpgStatus = MH_CreateHook(reinterpret_cast<void*>(0x6D3630), reinterpret_cast<void*>(&Hooked_RemoveUpgrade), reinterpret_cast<void**>(&g_origRemoveUpgrade));
 		if (remUpgStatus == MH_OK) {
-			MH_EnableHook(reinterpret_cast<void*>(0x6D3630));
-			ClientLog("[Client] CVehicle::RemoveUpgrade (0x6D3630) hooked successfully via MinHook");
+			MH_STATUS enableStatus = MH_EnableHook(reinterpret_cast<void*>(0x6D3630));
+			if (enableStatus == MH_OK) {
+				ClientLog("[Client] CVehicle::RemoveUpgrade (0x6D3630) hooked successfully via MinHook");
+			} else {
+				ClientLog(std::format("[Client] Failed to enable CVehicle::RemoveUpgrade hook: {}", MH_StatusToString(enableStatus)));
+			}
 		} else {
 			ClientLog(std::format("[Client] Failed to hook CVehicle::RemoveUpgrade (0x6D3630): {}", MH_StatusToString(remUpgStatus)));
 		}
 
 		MH_STATUS sirenStatus = MH_CreateHook(reinterpret_cast<void*>(0x6D8470), reinterpret_cast<void*>(&Hooked_DoesVehicleUseSiren), reinterpret_cast<void**>(&g_origDoesVehicleUseSiren));
 		if (sirenStatus == MH_OK) {
-			MH_EnableHook(reinterpret_cast<void*>(0x6D8470));
-			ClientLog("[Client] CVehicle::DoesVehicleUseSiren (0x6D8470) hooked successfully via MinHook");
+			MH_STATUS enableStatus = MH_EnableHook(reinterpret_cast<void*>(0x6D8470));
+			if (enableStatus == MH_OK) {
+				ClientLog("[Client] CVehicle::DoesVehicleUseSiren (0x6D8470) hooked successfully via MinHook");
+			} else {
+				ClientLog(std::format("[Client] Failed to enable CVehicle::DoesVehicleUseSiren hook: {}", MH_StatusToString(enableStatus)));
+			}
 		} else {
 			ClientLog(std::format("[Client] Failed to hook CVehicle::DoesVehicleUseSiren (0x6D8470): {}", MH_StatusToString(sirenStatus)));
 		}
 
 		MH_STATUS sirenAudioStatus = MH_CreateHook(reinterpret_cast<void*>(0x4F62A0), reinterpret_cast<void*>(&Hooked_GetVehicleSirenType), reinterpret_cast<void**>(&g_origGetVehicleSirenType));
 		if (sirenAudioStatus == MH_OK) {
-			MH_EnableHook(reinterpret_cast<void*>(0x4F62A0));
-			ClientLog("[Client] CAEVehicleAudioEntity::GetVehicleSirenType (0x4F62A0) hooked successfully via MinHook");
+			MH_STATUS enableStatus = MH_EnableHook(reinterpret_cast<void*>(0x4F62A0));
+			if (enableStatus == MH_OK) {
+				ClientLog("[Client] CAEVehicleAudioEntity::GetVehicleSirenType (0x4F62A0) hooked successfully via MinHook");
+			} else {
+				ClientLog(std::format("[Client] Failed to enable CAEVehicleAudioEntity::GetVehicleSirenType hook: {}", MH_StatusToString(enableStatus)));
+			}
 		} else {
 			ClientLog(std::format("[Client] Failed to hook CAEVehicleAudioEntity::GetVehicleSirenType (0x4F62A0): {}", MH_StatusToString(sirenAudioStatus)));
 		}
 
 		MH_STATUS frameIdStatus = MH_CreateHook(reinterpret_cast<void*>(0x4C53C0), reinterpret_cast<void*>(&Hooked_GetFrameFromId), reinterpret_cast<void**>(&g_origGetFrameFromId));
 		if (frameIdStatus == MH_OK) {
-			MH_EnableHook(reinterpret_cast<void*>(0x4C53C0));
-			ClientLog("[Client] CClumpModelInfo::GetFrameFromId (0x4C53C0) hooked successfully via MinHook");
+			MH_STATUS enableStatus = MH_EnableHook(reinterpret_cast<void*>(0x4C53C0));
+			if (enableStatus == MH_OK) {
+				ClientLog("[Client] CClumpModelInfo::GetFrameFromId (0x4C53C0) hooked successfully via MinHook");
+			} else {
+				ClientLog(std::format("[Client] Failed to enable CClumpModelInfo::GetFrameFromId hook: {}", MH_StatusToString(enableStatus)));
+			}
 		} else {
 			ClientLog(std::format("[Client] Failed to hook CClumpModelInfo::GetFrameFromId (0x4C53C0): {}", MH_StatusToString(frameIdStatus)));
 		}
@@ -2715,6 +2817,12 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD dwReason, LPVOID lpReserved)
 			MH_DisableHook(reinterpret_cast<void*>(0x53BEE0));
 			MH_RemoveHook(reinterpret_cast<void*>(0x53BEE0));
 			orig_game_loop = nullptr;
+		}
+
+		if (g_originalSetColModel) {
+			MH_DisableHook(reinterpret_cast<void*>(0x004C4BC0));
+			MH_RemoveHook(reinterpret_cast<void*>(0x004C4BC0));
+			g_originalSetColModel = nullptr;
 		}
 
 		if (g_origUpdateWheelMatrix) {
