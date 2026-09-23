@@ -1313,8 +1313,9 @@ bool HandlingManager::ProcessAction(CustomVehAction action, RakNet::BitStream* b
 			SendMsg(-1, "{00FF00}[ExtendedVeh]{FFFFFF} Server authorized handling modifications.");
 		} else {
 			SendMsg(-1, "{FF0000}[ExtendedVeh] Version mismatch with server.");
+			return false;
 		}
-		return false;
+		return true;
 	}
 
 	case ACTION_SET_VEHICLE_HANDLING: {
@@ -1333,7 +1334,7 @@ bool HandlingManager::ProcessAction(CustomVehAction action, RakNet::BitStream* b
 		ClientLog(std::format("[Client] ACTION_SET_VEHICLE_HANDLING: vehicleId={}, count={}", vehicleId, count));
 		auto entries = ParseAttribEntries(count, bs);
 		ProcessVehicleMods(vehicleId, entries);
-		return false;
+		return true;
 	}
 
 	case ACTION_SET_VEHICLE_DOOR_STATE: {
@@ -1349,7 +1350,7 @@ bool HandlingManager::ProcessAction(CustomVehAction action, RakNet::BitStream* b
 		MainThreadQueue::Instance().Push([vehicleId, doorId, missing]() {
 			HandlingManager::ProcessVehicleDoorState(vehicleId, doorId, missing);
 		});
-		return false;
+		return true;
 	}
 
 	case ACTION_RESET_VEHICLE: {
@@ -1360,7 +1361,7 @@ bool HandlingManager::ProcessAction(CustomVehAction action, RakNet::BitStream* b
 		}
 		ClientLog(std::format("[Client] ACTION_RESET_VEHICLE: vehicleId={}", vehicleId));
 		ResetVehicle(vehicleId);
-		return false;
+		return true;
 	}
 
 	case ACTION_SET_MODEL_HANDLING: {
@@ -1377,7 +1378,7 @@ bool HandlingManager::ProcessAction(CustomVehAction action, RakNet::BitStream* b
 		ClientLog(std::format("[Client] ACTION_SET_MODEL_HANDLING: modelId={}, count={}", modelId, count));
 		auto entries = ParseAttribEntries(count, bs);
 		ProcessModelMods(modelId, entries);
-		return false;
+		return true;
 	}
 
 	case ACTION_RESET_MODEL: {
@@ -1388,7 +1389,7 @@ bool HandlingManager::ProcessAction(CustomVehAction action, RakNet::BitStream* b
 		}
 		ClientLog(std::format("[Client] ACTION_RESET_MODEL: modelId={}", modelId));
 		ResetModel(modelId);
-		return false;
+		return true;
 	}
 
 	case ACTION_SET_PLAYER_HANDLING: {
@@ -1405,7 +1406,7 @@ bool HandlingManager::ProcessAction(CustomVehAction action, RakNet::BitStream* b
 		ClientLog(std::format("[Client] ACTION_SET_PLAYER_HANDLING: playerId={}, count={}", playerId, count));
 		auto entries = ParseAttribEntries(count, bs);
 		ProcessPlayerMods(playerId, entries);
-		return false;
+		return true;
 	}
 
 	case ACTION_RESET_PLAYER_HANDLING: {
@@ -1420,7 +1421,7 @@ bool HandlingManager::ProcessAction(CustomVehAction action, RakNet::BitStream* b
 		}
 		ClientLog(std::format("[Client] ACTION_RESET_PLAYER_HANDLING: playerId={}", playerId));
 		ResetPlayerHandling(playerId);
-		return false;
+		return true;
 	}
 
 	case ACTION_GET_VEHICLE_HANDLING: {
@@ -1447,7 +1448,7 @@ bool HandlingManager::ProcessAction(CustomVehAction action, RakNet::BitStream* b
 			response.Write(reinterpret_cast<const char*>(data), sizeof(tHandlingData));
 			SendHandlingPacket(ACTION_SET_VEHICLE_HANDLING, &response);
 		}
-		return false;
+		return true;
 	}
 
 	case ACTION_GET_MODEL_HANDLING: {
@@ -1474,7 +1475,7 @@ bool HandlingManager::ProcessAction(CustomVehAction action, RakNet::BitStream* b
 			response.Write(reinterpret_cast<const char*>(data), sizeof(tHandlingData));
 			SendHandlingPacket(ACTION_SET_MODEL_HANDLING, &response);
 		}
-		return false;
+		return true;
 	}
 
 	case ACTION_GET_PLAYER_HANDLING: {
@@ -1495,7 +1496,7 @@ bool HandlingManager::ProcessAction(CustomVehAction action, RakNet::BitStream* b
 			response.Write(reinterpret_cast<const char*>(data), sizeof(tHandlingData));
 			SendHandlingPacket(ACTION_SET_PLAYER_HANDLING, &response);
 		}
-		return false;
+		return true;
 	}
 
 	case ACTION_RESET_ALL: {
@@ -1533,27 +1534,29 @@ bool HandlingManager::ProcessAction(CustomVehAction action, RakNet::BitStream* b
 		m_vehicleFlying.clear();
 		m_vehicleFlyingByPtr.clear();
 
-		return false;
+		CustomVehicleBindingManager::Instance().Clear();
+
+		return true;
 	}
 	case ACTION_ASSET_BEGIN: {
 		ClientLog("[Client] ACTION_ASSET_BEGIN");
 		ModelTransferClient::Instance().OnTransferBegin(bs);
-		return false;
+		return true;
 	}
 	case ACTION_ASSET_CHUNK: {
 		ModelTransferClient::Instance().OnTransferChunk(bs);
-		return false;
+		return true;
 	}
 	case ACTION_ASSET_END: {
 		ClientLog("[Client] ACTION_ASSET_END");
 		ModelTransferClient::Instance().OnTransferEnd(bs);
-		return false;
+		return true;
 	}
 	case ACTION_ASSET_CANCEL:
 	case ACTION_ASSET_REJECTED: {
 		ClientLog(std::format("[Client] ACTION_ASSET_CANCEL / REJECTED: action={}", static_cast<int>(action)));
 		ModelTransferClient::Instance().OnTransferCancel(bs);
-		return false;
+		return true;
 	}
 	case static_cast<CustomVehAction>(CustomVeh::Protocol::Action::CustomVehicleBind): {
 		CustomVeh::Protocol::VehicleBinding binding {};
@@ -1563,8 +1566,9 @@ bool HandlingManager::ProcessAction(CustomVehAction action, RakNet::BitStream* b
 				binding.sampVehicleId, binding.customModelId);
 		} else {
 			ClientLog("[Client] CustomVehicleBind: Failed to read binding");
+			return false;
 		}
-		return false;
+		return true;
 	}
 	case static_cast<CustomVehAction>(CustomVeh::Protocol::Action::CustomVehicleUnbind): {
 		CustomVeh::Protocol::VehicleUnbinding unbinding {};
@@ -1576,8 +1580,9 @@ bool HandlingManager::ProcessAction(CustomVehAction action, RakNet::BitStream* b
 			});
 		} else {
 			ClientLog("[Client] CustomVehicleUnbind: Failed to read unbinding");
+			return false;
 		}
-		return false;
+		return true;
 	}
 	case static_cast<CustomVehAction>(CustomVeh::Protocol::Action::SetVehicleStance): {
 		CustomVeh::Protocol::VehicleStancePacket stance {};
@@ -1588,7 +1593,7 @@ bool HandlingManager::ProcessAction(CustomVehAction action, RakNet::BitStream* b
 				stance.sampVehicleId, stance.frontWheelScale, stance.rearWheelScale,
 				stance.frontCamber, stance.rearCamber, stance.frontTrackWidth, stance.rearTrackWidth);
 		}
-		return false;
+		return true;
 	}
 	case static_cast<CustomVehAction>(CustomVeh::Protocol::Action::SetVehicleExtras): {
 		CustomVeh::Protocol::VehicleExtrasPacket extras {};
@@ -1596,7 +1601,7 @@ bool HandlingManager::ProcessAction(CustomVehAction action, RakNet::BitStream* b
 			ClientLog(std::format("[Client] SetVehicleExtras: vehId={}, mask=0x{:X}", extras.sampVehicleId, extras.extrasMask));
 			CustomVehicleBindingManager::Instance().SetVehicleExtras(extras.sampVehicleId, extras.extrasMask);
 		}
-		return false;
+		return true;
 	}
 	case static_cast<CustomVehAction>(CustomVeh::Protocol::Action::SetVehiclePaintjob): {
 		CustomVeh::Protocol::VehiclePaintjobPacket pj {};
@@ -1604,7 +1609,7 @@ bool HandlingManager::ProcessAction(CustomVehAction action, RakNet::BitStream* b
 			ClientLog(std::format("[Client] SetVehiclePaintjob: vehId={}, paintjob={}", pj.sampVehicleId, static_cast<int>(pj.paintjobIndex)));
 			CustomVehicleBindingManager::Instance().SetVehiclePaintjob(pj.sampVehicleId, pj.paintjobIndex);
 		}
-		return false;
+		return true;
 	}
 	case static_cast<CustomVehAction>(CustomVeh::Protocol::Action::SetVehicleNeon): {
 		CustomVeh::Protocol::VehicleNeonPacket neon {};
@@ -1613,7 +1618,7 @@ bool HandlingManager::ProcessAction(CustomVehAction action, RakNet::BitStream* b
 				neon.sampVehicleId, neon.enabled != 0, neon.r, neon.g, neon.b, neon.size));
 			CustomVehicleBindingManager::Instance().SetVehicleNeon(neon.sampVehicleId, neon.enabled != 0, neon.r, neon.g, neon.b, neon.size);
 		}
-		return false;
+		return true;
 	}
 	case static_cast<CustomVehAction>(CustomVeh::Protocol::Action::SetVehicleWindowTint): {
 		CustomVeh::Protocol::VehicleWindowTintPacket tint {};
@@ -1622,7 +1627,7 @@ bool HandlingManager::ProcessAction(CustomVehAction action, RakNet::BitStream* b
 				tint.sampVehicleId, tint.alpha, tint.r, tint.g, tint.b));
 			CustomVehicleBindingManager::Instance().SetVehicleWindowTint(tint.sampVehicleId, tint.alpha, tint.r, tint.g, tint.b);
 		}
-		return false;
+		return true;
 	}
 	case static_cast<CustomVehAction>(CustomVeh::Protocol::Action::SetVehicleWheelColor): {
 		CustomVeh::Protocol::VehicleWheelColorPacket wc {};
@@ -1631,7 +1636,7 @@ bool HandlingManager::ProcessAction(CustomVehAction action, RakNet::BitStream* b
 				wc.sampVehicleId, wc.r, wc.g, wc.b));
 			CustomVehicleBindingManager::Instance().SetVehicleWheelColor(wc.sampVehicleId, wc.r, wc.g, wc.b);
 		}
-		return false;
+		return true;
 	}
 	case static_cast<CustomVehAction>(CustomVeh::Protocol::Action::SetVehicleBackfire): {
 		CustomVeh::Protocol::VehicleBackfirePacket bf {};
@@ -1640,7 +1645,7 @@ bool HandlingManager::ProcessAction(CustomVehAction action, RakNet::BitStream* b
 				bf.sampVehicleId, bf.enabled != 0));
 			CustomVehicleBindingManager::Instance().SetVehicleBackfire(bf.sampVehicleId, bf.enabled != 0);
 		}
-		return false;
+		return true;
 	}
 	case static_cast<CustomVehAction>(CustomVeh::Protocol::Action::SetVehicleHorn): {
 		CustomVeh::Protocol::VehicleHornPacket horn {};
@@ -1649,7 +1654,7 @@ bool HandlingManager::ProcessAction(CustomVehAction action, RakNet::BitStream* b
 				horn.sampVehicleId, horn.hornSoundId, horn.hornPitch));
 			CustomVehicleBindingManager::Instance().SetVehicleHorn(horn.sampVehicleId, horn.hornSoundId, horn.hornPitch);
 		}
-		return false;
+		return true;
 	}
 	case static_cast<CustomVehAction>(CustomVeh::Protocol::Action::SetVehicleSiren): {
 		CustomVeh::Protocol::VehicleSirenPacket siren {};
@@ -1658,7 +1663,7 @@ bool HandlingManager::ProcessAction(CustomVehAction action, RakNet::BitStream* b
 				siren.sampVehicleId, siren.enabled != 0, siren.sirenType));
 			CustomVehicleBindingManager::Instance().SetVehicleSiren(siren.sampVehicleId, siren.enabled != 0, siren.sirenType);
 		}
-		return false;
+		return true;
 	}
 	case static_cast<CustomVehAction>(CustomVeh::Protocol::Action::SetVehicleLights): {
 		CustomVeh::Protocol::VehicleLightsPacket lights {};
@@ -1667,13 +1672,13 @@ bool HandlingManager::ProcessAction(CustomVehAction action, RakNet::BitStream* b
 				lights.sampVehicleId, lights.lightingCategory, lights.lightScaleMult));
 			CustomVehicleBindingManager::Instance().SetVehicleLights(lights.sampVehicleId, lights.lightingCategory, lights.lightScaleMult);
 		}
-		return false;
+		return true;
 	}
 	default:
 		ClientLog(std::format("[Client] ProcessAction: Unknown or unhandled action {}", static_cast<int>(action)));
 		break;
 	}
-	return true;
+	return false;
 }
 
 bool IsVehicleInFlightMode(CVehicle* pVehicle)

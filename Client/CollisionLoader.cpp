@@ -31,7 +31,7 @@ inline void SetCollisionOwnership(CBaseModelInfo* modelInfo, bool owns)
 	if (!modelInfo)
 		return;
 
-	modelInfo->SetIsLod(int(owns));
+	modelInfo->SetDoWeOwnTheColModel(int(owns));
 }
 }
 

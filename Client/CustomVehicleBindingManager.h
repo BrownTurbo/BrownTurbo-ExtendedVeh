@@ -95,6 +95,8 @@ public:
 
 	void Unbind(uint16_t vehicleId);
 
+	void Clear();
+
 	void Process();
 
 	Binding* Find(uint16_t vehicleId);
@@ -132,7 +134,7 @@ public:
 	void ApplyAudioSettingsToVehicle(CVehicle* vehicle);
 
 private:
-	static inline std::mutex m_mutex;
+	static inline std::recursive_mutex m_mutex;
 
 	static inline std::unordered_map<
 		uint16_t,

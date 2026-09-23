@@ -588,7 +588,7 @@ static void __fastcall Hooked_AddExhaustParticles(CVehicle* thisVehicle, void* e
 		if (g_origAddExhaustParticles)
 			g_origAddExhaustParticles(thisVehicle, edx);
 
-		if (binding->hasCustomLighting && binding->backfireEnabled && thisVehicle->m_nVehicleSubClass == VEHICLE_AUTOMOBILE) {
+		if (binding->backfireEnabled && thisVehicle->m_nVehicleSubClass == VEHICLE_AUTOMOBILE) {
 			auto* car = reinterpret_cast<CAutomobile*>(thisVehicle);
 			float speed = car->m_vecMoveSpeed.Magnitude();
 			if (speed > 0.15f && car->m_fGasPedal < 0.05f && car->m_nCurrentGear > 1) {
@@ -714,6 +714,9 @@ static void __fastcall Hooked_AddUpgrade(CVehicle* thisVehicle, void* edx, int m
 		DummySwapGuard guard(baseModel, customModel);
 		if (g_origAddUpgrade)
 			g_origAddUpgrade(thisVehicle, edx, modelIndex, upgradeIndex);
+		if (binding->hasWheelColor && modelIndex >= 1025 && modelIndex <= 1098) {
+			CustomVehicleBindingManager::Instance().ApplyWheelColorToVehicle(thisVehicle, binding->wheelColorR, binding->wheelColorG, binding->wheelColorB);
+		}
 		return;
 	}
 
@@ -760,7 +763,8 @@ static bool __fastcall Hooked_DoesVehicleUseSiren(CVehicle* thisVehicle, void* e
 		return true; // Siren capability is present on this custom vehicle
 	}
 
-	auto audioDef = AudioExtender::GetVehicleAudio(static_cast<uint32_t>(thisVehicle->m_nModelIndex));
+	uint32_t modelIdForAudio = (binding && binding->customModelId > 0) ? binding->customModelId : static_cast<uint32_t>(thisVehicle->m_nModelIndex);
+	auto audioDef = AudioExtender::GetVehicleAudio(modelIdForAudio);
 	if (audioDef && audioDef->sirenType >= 0) {
 		return (audioDef->sirenType > 0);
 	}
@@ -802,7 +806,8 @@ static void __fastcall Hooked_GetVehicleSirenType(CAEVehicleAudioEntity* thisEnt
 		return;
 	}
 
-	auto audioDef = AudioExtender::GetVehicleAudio(static_cast<uint32_t>(pVehicle->m_nModelIndex));
+	uint32_t modelIdForAudio = (binding && binding->customModelId > 0) ? binding->customModelId : static_cast<uint32_t>(pVehicle->m_nModelIndex);
+	auto audioDef = AudioExtender::GetVehicleAudio(modelIdForAudio);
 	if (audioDef && audioDef->sirenType >= 0) {
 		if (audioDef->sirenType == 0 || !pVehicle->bSirenOrAlarm) {
 			if (pSirenActive) *pSirenActive = false;
@@ -1297,6 +1302,19 @@ using namespace plugin;
 
 ExtendedVeh::Collision::CollisionLoader* colLoader = &ExtendedVeh::Collision::CollisionLoader::Instance();
 
+static RpClump* SafeRpClumpStreamRead(RwStream* stream, uint32_t* outExceptionCode)
+{
+	__try {
+		return RpClumpStreamRead(stream);
+	}
+	__except (EXCEPTION_EXECUTE_HANDLER) {
+		if (outExceptionCode) {
+			*outExceptionCode = GetExceptionCode();
+		}
+		return nullptr;
+	}
+}
+
 class CustomVehiclesASI {
 private:
 	enum class AssetState {
@@ -1559,7 +1577,7 @@ private:
 			return;
 		}
 
-		ClientLog(std::format("[Client] FinalizeCustomVehicle: model={} dffState={} txdState={} txdPath='{}' dffBytes={}", pending->def.customModelId, (int)pending->dffState, (int)pending->txdState, pending->txdPath.string(), pending->dff.size()));
+		ClientLog(std::format("[Client] FinalizeCustomVehicle: model={} dffState={} txdState={} txdPath='{}' dffBytes={} txdBytes={}", pending->def.customModelId, static_cast<int>(pending->dffState), static_cast<int>(pending->txdState), pending->txdPath.string(), pending->dff.size(), pending->txd.size()));
 
 		if (pending->dffState != AssetState::Ready || pending->txdState != AssetState::Ready) {
 			ClientLog(std::format("[Client] FinalizeCustomVehicle: ABORT model={} - assets not ready (dff={} txd={})", pending->def.customModelId, (int)pending->dffState, (int)pending->txdState));
@@ -1593,6 +1611,7 @@ private:
 				}
 			}
 		}
+		ClientLog(std::format( "[Client] TXD buffer ready: model={} bytes={} path='{}'", pending->def.customModelId, pending->txd.size(), pending->txdPath.string()));
 
 		if (pending->txd.empty()) {
 			ClientLog(std::format("[Client] FinalizeCustomVehicle: ABORT model={} - txd empty after read attempt (txdPath='{}')", pending->def.customModelId, pending->txdPath.string()));
@@ -1646,11 +1665,34 @@ private:
 		if (dffStream != nullptr) {
 			if (RwStreamFindChunk(dffStream, rwID_CLUMP, nullptr, nullptr)) {
 				ClientLog(std::format("[Client] Loading DFF for model {}: bytes={}, txdSlot={}", pending->def.customModelId, pending->dff.size(), txdSlot));
-				RpClump* pClump = RpClumpStreamRead(dffStream);
-				ClientLog(std::format("[Client] RpClumpStreamRead model {} -> clump=0x{:X}", pending->def.customModelId, reinterpret_cast<std::uintptr_t>(pClump)));
+
+				// CRITICAL FIX: GTA SA's collision plugin reader (0x41B2BD) executes during
+				// RpClumpStreamRead if the DFF has an embedded collision chunk. It accesses
+				// ds:[0x009689E0] (set via 0x0041B350) to attach the collision model to the
+				// model info and flag ownership (0x41B2C7: or byte ptr [eax+13h], 8).
+				// If ds:[0x009689E0] is null, it crashes at 0x4C4BD2 (inside SetColModel)
+				// or at 0x41B2C7. Setting it here mirrors MTA:SA CRenderWareSA.cpp:302.
+				auto SetCollisionModel = reinterpret_cast<void(__cdecl*)(CBaseModelInfo*)>(0x0041B350);
+				SetCollisionModel(newModel);
+				*reinterpret_cast<CBaseModelInfo**>(0x009689E0) = newModel;
+				auto UseCommonVehicleTexDictionary = reinterpret_cast<void(__cdecl*)()>(0x004C75A0);
+				auto StopUsingCommonVehicleTexDictionary = reinterpret_cast<void(__cdecl*)()>(0x004C75C0);
+				UseCommonVehicleTexDictionary();
+
+				uint32_t clumpException = 0;
+				RpClump* pClump = SafeRpClumpStreamRead(dffStream, &clumpException);
+
+				SetCollisionModel(nullptr);
+				*reinterpret_cast<CBaseModelInfo**>(0x009689E0) = nullptr;
+				StopUsingCommonVehicleTexDictionary();
+
+				ClientLog(std::format("[Client] RpClumpStreamRead model {} -> clump=0x{:08X} (exc=0x{:08X})", pending->def.customModelId, reinterpret_cast<std::uintptr_t>(pClump), clumpException));
 				RwStreamClose(dffStream, nullptr);
 				if (pClump) {
-					if (!StreamingExtender::FinalizeClump(newModel, pClump)) {
+					auto* baseModelInfo = reinterpret_cast<CVehicleModelInfo*>(GetEngineModelInfo(static_cast<int>(pending->def.visualBaseModel)));
+					bool FinalizeRet = StreamingExtender::FinalizeClump(newModel, pClump, baseModelInfo);
+					ClientLog(std::format("[Client] StreamingExtender::FinalizeClump returned model={} result={} m_pRwClump=0x{:08X} m_pVehicleStruct=0x{:08X}", pending->def.customModelId, FinalizeRet, reinterpret_cast<std::uintptr_t>(newModel->m_pRwClump), reinterpret_cast<std::uintptr_t>(newModel->m_pVehicleStruct)));
+					if (!FinalizeRet) {
 						CTxdStore::PopCurrentTxd();
 						StreamingExtender::DestroyCustomModel(pending->def.customModelId);
 						SendMsg(0xFF0000, std::format("[Client] Failed to finalize clump for model {}", pending->def.customModelId).c_str());
@@ -1673,6 +1715,16 @@ private:
 							if (!colLoader->LoadCollisionFromMemory(pending->col.data(), pending->col.size(), newModel)) {
 								SendMsg(0xFF8800, std::format("[Client] Warning: Failed to parse COL for model {}", pending->def.customModelId).c_str());
 							}
+						}
+					}
+					// Fallback: If neither embedded DFF collision nor external COL was provided,
+					// borrow the base model's collision so physics and raycasts don't crash.
+					if (!newModel->m_pColModel) {
+						CBaseModelInfo* visualBase = GetEngineModelInfo(static_cast<int>(pending->def.visualBaseModel));
+						if (visualBase && visualBase->m_pColModel) {
+							newModel->m_pColModel = visualBase->m_pColModel;
+							newModel->bDoWeOwnTheColModel = 0;
+							ClientLog(std::format("[Client] Model {} using fallback collision from base model {}", pending->def.customModelId, pending->def.visualBaseModel));
 						}
 					}
 				} else {
@@ -1927,11 +1979,17 @@ void InitializeHooks()
 			_customVehInstance.SetLocalPlayerSpawned(false);
 			g_windowVisible.store(false, std::memory_order_relaxed);
 			_customVehInstance.RequestClearAllCustomModels();
-			HandlingManager::ProcessAction(ACTION_RESET_ALL, nullptr);
+			if (!HandlingManager::ProcessAction(ACTION_RESET_ALL, nullptr))
+			{
+				ClientLog("[Client] HandlingManager::ProcessAction failed to process ACTION_RESET_ALL.");
+			}
 			if (!_customVehInstance.IsServerAuthorized()) {
 				HandlingManager::ResetInitState();
 				HandlingManager::SendInitPacket();
 				ClientLog("[Client] Game session initialized; handshake sent.");
+			}
+			else {
+				ClientLog("[Client] localPlayer seems to be already authorized...");
 			}
 		} else if (id == RPC_WorldPlayerAdd) {
 			size_t originalOffset = bs->GetReadOffset();
@@ -1958,16 +2016,26 @@ void InitializeHooks()
 	};
 	rakhook::on_send_rpc += [](int& id, RakNet::BitStream* bs, PacketPriority& priority, PacketReliability& reliability, char& ord_channel, bool& sh_timestamp) -> bool {
 		if (id == RPC_RequestClass) {
-			ClientLog("[Client] RPC_RequestClass received.");
+			ClientLog("[Client] RPC_RequestClass sent.");
 			_customVehInstance.SetLocalPlayerSpawned(false);
 			// Player is in class selection - hide the download window
 			g_windowVisible.store(false, std::memory_order_relaxed);
+			if (!_customVehInstance.IsServerAuthorized() && rakhook::orig && rakhook::orig->IsConnected()) {
+				HandlingManager::ResetInitState();
+				HandlingManager::SendInitPacket();
+				ClientLog("[Client] Handshake sent on RPC_RequestClass fallback.");
+			}
 			return true;
 		} else if (id == RPC_RequestSpawn) {
-			ClientLog("[Client] RPC_RequestSpawn received.");
+			ClientLog("[Client] RPC_RequestSpawn sent.");
 			_customVehInstance.SetLocalPlayerSpawned(false);
 			// Player is on the spawn confirmation screen - keep window hidden
 			g_windowVisible.store(false, std::memory_order_relaxed);
+			if (!_customVehInstance.IsServerAuthorized() && rakhook::orig && rakhook::orig->IsConnected()) {
+				HandlingManager::ResetInitState();
+				HandlingManager::SendInitPacket();
+				ClientLog("[Client] Handshake sent on RPC_RequestSpawn fallback.");
+			}
 			return true;
 		}
 		return true;
@@ -2002,9 +2070,16 @@ void InitializeHooks()
 			return HandlingManager::ProcessAction(actionID, &bs);
 		} else if (packetId == ID_CONNECTION_REQUEST_ACCEPTED) {
 			ClientLog("[Client] Received ID_CONNECTION_REQUEST_ACCEPTED, sending init packet...");
+			_customVehInstance.SetLocalPlayerSpawned(false);
+			g_windowVisible.store(false, std::memory_order_relaxed);
+			_customVehInstance.RequestClearAllCustomModels();
+			if (!HandlingManager::ProcessAction(ACTION_RESET_ALL, nullptr)) {
+				ClientLog("[Client] HandlingManager::ProcessAction failed to process ACTION_RESET_ALL.");
+			}
 			if (!_customVehInstance.IsServerAuthorized() && rakhook::orig && rakhook::orig->IsConnected()) {
 				HandlingManager::ResetInitState();
 				HandlingManager::SendInitPacket();
+				ClientLog("[Client] Connection Request Accepted; handshake sent.");
 			}
 		} else if (packetId == ID_DISCONNECTION_NOTIFICATION || packetId == ID_CONNECTION_LOST || packetId == ID_CONNECTION_BANNED) {
 			ClientLog("[Client] Disconnected from server");
@@ -2045,6 +2120,17 @@ static void OnGameProcess()
 
 		if (!ASIinitialized) {
 			return;
+		}
+
+		static uint32_t s_lastAuthRetryTick = 0;
+		if (!_customVehInstance.IsServerAuthorized() && rakhook::orig && rakhook::orig->IsConnected()) {
+			uint32_t now = GetTickCount();
+			if (now - s_lastAuthRetryTick > 3000) {
+				s_lastAuthRetryTick = now;
+				HandlingManager::ResetInitState();
+				HandlingManager::SendInitPacket();
+				ClientLog("[Client] Periodic handshake sent (awaiting authorization)...");
+			}
 		}
 
 		_customVehInstance.ProcessPendingDefinitions();
@@ -2267,10 +2353,16 @@ static void OnGameProcess()
 					cur.gameVeh->bIsHandbrakeOn = false;
 				}
 
-				if (AudioExtender::GetVehicleAudio(static_cast<uint32_t>(cur.gameVeh->m_nModelIndex)).has_value()) {
+				uint32_t audioModelId = static_cast<uint32_t>(cur.gameVeh->m_nModelIndex);
+				auto* curBinding = CustomVehicleBindingManager::Instance().FindByVehicle(cur.gameVeh);
+				if (curBinding && curBinding->customModelId > 0) {
+					audioModelId = curBinding->customModelId;
+				}
+
+				if (AudioExtender::GetVehicleAudio(audioModelId).has_value()) {
 					std::optional<AudioExtender::CustomVehicleAudioState*> audioState = AudioExtender::GetOrCreateAudioState(*cur.gameVeh);
 					if (audioState) {
-						if (!AudioExtender::InitialiseCustomVehicleAudio(audioState.value()->engine, *cur.gameVeh)) {
+						if (!AudioExtender::InitialiseCustomVehicleAudio(audioState.value()->engine, *cur.gameVeh, audioModelId)) {
 							AudioExtender::RemoveVehicleAudioState(cur.gtaRef);
 						}
 					}
@@ -2583,6 +2675,8 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD dwReason, LPVOID lpReserved)
 	switch (dwReason) {
 	case DLL_PROCESS_ATTACH: {
 		DisableThreadLibraryCalls(hModule);
+
+		CModelInfo::ms_modelInfoPtrs = StreamingExtender::GetModelInfoTable();
 
 		MH_Initialize();
 		MH_STATUS mhStatus = MH_CreateHook(reinterpret_cast<void*>(0x53BEE0), reinterpret_cast<void*>(&hooked_game_loop), reinterpret_cast<void**>(&orig_game_loop));

@@ -23,6 +23,19 @@ class StreamingExtender;
 inline CBaseModelInfo* GetEngineModelInfo(int modelId);
 
 class StreamingExtender {
+public:
+	static constexpr int TOTAL_GTA_MODEL_COUNT = 20000;
+	static inline CBaseModelInfo** GetModelInfoTable()
+	{
+		// GTA SA 1.0 US: 0x00A9B0C8 is the array CBaseModelInfo*[20000]
+		// *(0x403DA4 + 3) reads the immediate operand of "mov eax, ds:00A9B0C8h[eax*4]" at CModelInfo::GetModelInfo.
+		// Verified against MTA:SA (ARRAY_ModelInfo) and samp-custom-vehicles.
+		// NOTE: Plugin-SDK's CModelInfo::ms_modelInfoPtrs reads from 0x40CD67 which is machine code
+		// in vanilla GTA SA without fastman92, writing to which causes heap corruption (0xC0000374)!
+		static CBaseModelInfo** const s_table = *reinterpret_cast<CBaseModelInfo***>(0x00403DA4 + 3);
+		return s_table;
+	}
+
 private:
 	struct CustomModelEntry {
 		int gtaModelSlot = -1;
@@ -33,10 +46,11 @@ private:
 
 	static int AllocateGtaModelSlot()
 	{
+		auto** table = GetModelInfoTable();
 		for (int slot = CUSTOM_GTA_MODEL_BASE;
-			slot < CModelInfo::ms_modelInfoCount;
+			slot < TOTAL_GTA_MODEL_COUNT;
 			++slot) {
-			if (CModelInfo::ms_modelInfoPtrs[slot] != nullptr)
+			if (table[slot] != nullptr)
 				continue;
 			bool alreadyClaimed = false;
 			for (auto& [id, e] : s_customModels) {
@@ -54,7 +68,7 @@ private:
 
 	static bool IsValidGtaModelSlot(int slot)
 	{
-		return slot >= 0 && slot < CModelInfo::ms_modelInfoCount;
+		return slot >= 0 && slot < TOTAL_GTA_MODEL_COUNT;
 	}
 
 	inline static void (*s_destructionRequeueCallback)(uint32_t) = nullptr;
@@ -159,7 +173,7 @@ public:
 			newModel->m_nHandlingId = reinterpret_cast<CVehicleModelInfo*>(handlingBase)->m_nHandlingId;
 		}
 
-		CModelInfo::ms_modelInfoPtrs[gtaSlot] = newModel;
+		GetModelInfoTable()[gtaSlot] = newModel;
 
 		entry->modelInfo = newModel;
 
@@ -244,12 +258,17 @@ public:
 
 
 
-	static bool FinalizeClump(CVehicleModelInfo* pInfo, RpClump* pClump)
+	static bool FinalizeClump(CVehicleModelInfo* pInfo, RpClump* pClump, CVehicleModelInfo* pBaseInfo = nullptr)
 	{
 		if (!pInfo || !pClump)
 			return false;
+
+		ClientLog(std::format("[Client]  FinalizeClump -> pInfo=0x{:08X} pClump=0x{:08X}", reinterpret_cast<std::uintptr_t>(pInfo), reinterpret_cast<std::uintptr_t>(pClump)));
+
 		if (pInfo->m_pRwClump) {
+			ClientLog("[Client]  FinalizeClump -> deleting old RW clump");
 			pInfo->DeleteRwObject();
+			ClientLog("[Client]  FinalizeClump -> old RW clump deleted");
 		}
 		// CRITICAL: If m_pVehicleStruct was set (e.g. by a previous SetClump call),
 		// release it from GTA:SA's CPool<CVehicleStructure> BEFORE calling SetClump.
@@ -258,19 +277,45 @@ public:
 		// causes CPool depletion (at most 70 entries on SA 1.0 US).
 		// Verified: MTA:SA CRenderWareSA.cpp:406-417 uses destructor 0x4C7410 + release 0x4C9580.
 		if (pInfo->m_pVehicleStruct) {
+			ClientLog(std::format("[Client]  FinalizeClump -> releasing vehicle struct=0x{:08X}", reinterpret_cast<std::uintptr_t>(pInfo->m_pVehicleStruct)));
 			auto CVehicleStructure_Destructor = reinterpret_cast<void(__thiscall*)(CVehicleModelInfo::CVehicleStructure*)>(0x4C7410);
 			auto CVehicleStructure_Release    = reinterpret_cast<void(__cdecl*)(CVehicleModelInfo::CVehicleStructure*)>(0x4C9580);
 			CVehicleStructure_Destructor(pInfo->m_pVehicleStruct);
 			CVehicleStructure_Release(pInfo->m_pVehicleStruct);
 			pInfo->m_pVehicleStruct = nullptr;
+			ClientLog("[Client]  FinalizeClump -> vehicle struct released");
 		}
+		ClientLog("[Client]  FinalizeClump -> BEFORE SetupVehicleVariables");
 		CVisibilityPlugins::SetupVehicleVariables(pClump);
+		ClientLog("[Client]  FinalizeClump -> AFTER SetupVehicleVariables");
+
+		ClientLog("[Client]  FinalizeClump -> BEFORE SetClump");
 		pInfo->SetClump(pClump);   // SetClump allocates m_pVehicleStruct from pool + fills dummies
+		ClientLog("[Client]  FinalizeClump -> AFTER SetClump");
+
+		ClientLog("[Client]  FinalizeClump -> BEFORE SetAtomicRenderCallbacks");
 		pInfo->SetAtomicRenderCallbacks();
+		ClientLog("[Client]  FinalizeClump -> AFTER SetAtomicRenderCallbacks");
+
 		// ExtractDummiesFromClump is a fallback only: it fills any dummy slot that
 		// PreprocessHierarchy left as (0,0,0), using the RpClump frame hierarchy.
 		if (pInfo->m_pVehicleStruct) {
 			ExtractDummiesFromClump(pClump, pInfo->m_pVehicleStruct);
+
+			if (pBaseInfo && pBaseInfo->m_pVehicleStruct) {
+				// Fallback any (0,0,0) dummy positions from base vehicle
+				for (int i = 0; i < 15; ++i) {
+					if (pInfo->m_pVehicleStruct->m_avDummyPos[i].Magnitude() < 0.001f) {
+						pInfo->m_pVehicleStruct->m_avDummyPos[i] = pBaseInfo->m_pVehicleStruct->m_avDummyPos[i];
+					}
+				}
+				// Fallback any (0,0,0) upgrade attachment positions from base vehicle
+				for (int i = 0; i < 18; ++i) {
+					if (pInfo->m_pVehicleStruct->m_aUpgrades[i].m_vPosition.Magnitude() < 0.001f) {
+						pInfo->m_pVehicleStruct->m_aUpgrades[i] = pBaseInfo->m_pVehicleStruct->m_aUpgrades[i];
+					}
+				}
+			}
 		}
 		return pInfo->m_pRwClump == pClump;
 	}
@@ -310,8 +355,8 @@ public:
 		CustomModelEntry* modelEntry = it->second;
 		CVehicleModelInfo* pInfo = modelEntry ? modelEntry->modelInfo : nullptr;
 		if (pInfo) {
-			if (modelEntry->gtaModelSlot >= 0 && modelEntry->gtaModelSlot < CModelInfo::ms_modelInfoCount)
-				CModelInfo::ms_modelInfoPtrs[modelEntry->gtaModelSlot] = nullptr;
+			if (modelEntry->gtaModelSlot >= 0 && modelEntry->gtaModelSlot < TOTAL_GTA_MODEL_COUNT)
+				GetModelInfoTable()[modelEntry->gtaModelSlot] = nullptr;
 
 			pInfo->DeleteRwObject();
 			if (pInfo->bDoWeOwnTheColModel && pInfo->m_pColModel) {
@@ -345,8 +390,8 @@ public:
 			if (!entry) continue;
 			CVehicleModelInfo* pInfo = entry->modelInfo;
 			if (pInfo) {
-				if (entry->gtaModelSlot >= 0 && entry->gtaModelSlot < CModelInfo::ms_modelInfoCount)
-					CModelInfo::ms_modelInfoPtrs[entry->gtaModelSlot] = nullptr;
+				if (entry->gtaModelSlot >= 0 && entry->gtaModelSlot < TOTAL_GTA_MODEL_COUNT)
+					GetModelInfoTable()[entry->gtaModelSlot] = nullptr;
 
 				pInfo->DeleteRwObject();
 				if (pInfo->bDoWeOwnTheColModel && pInfo->m_pColModel) {
@@ -381,8 +426,8 @@ inline CBaseModelInfo* GetEngineModelInfo(int modelId)
 	if (modelId >= static_cast<int>(CUSTOM_MODEL_BASE_ID)) {
 		return StreamingExtender::GetCustomModel(static_cast<uint32_t>(modelId));
 	}
-	if (modelId >= 0 && modelId < CModelInfo::ms_modelInfoCount) {
-		return CModelInfo::ms_modelInfoPtrs[modelId];
+	if (modelId >= 0 && modelId < StreamingExtender::TOTAL_GTA_MODEL_COUNT) {
+		return StreamingExtender::GetModelInfoTable()[modelId];
 	}
 	return nullptr;
 }

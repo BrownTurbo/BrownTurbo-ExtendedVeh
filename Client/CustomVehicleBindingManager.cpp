@@ -49,9 +49,13 @@ static void ApplyExtrasToClump(RpClump* clump, uint8_t mask)
 	if (!clump)
 		return;
 
-	for (int i = 1; i <= 6; ++i) {
+	for (int i = 1; i <= 8; ++i) {
 		std::string extraName = std::format("extra{}", i);
 		RwFrame* frame = CClumpModelInfo::GetFrameFromName(clump, extraName.c_str());
+		if (!frame) {
+			std::string extraNameUnder = std::format("extra_{}", i);
+			frame = CClumpModelInfo::GetFrameFromName(clump, extraNameUnder.c_str());
+		}
 		if (!frame)
 			continue;
 
@@ -171,6 +175,12 @@ void CustomVehicleBindingManager::Unbind(uint16_t vehicleId)
 		if (vehicle && vehicle == binding.appliedGameVehicle && IsVehiclePointerValid(vehicle)) {
 			auto* origModel = reinterpret_cast<CVehicleModelInfo*>(CModelInfo::GetModelInfo(binding.originalModelId));
 			if (origModel && origModel->m_pRwClump) {
+				short savedUpgrades[15];
+				for (int i = 0; i < 15; ++i) {
+					savedUpgrades[i] = vehicle->m_anUpgrades[i];
+					vehicle->m_anUpgrades[i] = -1;
+				}
+
 				vehicle->DeleteRwObject();
 				RpClump* origClump = CloneClumpPreservingOrder(origModel->m_pRwClump);
 				if (origClump) {
@@ -191,6 +201,12 @@ void CustomVehicleBindingManager::Unbind(uint16_t vehicleId)
 					} else if (vehicle->m_nVehicleSubClass == VEHICLE_BOAT) {
 						reinterpret_cast<CBoat*>(vehicle)->SetupModelNodes();
 					}
+
+					for (int i = 0; i < 15; ++i) {
+						if (savedUpgrades[i] >= 1000 && savedUpgrades[i] <= 1193) {
+							vehicle->AddUpgrade(savedUpgrades[i], i);
+						}
+					}
 				}
 				// CVehicle doesn't expose m_pColModel directly; use CEntity::GetColModel().
 				// Restoring the original model's collision: GTA:SA looks up the col model
@@ -203,6 +219,16 @@ void CustomVehicleBindingManager::Unbind(uint16_t vehicleId)
 	}
 
 	m_bindings.erase(it);
+}
+
+void CustomVehicleBindingManager::Clear()
+{
+	std::lock_guard lock(m_mutex);
+	for (auto& [vehicleId, binding] : m_bindings) {
+		HandlingManager::DecrementModelUse(binding.customModelId);
+	}
+	m_bindings.clear();
+	ClientLog("[Client] CustomVehicleBindingManager::Clear: All bindings cleared.");
 }
 
 CustomVehicleBindingManager::Binding* CustomVehicleBindingManager::Find(uint16_t vehicleId)
@@ -218,8 +244,14 @@ CustomVehicleBindingManager::Binding* CustomVehicleBindingManager::FindByVehicle
 		return nullptr;
 	std::lock_guard lock(m_mutex);
 	for (auto& [id, b] : m_bindings) {
-		if (b.appliedGameVehicle == vehicle && b.modelApplied)
+		if (b.appliedGameVehicle == vehicle)
 			return &b;
+	}
+	for (auto& [id, b] : m_bindings) {
+		if (GetGameVehicleFromPool(id) == vehicle) {
+			b.appliedGameVehicle = vehicle;
+			return &b;
+		}
 	}
 	return nullptr;
 }
@@ -281,6 +313,11 @@ void CustomVehicleBindingManager::Process()
 			continue;
 		}
 
+		if (!model->m_pVehicleStruct) {
+			ClientLog(std::format("[Client] WAIT: vehicle={} customModel={} m_pVehicleStruct=NULL.", vehicleId, binding.customModelId));
+			continue;
+		}
+
 		auto* vehicle = GetGameVehicleFromPool(vehicleId);
 		if (!vehicle || !IsVehiclePointerValid(vehicle)) {
 			binding.appliedGameVehicle = nullptr;
@@ -289,13 +326,13 @@ void CustomVehicleBindingManager::Process()
 			continue;
 		}
 
-		ClientLog(std::format("[Client] Applying visual model: vehicle={} customModel={} baseModel={} vehiclePtr=0x{:X} sourceClump=0x{:X}", vehicleId, binding.customModelId, binding.baseModelId, reinterpret_cast<std::uintptr_t>(vehicle), reinterpret_cast<std::uintptr_t>(model->m_pRwClump)));
-
 		if (binding.originalModelId < 0) {
 			binding.originalModelId = vehicle->m_nModelIndex;
 		}
 
 		if (!binding.modelApplied || binding.appliedGameVehicle != vehicle) {
+			ClientLog(std::format("[Client] Applying visual model: vehicle={} customModel={} baseModel={} vehiclePtr=0x{:X} sourceClump=0x{:X}", vehicleId, binding.customModelId, binding.baseModelId, reinterpret_cast<std::uintptr_t>(vehicle), reinterpret_cast<std::uintptr_t>(model->m_pRwClump)));
+
 			RpClump* newClump = CloneClumpPreservingOrder(model->m_pRwClump);
 			if (newClump) {
 				CVisibilityPlugins::SetupVehicleVariables(newClump);
@@ -309,6 +346,12 @@ void CustomVehicleBindingManager::Process()
 
 				if (binding.hasExtras) {
 					ApplyExtrasToClump(newClump, binding.extrasMask);
+				}
+
+				short savedUpgrades[15];
+				for (int i = 0; i < 15; ++i) {
+					savedUpgrades[i] = vehicle->m_anUpgrades[i];
+					vehicle->m_anUpgrades[i] = -1;
 				}
 
 				ClientLog(std::format("[Client] Replacing RW object: vehicle={} oldRw=0x{:X} newRw=0x{:X}", vehicleId, reinterpret_cast<std::uintptr_t>(vehicle->m_pRwObject), reinterpret_cast<std::uintptr_t>(newClump)));
@@ -331,6 +374,12 @@ void CustomVehicleBindingManager::Process()
 					reinterpret_cast<CBike*>(vehicle)->SetupModelNodes();
 				} else if (vehicle->m_nVehicleSubClass == VEHICLE_BOAT) {
 					reinterpret_cast<CBoat*>(vehicle)->SetupModelNodes();
+				}
+
+				for (int i = 0; i < 15; ++i) {
+					if (savedUpgrades[i] >= 1000 && savedUpgrades[i] <= 1193) {
+						vehicle->AddUpgrade(savedUpgrades[i], i);
+					}
 				}
 
 				// CVehicle doesn't expose m_pColModel directly (CEntity::GetColModel() is the API).
@@ -508,14 +557,24 @@ void CustomVehicleBindingManager::ApplyAudioSettingsToVehicle(CVehicle* vehicle)
 	if (!pAudio)
 		return;
 
+	auto audioDef = AudioExtender::GetVehicleAudio(binding->customModelId);
+	if (audioDef) {
+		AudioExtender::ApplyCustomVehicleAudio(*vehicle, *audioDef);
+	}
+
 	if (binding->hasCustomHorn) {
 		pAudio->m_settings.m_bHornTon = static_cast<char>(binding->hornSoundId);
 		pAudio->m_settings.m_fHornHigh = binding->hornPitch;
+	} else if (audioDef && audioDef->hornSoundId >= 0) {
+		pAudio->m_settings.m_bHornTon = static_cast<char>(audioDef->hornSoundId);
+		pAudio->m_settings.m_fHornHigh = audioDef->hornPitch;
 	}
 
 	if (binding->hasCustomSiren) {
-		pAudio->m_bModelWithSiren = true;
+		pAudio->m_bModelWithSiren = (binding->sirenType != 0);
 		vehicle->bSirenOrAlarm = binding->sirenEnabled;
+	} else if (audioDef && audioDef->sirenType > 0) {
+		pAudio->m_bModelWithSiren = true;
 	}
 }
 
@@ -679,17 +738,26 @@ void CustomVehicleBindingManager::ApplyWindowTintToVehicle(CVehicle* vehicle, ui
 				if (texName) {
 					std::string nameLower = texName;
 					std::transform(nameLower.begin(), nameLower.end(), nameLower.begin(), ::tolower);
+					if (nameLower.find("light") != std::string::npos ||
+						nameLower.find("lamp") != std::string::npos ||
+						nameLower.find("shad") != std::string::npos ||
+						nameLower.find("wheel") != std::string::npos ||
+						nameLower.find("tyre") != std::string::npos ||
+						nameLower.find("tire") != std::string::npos ||
+						nameLower.find("badge") != std::string::npos ||
+						nameLower.find("logo") != std::string::npos) {
+						return mat;
+					}
 					if (nameLower.find("glass") != std::string::npos ||
 						nameLower.find("window") != std::string::npos ||
-						nameLower.find("windscreen") != std::string::npos ||
-						nameLower.find("lightson") != std::string::npos) {
+						nameLower.find("windscreen") != std::string::npos) {
 						isWindow = true;
 					}
 				}
 			}
 
 			const RwRGBA* curCol = RpMaterialGetColor(mat);
-			if (curCol && curCol->alpha < 240) {
+			if (!isWindow && curCol && curCol->alpha < 240) {
 				isWindow = true;
 			}
 
@@ -720,6 +788,8 @@ void CustomVehicleBindingManager::ApplyWheelColorToVehicle(CVehicle* vehicle, ui
 	static const char* s_wheelFrames[] = {
 		"wheel_rf_dummy", "wheel_rm_dummy", "wheel_rb_dummy",
 		"wheel_lf_dummy", "wheel_lm_dummy", "wheel_lb_dummy",
+		"wheel_rf", "wheel_rm", "wheel_rb",
+		"wheel_lf", "wheel_lm", "wheel_lb",
 		"wheel_front", "wheel_rear"
 	};
 
@@ -728,6 +798,17 @@ void CustomVehicleBindingManager::ApplyWheelColorToVehicle(CVehicle* vehicle, ui
 		RwFrame* f = CClumpModelInfo::GetFrameFromName(clump, name);
 		if (f)
 			targetFrames.push_back(f);
+	}
+
+	if (vehicle->m_nVehicleSubClass == VEHICLE_AUTOMOBILE || vehicle->m_nVehicleSubClass == VEHICLE_MTRUCK || vehicle->m_nVehicleSubClass == VEHICLE_QUAD) {
+		auto* car = reinterpret_cast<CAutomobile*>(vehicle);
+		for (int i = CAR_WHEEL_RF; i <= CAR_WHEEL_LB; ++i) {
+			if (car->m_aCarNodes[i]) {
+				if (std::find(targetFrames.begin(), targetFrames.end(), car->m_aCarNodes[i]) == targetFrames.end()) {
+					targetFrames.push_back(car->m_aCarNodes[i]);
+				}
+			}
+		}
 	}
 
 	if (targetFrames.empty())
@@ -768,7 +849,11 @@ void CustomVehicleBindingManager::ApplyWheelColorToVehicle(CVehicle* vehicle, ui
 					std::transform(nameLower.begin(), nameLower.end(), nameLower.begin(), ::tolower);
 					if (nameLower.find("tyre") != std::string::npos ||
 						nameLower.find("tire") != std::string::npos ||
-						nameLower.find("rubber") != std::string::npos) {
+						nameLower.find("rubber") != std::string::npos ||
+						nameLower.find("disc") != std::string::npos ||
+						nameLower.find("rotor") != std::string::npos ||
+						nameLower.find("brake") != std::string::npos ||
+						nameLower.find("caliper") != std::string::npos) {
 						return mat;
 					}
 				}

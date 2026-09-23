@@ -442,5 +442,19 @@ void ExtendedVehCompo::onPoolEntryCreated(IVehicle& vehicle)
 void ExtendedVehCompo::onPoolEntryDestroyed(IVehicle& vehicle)
 {
 	HandlingMgr::OnDestroyVehicle(vehicle.getID());
-	CustomVehicleBindingRegistry::Instance().Unbind(static_cast<uint16_t>(vehicle.getID()));
+	uint16_t vId = static_cast<uint16_t>(vehicle.getID());
+	if (CustomVehicleBindingRegistry::Instance().Get(vId).has_value())
+	{
+		CustomVehicleBindingRegistry::Instance().Unbind(vId);
+		if (core_)
+		{
+			for (IPlayer* player : core_->getPlayers().players())
+			{
+				if (player && gPlayers.HasExtendedVeh(player->getID()))
+				{
+					CustomVehicleTransport::SendVehicleUnbind(*player, vId);
+				}
+			}
+		}
+	}
 }

@@ -11,7 +11,7 @@
 #include <unordered_map>
 
 #include "defs.h"
-
+#include "CustomVehicleBindingManager.h"
 #include "utils.h"
 
 class AudioExtender {
@@ -52,7 +52,11 @@ private:
 	static void __fastcall Hooked_InitialiseVehicleAudio(CAEVehicleAudioEntity* pAudio, void* edx, CVehicle* pVehicle)
 	{
 		if (pVehicle && IsVehiclePointerValid(pVehicle)) {
-			const std::uint32_t modelId = static_cast<std::uint32_t>(pVehicle->m_nModelIndex);
+			std::uint32_t modelId = static_cast<std::uint32_t>(pVehicle->m_nModelIndex);
+			auto* binding = CustomVehicleBindingManager::Instance().FindByVehicle(pVehicle);
+			if (binding && binding->customModelId > 0) {
+				modelId = binding->customModelId;
+			}
 			const int origModelIndex = pVehicle->m_nModelIndex;
 			bool swappedModel = false;
 			AudioExtender::CustomVehicleAudioDefinition def;
@@ -177,12 +181,19 @@ public:
 		return std::optional<CAEVehicleAudioEntity*>(&audio);
 	}
 
-	static bool InitialiseCustomVehicleAudio(CustomVehicleAudioRuntime& state, CVehicle& vehicle)
+	static bool InitialiseCustomVehicleAudio(CustomVehicleAudioRuntime& state, CVehicle& vehicle, uint32_t customModelId = 0)
 	{
 		if (!IsVehiclePointerValid(&vehicle))
 			return false;
-		const auto modelId = static_cast<std::uint32_t>(vehicle.m_nModelIndex);
-		const auto definition = GetVehicleAudio(modelId);
+		if (customModelId == 0) {
+			auto* binding = CustomVehicleBindingManager::Instance().FindByVehicle(&vehicle);
+			if (binding && binding->customModelId > 0) {
+				customModelId = binding->customModelId;
+			} else {
+				customModelId = static_cast<std::uint32_t>(vehicle.m_nModelIndex);
+			}
+		}
+		const auto definition = GetVehicleAudio(customModelId);
 		if (!definition) {
 			return false;
 		}
