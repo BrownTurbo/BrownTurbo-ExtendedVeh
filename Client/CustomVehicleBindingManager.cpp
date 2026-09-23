@@ -12,6 +12,7 @@
 #include <game_sa/CStreaming.h>
 #include <game_sa/CTxdStore.h>
 #include <game_sa/CVehicleModelInfo.h>
+#include <game_sa/CWorld.h>
 #include <game_sa/rw/rpworld.h>
 #include <game_sa/rw/rwcore.h>
 #include <algorithm>
@@ -181,7 +182,18 @@ void CustomVehicleBindingManager::Unbind(uint16_t vehicleId)
 					vehicle->m_anUpgrades[i] = -1;
 				}
 
+				RwMatrix savedRwMatrix;
+				bool hadMatrix = (vehicle->m_matrix != nullptr);
+				if (hadMatrix) {
+					vehicle->m_matrix->UpdateRW(&savedRwMatrix);
+				} else {
+					vehicle->m_placement.UpdateRwMatrix(&savedRwMatrix);
+				}
+				CSimpleTransform savedPlacement = vehicle->m_placement;
+
+				CWorld::Remove(vehicle);
 				vehicle->DeleteRwObject();
+
 				RpClump* origClump = CloneClumpPreservingOrder(origModel->m_pRwClump);
 				if (origClump) {
 					CVisibilityPlugins::SetupVehicleVariables(origClump);
@@ -193,7 +205,19 @@ void CustomVehicleBindingManager::Unbind(uint16_t vehicleId)
 						CCustomCarPlateMgr::SetupClump(origClump, plateText, 0);
 					}
 
-					vehicle->AttachToRwObject(reinterpret_cast<RwObject*>(origClump), true);
+					RwFrame* rootFrame = RpClumpGetFrame(origClump);
+					if (rootFrame) {
+						std::memcpy(&rootFrame->modelling, &savedRwMatrix, sizeof(RwMatrix));
+						RwFrameUpdateObjects(rootFrame);
+					}
+
+					vehicle->AttachToRwObject(reinterpret_cast<RwObject*>(origClump), false);
+
+					if (hadMatrix && vehicle->m_matrix) {
+						((void(__thiscall*)(CMatrix*, RwMatrix*))0x59AD20)(vehicle->m_matrix, &savedRwMatrix);
+					}
+					vehicle->m_placement = savedPlacement;
+
 					if (vehicle->m_nVehicleSubClass == VEHICLE_AUTOMOBILE || vehicle->m_nVehicleSubClass == VEHICLE_MTRUCK || vehicle->m_nVehicleSubClass == VEHICLE_QUAD) {
 						reinterpret_cast<CAutomobile*>(vehicle)->SetupModelNodes();
 					} else if (vehicle->m_nVehicleSubClass == VEHICLE_BIKE || vehicle->m_nVehicleSubClass == VEHICLE_BMX) {
@@ -207,6 +231,8 @@ void CustomVehicleBindingManager::Unbind(uint16_t vehicleId)
 							vehicle->AddUpgrade(savedUpgrades[i], i);
 						}
 					}
+
+					CWorld::Add(vehicle);
 				}
 				// CVehicle doesn't expose m_pColModel directly; use CEntity::GetColModel().
 				// Restoring the original model's collision: GTA:SA looks up the col model
@@ -354,13 +380,45 @@ void CustomVehicleBindingManager::Process()
 					vehicle->m_anUpgrades[i] = -1;
 				}
 
-				ClientLog(std::format("[Client] Replacing RW object: vehicle={} oldRw=0x{:X} newRw=0x{:X}", vehicleId, reinterpret_cast<std::uintptr_t>(vehicle->m_pRwObject), reinterpret_cast<std::uintptr_t>(newClump)));
+				RwMatrix savedRwMatrix;
+				bool hadMatrix = (vehicle->m_matrix != nullptr);
+				if (hadMatrix) {
+					vehicle->m_matrix->UpdateRW(&savedRwMatrix);
+				} else {
+					vehicle->m_placement.UpdateRwMatrix(&savedRwMatrix);
+				}
+				CSimpleTransform savedPlacement = vehicle->m_placement;
+
+				CWorld::Remove(vehicle);
+
+				ClientLog(std::format("[Client] Replacing RW object: vehicle={} oldRw=0x{:X} newRw=0x{:X} pos=({:.2f}, {:.2f}, {:.2f})",
+					vehicleId,
+					reinterpret_cast<std::uintptr_t>(vehicle->m_pRwObject),
+					reinterpret_cast<std::uintptr_t>(newClump),
+					savedRwMatrix.pos.x, savedRwMatrix.pos.y, savedRwMatrix.pos.z));
+
 				vehicle->DeleteRwObject();
 				if (!vehicle->m_pRwObject) {
 					ClientLog(std::format("[Client] RW object deleted: vehicle={}", vehicleId));
 				}
-				vehicle->AttachToRwObject(reinterpret_cast<RwObject*>(newClump), true);
+
+				RwFrame* rootFrame = RpClumpGetFrame(newClump);
+				if (rootFrame) {
+					std::memcpy(&rootFrame->modelling, &savedRwMatrix, sizeof(RwMatrix));
+					RwFrameUpdateObjects(rootFrame);
+				}
+
+				// CRITICAL: Second argument must be FALSE (updateEntityMatrix = false).
+				// If true, GTA:SA 0x533ED0 overwrites vehicle->m_matrix from newClump's
+				// initial root frame matrix (which is 0, 0, 0). (0, 0, 0) is the Farm in Red County!
+				// When overwritten, vehicle drops underground at the Farm.
+				vehicle->AttachToRwObject(reinterpret_cast<RwObject*>(newClump), false);
 				ClientLog(std::format("[Client] RW object attached: vehicle={} resultingRw=0x{:X}", vehicleId, reinterpret_cast<std::uintptr_t>(vehicle->m_pRwObject)));
+
+				if (hadMatrix && vehicle->m_matrix) {
+					((void(__thiscall*)(CMatrix*, RwMatrix*))0x59AD20)(vehicle->m_matrix, &savedRwMatrix);
+				}
+				vehicle->m_placement = savedPlacement;
 
 				if (vehicle->m_pRwObject != reinterpret_cast<RwObject*>(newClump)) {
 					ClientLog(std::format("[Client] ERROR: AttachToRwObject did not leave expected RW object on vehicle {}", vehicleId));
@@ -381,6 +439,8 @@ void CustomVehicleBindingManager::Process()
 						vehicle->AddUpgrade(savedUpgrades[i], i);
 					}
 				}
+
+				CWorld::Add(vehicle);
 
 				// CVehicle doesn't expose m_pColModel directly (CEntity::GetColModel() is the API).
 				// Custom model collision is managed via model info - no manual vehicle pointer update needed.
