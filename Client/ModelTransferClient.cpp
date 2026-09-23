@@ -464,7 +464,7 @@ void ModelTransferClient::OnTransferEnd(RakNet::BitStream* bs)
 
 	if (ok) {
 		// store and finish
-		bool stored = ModelCache::Instance().Store(modelId, static_cast<uint8_t>(kindByte), decompressed);
+		bool stored = ModelCache::Instance().Store(modelId, static_cast<uint8_t>(kindByte), decompressed, expectedSha);
 		fs::path finalPath;
 		if (stored) {
 			finalPath = ModelCache::Instance().PathFor(modelId, static_cast<uint8_t>(kindByte));

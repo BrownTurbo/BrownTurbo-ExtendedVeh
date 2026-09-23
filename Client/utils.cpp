@@ -483,6 +483,61 @@ fs::path GetSampCacheRoot()
 	return cachePath;
 }
 
+std::string GetCurrentServerAddress()
+{
+	rakhook::samp_ver version = rakhook::samp_version();
+	switch (version) {
+	case rakhook::samp_ver::v037r1: {
+		auto* p = sampapi::v037r1::RefNetGame();
+		if (p && p->m_szHostAddress[0] != '\0')
+			return std::string(p->m_szHostAddress) + ":" + std::to_string(p->m_nPort);
+		break;
+	}
+	case rakhook::samp_ver::v037r31: {
+		auto* p = sampapi::v037r3::RefNetGame();
+		if (p && p->m_szHostAddress[0] != '\0')
+			return std::string(p->m_szHostAddress) + ":" + std::to_string(p->m_nPort);
+		break;
+	}
+	case rakhook::samp_ver::v037r5: {
+		auto* p = sampapi::v037r5::RefNetGame();
+		if (p && p->m_szHostAddress[0] != '\0')
+			return std::string(p->m_szHostAddress) + ":" + std::to_string(p->m_nPort);
+		break;
+	}
+	case rakhook::samp_ver::v03dlr1: {
+		auto* p = sampapi::v03dl::RefNetGame();
+		if (p && p->m_szHostAddress[0] != '\0')
+			return std::string(p->m_szHostAddress) + ":" + std::to_string(p->m_nPort);
+		break;
+	}
+	default:
+		break;
+	}
+
+	if (rakhook::orig) {
+		PlayerID serverId = rakhook::orig->GetServerID();
+		if (serverId.binaryAddress != 0xFFFFFFFF && serverId.binaryAddress != 0) {
+			in_addr addr;
+			addr.s_addr = serverId.binaryAddress;
+			char* ip = inet_ntoa(addr);
+			if (ip)
+				return std::string(ip) + ":" + std::to_string(serverId.port);
+		}
+	}
+
+	return "127.0.0.1:7777";
+}
+
+std::string GetCurrentServerHash()
+{
+	std::string addr = GetCurrentServerAddress();
+	std::string md5;
+	if (CryptoUtility::ComputeMD5(addr, md5))
+		return md5;
+	return "00000000000000000000000000000000";
+}
+
 std::string Sha256HexOfBuffer(const unsigned char* data, unsigned int size)
 {
 	std::string hash;

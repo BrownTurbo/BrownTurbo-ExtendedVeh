@@ -179,6 +179,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE ${RAKHOOK_DIR}/include)
 find_package(imgui CONFIG REQUIRED)
 find_package(ZLIB REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)
+find_package(unofficial-hash-library CONFIG REQUIRED)
 
 target_link_libraries(${PROJECT_NAME} PRIVATE
     d3d9
@@ -190,6 +191,7 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
 	d3d9
 	ZLIB::ZLIB
 	nlohmann_json::nlohmann_json
+	unofficial::hash-library
 )
 
 function(force_dynamic_runtime_on_all_targets dir)

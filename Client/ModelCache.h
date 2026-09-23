@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <filesystem>
-#include <fstream>
+#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
@@ -20,93 +20,45 @@ public:
 		return instance;
 	}
 
-	void Sweep()
-	{
-		auto& cfg = TransferConfig::Instance();
-		if (!cfg.cacheEnabled)
-			return;
+	// Evicts expired and oversized cached assets for the current server
+	void Sweep();
 
-		fs::path dir = GetSampCacheRoot();
-		std::error_code ec;
-		if (!fs::exists(dir, ec))
-			return;
+	// Server cache directory: SAMP/cache/<server_md5>/
+	fs::path GetServerCacheRoot() const;
 
-		struct Entry {
-			fs::path path;
-			fs::file_time_type writeTime;
-			uintmax_t size;
-		};
-		std::vector<Entry> entries;
+	// Path for a specific model asset inside the server cache directory: SAMP/cache/<server_md5>/<modelId>/<name>.<ext>
+	fs::path PathFor(uint32_t modelId, uint8_t fileKind) const;
 
-		const auto now = std::chrono::file_clock::now();
-		for (auto& de : fs::directory_iterator(dir, ec)) {
-			if (!de.is_regular_file(ec))
-				continue;
-			auto writeTime = de.last_write_time(ec);
-			auto ageMs = std::chrono::duration_cast<std::chrono::milliseconds>(now - writeTime)
-							 .count();
-			if (ageMs > cfg.expireTimeMs) {
-				fs::remove(de.path(), ec);
-				continue;
-			}
-			entries.push_back({ de.path(), writeTime, de.file_size(ec) });
-		}
-
-		uintmax_t totalBytes = 0;
-		for (auto& e : entries)
-			totalBytes += e.size;
-
-		const uintmax_t maxBytes = static_cast<uintmax_t>(cfg.maxCacheSizeMB) * 1024ull * 1024ull;
-		if (totalBytes <= maxBytes)
-			return;
-
-		std::sort(entries.begin(), entries.end(),
-			[](const Entry& a, const Entry& b) {
-				return a.writeTime < b.writeTime;
-			});
-		for (auto& e : entries) {
-			if (totalBytes <= maxBytes)
-				break;
-			fs::remove(e.path, ec);
-			totalBytes -= e.size;
-		}
-	}
-
-	fs::path PathFor(uint32_t modelId, uint8_t fileKind) const
-	{
-		return GetSampCacheRoot() / (std::to_string(modelId) + "_" + std::to_string(fileKind) + ".bin");
-	}
-
+	// Instantaneous cache lookup via cache.json
 	std::optional<fs::path> TryGet(uint32_t modelId, uint8_t fileKind,
-		const std::string& expectedSha256Hex) const;
+		const std::string& expectedSha256Hex);
 
+	// Stores decompressed asset into SAMP/cache/<server_md5>/<modelId>/<name>.<ext> and updates cache.json
 	bool Store(uint32_t modelId, uint8_t fileKind,
-		const std::vector<uint8_t>& decompressedBytes) const
-	{
-		if (!TransferConfig::Instance().cacheEnabled)
-			return false;
-		const fs::path finalPath = PathFor(modelId, fileKind);
-		const fs::path temporaryPath = finalPath.string() + ".tmp";
-		std::ofstream file(temporaryPath,
-			std::ios::binary | std::ios::trunc);
-		if (!file.is_open())
-			return false;
-		file.write(reinterpret_cast<const char*>(decompressedBytes.data()),
-			decompressedBytes.size());
-		file.close();
-		if (!file)
-			return false;
+		const std::vector<uint8_t>& decompressedBytes,
+		const std::string& sha256Hex = "");
 
-		std::error_code ec;
-		fs::remove(finalPath, ec);
-		fs::rename(temporaryPath, finalPath, ec);
-		if (ec) {
-			fs::remove(temporaryPath, ec);
-			return false;
-		}
-		return true;
-	}
+	// Flush cache manifest to disk
+	void SaveManifest();
+
+	// Force reload manifest for current server
+	void ReloadManifest();
+
+	// Explicitly invalidate and delete a corrupted/failed cached asset
+	void Invalidate(uint32_t modelId, uint8_t fileKind);
 
 private:
-	ModelCache() = default;
+	ModelCache();
+	~ModelCache();
+
+	ModelCache(const ModelCache&) = delete;
+	ModelCache& operator=(const ModelCache&) = delete;
+
+	void EnsureServerInitialized();
+	void UpdateServersMasterIndex(const std::string& serverAddr, const std::string& serverHash);
+	static std::string GetKindKey(uint8_t fileKind);
+	static std::string GetAssetFileName(uint8_t fileKind, bool isWav = false);
+
+	struct Impl;
+	std::unique_ptr<Impl> m_impl;
 };

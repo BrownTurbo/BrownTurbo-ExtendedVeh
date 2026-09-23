@@ -8,6 +8,7 @@
       ]
     },
     "nlohmann-json",
-    "zlib"
+    "zlib",
+    "hash-library"
   ]
 }

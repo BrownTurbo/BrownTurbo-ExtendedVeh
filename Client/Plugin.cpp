@@ -30,6 +30,7 @@
 #include "utils.h"
 #include "CustomVehicleBindingManager.h"
 #include "streamingextender.hpp"
+#include "ModelCache.h"
 
 struct DummySwapGuard {
 	CVehicleModelInfo* m_baseModel;
@@ -1613,6 +1614,8 @@ private:
 
 			pending->dff = BinaryRwParser::ExtractClump(raw);
 			if (pending->dff.empty()) {
+				ClientLog(LogLevel::Error, std::format("[Client] Corrupt DFF for model {}: ExtractClump failed. Invalidating cache.", pending->def.customModelId));
+				ModelCache::Instance().Invalidate(pending->def.customModelId, static_cast<uint8_t>(ModelFileKind::Dff));
 				{
 					std::lock_guard<std::mutex> lock(pending->assetMutex);
 					pending->dffState = AssetState::Failed;
@@ -1736,6 +1739,7 @@ private:
 		if (!CTxdStore::LoadTxd(txdSlot, txdStream)) {
 			RwStreamClose(txdStream, nullptr);
 			StreamingExtender::DestroyCustomModel(pending->def.customModelId);
+			ModelCache::Instance().Invalidate(pending->def.customModelId, static_cast<uint8_t>(ModelFileKind::Txd));
 			SendMsg(0xFF0000, std::format("[Client] Failed to load TXD for model {}", pending->def.customModelId).c_str());
 			return;
 		}
@@ -1801,6 +1805,7 @@ private:
 						if (!pending->col.empty()) {
 							ExtendedVeh::Collision::CollisionLoader* colLoader = &ExtendedVeh::Collision::CollisionLoader::Instance();
 							if (!colLoader->LoadCollisionFromMemory(pending->col.data(), pending->col.size(), newModel)) {
+								ModelCache::Instance().Invalidate(pending->def.customModelId, static_cast<uint8_t>(ModelFileKind::Col));
 								SendMsg(0xFF8800, std::format("[Client] Warning: Failed to parse COL for model {}", pending->def.customModelId).c_str());
 							}
 						}
@@ -1818,6 +1823,7 @@ private:
 				} else {
 					CTxdStore::PopCurrentTxd();
 					StreamingExtender::DestroyCustomModel(pending->def.customModelId);
+					ModelCache::Instance().Invalidate(pending->def.customModelId, static_cast<uint8_t>(ModelFileKind::Dff));
 					SendMsg(0xFF0000, std::format("[Client] Failed to parse DFF for model {}", pending->def.customModelId).c_str());
 					return;
 				}
@@ -1826,12 +1832,14 @@ private:
 				RwStreamClose(dffStream, nullptr);
 				CTxdStore::PopCurrentTxd();
 				StreamingExtender::DestroyCustomModel(pending->def.customModelId);
+				ModelCache::Instance().Invalidate(pending->def.customModelId, static_cast<uint8_t>(ModelFileKind::Dff));
 				SendMsg(0xFF0000, std::format("[CustomVeh] No CLUMP chunk in DFF for model {}", pending->def.customModelId).c_str());
 				return;
 			}
 		} else {
 			CTxdStore::PopCurrentTxd();
 			StreamingExtender::DestroyCustomModel(pending->def.customModelId);
+			ModelCache::Instance().Invalidate(pending->def.customModelId, static_cast<uint8_t>(ModelFileKind::Dff));
 			SendMsg(0xFF0000, std::format("[Client] Failed to open DFF stream for model {}", pending->def.customModelId).c_str());
 			return;
 		}
@@ -2198,6 +2206,7 @@ void InitializeHooks()
 			return HandlingManager::ProcessAction(actionID, &bs);
 		} else if (packetId == ID_CONNECTION_REQUEST_ACCEPTED) {
 			ClientLog(LogLevel::Info, "[Client] Received ID_CONNECTION_REQUEST_ACCEPTED, sending init packet...");
+			ModelCache::Instance().ReloadManifest();
 			_customVehInstance.SetLocalPlayerSpawned(false);
 			g_windowVisible.store(false, std::memory_order_relaxed);
 			ModelTransferClient::Instance().ClearHistory();
@@ -2212,6 +2221,7 @@ void InitializeHooks()
 			}
 		} else if (packetId == ID_DISCONNECTION_NOTIFICATION || packetId == ID_CONNECTION_LOST || packetId == ID_CONNECTION_BANNED) {
 			ClientLog(LogLevel::Info, "[Client] Disconnected from server");
+			ModelCache::Instance().SaveManifest();
 			_customVehInstance.SetLocalPlayerSpawned(false);
 			// Hide download window on disconnect
 			g_windowVisible.store(false, std::memory_order_relaxed);

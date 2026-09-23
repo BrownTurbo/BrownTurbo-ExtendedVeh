@@ -63,6 +63,8 @@ void* GtaAddress(uintptr_t gtaAddress);
 bool LooksLikeFunctionEntry(uintptr_t address);
 fs::path GetDocumentsDirectory();
 fs::path GetSampCacheRoot();
+std::string GetCurrentServerAddress();
+std::string GetCurrentServerHash();
 std::string Sha256HexOfBuffer(const unsigned char* data, unsigned int size);
 bool IsRcVehicleModel(int modelIndex);
 bool IsHeavyVehicleModel(int modelIndex);

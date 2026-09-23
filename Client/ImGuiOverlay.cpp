@@ -120,9 +120,9 @@ void RenderTransferWindow()
 		ImGui::ProgressBar(totalFraction, ImVec2(-1, 0), buf);
 	}
 
-	static auto s_allDoneTime = std::chrono::steady_clock::time_point::min();
+	static auto s_allDoneTime = (std::chrono::steady_clock::time_point::min)();
 	if (allDone) {
-		if (s_allDoneTime == std::chrono::steady_clock::time_point::min()) {
+		if (s_allDoneTime == (std::chrono::steady_clock::time_point::min)()) {
 			s_allDoneTime = std::chrono::steady_clock::now();
 		}
 		double elapsedSec = std::chrono::duration_cast<std::chrono::duration<double>>(std::chrono::steady_clock::now() - s_allDoneTime).count();
@@ -133,13 +133,13 @@ void RenderTransferWindow()
 			if (!g_manuallyToggled.load(std::memory_order_relaxed)) {
 				g_windowVisible.store(false, std::memory_order_relaxed);
 				io.MouseDrawCursor = false;
-				s_allDoneTime = std::chrono::steady_clock::time_point::min();
+				s_allDoneTime = (std::chrono::steady_clock::time_point::min)();
 				ImGui::End();
 				return;
 			}
 		}
 	} else {
-		s_allDoneTime = std::chrono::steady_clock::time_point::min();
+		s_allDoneTime = (std::chrono::steady_clock::time_point::min)();
 		if (failedCount > 0) {
 			ImGui::TextColored(ImVec4(1.0f, 0.3f, 0.3f, 1.0f), "Some transfers failed. Check network or click Retry below.");
 		}

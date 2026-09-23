@@ -277,3 +277,32 @@ bool CryptoUtility::ComputeFileSHA256(const std::filesystem::path& filePath, std
 	outHashStr = BytesToHex(hashBuffer.data(), hashBuffer.size());
 	return outHashStr.size() == 64;
 }
+
+#if __has_include(<hash-library/md5.h>)
+#include <hash-library/md5.h>
+#else
+#include <md5.h>
+#endif
+
+bool CryptoUtility::ComputeMD5(const std::uint8_t* data, std::size_t length, std::string& outHashStr)
+{
+	outHashStr.clear();
+
+	if (length > 0 && data == nullptr)
+		return false;
+
+	MD5 md5;
+	if (length > 0)
+		md5.add(data, length);
+	outHashStr = md5.getHash();
+	return outHashStr.size() == 32;
+}
+
+bool CryptoUtility::ComputeMD5(const std::string& input, std::string& outHashStr)
+{
+	MD5 md5;
+	md5.add(input.data(), input.size());
+	outHashStr = md5.getHash();
+	return outHashStr.size() == 32;
+}
+
