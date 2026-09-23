@@ -289,9 +289,9 @@ public:
 		ClientLog(LogLevel::Debug, std::format(" FinalizeClump -> pInfo=0x{:08X} pClump=0x{:08X}", reinterpret_cast<std::uintptr_t>(pInfo), reinterpret_cast<std::uintptr_t>(pClump)));
 
 		if (pInfo->m_pRwClump) {
-			ClientLog(LogLevel::Debug, " FinalizeClump -> deleting old RW clump");
+			ClientLog(LogLevel::Debug, "FinalizeClump -> deleting old RW clump");
 			pInfo->DeleteRwObject();
-			ClientLog(LogLevel::Debug, " FinalizeClump -> old RW clump deleted");
+			ClientLog(LogLevel::Debug, "FinalizeClump -> old RW clump deleted");
 		}
 		// CRITICAL: If m_pVehicleStruct was set (e.g. by a previous SetClump call),
 		// release it from GTA:SA's CPool<CVehicleStructure> BEFORE calling SetClump.
@@ -306,19 +306,19 @@ public:
 			CVehicleStructure_Destructor(pInfo->m_pVehicleStruct);
 			CVehicleStructure_Release(pInfo->m_pVehicleStruct);
 			pInfo->m_pVehicleStruct = nullptr;
-			ClientLog(LogLevel::Debug, " FinalizeClump -> vehicle struct released");
+			ClientLog(LogLevel::Debug, "FinalizeClump -> vehicle struct released");
 		}
-		ClientLog(LogLevel::Debug, " FinalizeClump -> BEFORE SetupVehicleVariables");
+		ClientLog(LogLevel::Debug, "FinalizeClump -> BEFORE SetupVehicleVariables");
 		CVisibilityPlugins::SetupVehicleVariables(pClump);
-		ClientLog(LogLevel::Debug, " FinalizeClump -> AFTER SetupVehicleVariables");
+		ClientLog(LogLevel::Debug, "FinalizeClump -> AFTER SetupVehicleVariables");
 
-		ClientLog(LogLevel::Debug, " FinalizeClump -> BEFORE SetClump");
+		ClientLog(LogLevel::Debug, "FinalizeClump -> BEFORE SetClump");
 		pInfo->SetClump(pClump);   // SetClump allocates m_pVehicleStruct from pool + fills dummies
-		ClientLog(LogLevel::Debug, " FinalizeClump -> AFTER SetClump");
+		ClientLog(LogLevel::Debug, "FinalizeClump -> AFTER SetClump");
 
-		ClientLog(LogLevel::Debug, " FinalizeClump -> BEFORE SetAtomicRenderCallbacks");
+		ClientLog(LogLevel::Debug, "FinalizeClump -> BEFORE SetAtomicRenderCallbacks");
 		pInfo->SetAtomicRenderCallbacks();
-		ClientLog(LogLevel::Debug, " FinalizeClump -> AFTER SetAtomicRenderCallbacks");
+		ClientLog(LogLevel::Debug, "FinalizeClump -> AFTER SetAtomicRenderCallbacks");
 
 		// ExtractDummiesFromClump is a fallback only: it fills any dummy slot that
 		// PreprocessHierarchy left as (0,0,0), using the RpClump frame hierarchy.
