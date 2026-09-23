@@ -388,10 +388,10 @@ public:
 		static bool s_checked = false;
 		if (!s_checked) {
 			s_checked = true;
-			if (!BASS_IsStarted()) {
+			if (BASS_GetDevice() == static_cast<DWORD>(-1)) {
 				BASS_Init(-1, 44100, BASS_DEVICE_3D, nullptr, nullptr);
-				BASS_Start();
 			}
+			BASS_Start();
 			BASS_Set3DFactors(1.0f, 1.0f, 1.0f);
 		}
 	}
