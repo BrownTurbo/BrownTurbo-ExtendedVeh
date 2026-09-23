@@ -118,7 +118,7 @@ void CustomVehicleBindingManager::Bind(uint16_t vehicleId, uint32_t customModelI
 					baseModelId = baseIt->second;
 				}
 			}
-			ClientLog(std::format("[Client] Ignoring duplicate bind: vehicle={} customModel={}", vehicleId, customModelId));
+			ClientLog(LogLevel::Warning, std::format("[Client] Ignoring duplicate bind: vehicle={} customModel={}", vehicleId, customModelId));
 			return;
 		}
 
@@ -145,7 +145,7 @@ void CustomVehicleBindingManager::Bind(uint16_t vehicleId, uint32_t customModelI
 
 	m_bindings.emplace(vehicleId, binding);
 	HandlingManager::IncrementModelUse(customModelId);
-	ClientLog(std::format("[Client] Binding created: vehicle={} customModel={} baseModel={}", vehicleId, customModelId, binding.baseModelId));
+	ClientLog(LogLevel::Info, std::format("[Client] Binding created: vehicle={} customModel={} baseModel={}", vehicleId, customModelId, binding.baseModelId));
 }
 
 void CustomVehicleBindingManager::Unbind(uint16_t vehicleId)
@@ -254,7 +254,7 @@ void CustomVehicleBindingManager::Clear()
 		HandlingManager::DecrementModelUse(binding.customModelId);
 	}
 	m_bindings.clear();
-	ClientLog("[Client] CustomVehicleBindingManager::Clear: All bindings cleared.");
+	ClientLog(LogLevel::Info, "[Client] CustomVehicleBindingManager::Clear: All bindings cleared.");
 }
 
 CustomVehicleBindingManager::Binding* CustomVehicleBindingManager::Find(uint16_t vehicleId)
@@ -330,17 +330,17 @@ void CustomVehicleBindingManager::Process()
 	for (auto& [vehicleId, binding] : m_bindings) {
 		auto* model = StreamingExtender::GetCustomModel(binding.customModelId);
 		if (!model) {
-			ClientLog(std::format("[Client] WAIT: vehicle={} customModel={} has no StreamingExtender model.", vehicleId, binding.customModelId));
+			ClientLog(LogLevel::Debug, std::format("[Client] WAIT: vehicle={} customModel={} has no StreamingExtender model.", vehicleId, binding.customModelId));
 			continue;
 		}
 
 		if (!model->m_pRwClump) {
-			ClientLog(std::format("[Client] WAIT: vehicle={} customModel={} model exists but m_pRwClump is NULL.", vehicleId, binding.customModelId));
+			ClientLog(LogLevel::Debug, std::format("[Client] WAIT: vehicle={} customModel={} model exists but m_pRwClump is NULL.", vehicleId, binding.customModelId));
 			continue;
 		}
 
 		if (!model->m_pVehicleStruct) {
-			ClientLog(std::format("[Client] WAIT: vehicle={} customModel={} m_pVehicleStruct=NULL.", vehicleId, binding.customModelId));
+			ClientLog(LogLevel::Debug, std::format("[Client] WAIT: vehicle={} customModel={} m_pVehicleStruct=NULL.", vehicleId, binding.customModelId));
 			continue;
 		}
 
@@ -357,7 +357,7 @@ void CustomVehicleBindingManager::Process()
 		}
 
 		if (!binding.modelApplied || binding.appliedGameVehicle != vehicle) {
-			ClientLog(std::format("[Client] Applying visual model: vehicle={} customModel={} baseModel={} vehiclePtr=0x{:X} sourceClump=0x{:X}", vehicleId, binding.customModelId, binding.baseModelId, reinterpret_cast<std::uintptr_t>(vehicle), reinterpret_cast<std::uintptr_t>(model->m_pRwClump)));
+			ClientLog(LogLevel::Info, std::format("[Client] Applying visual model: vehicle={} customModel={} baseModel={} vehiclePtr=0x{:X} sourceClump=0x{:X}", vehicleId, binding.customModelId, binding.baseModelId, reinterpret_cast<std::uintptr_t>(vehicle), reinterpret_cast<std::uintptr_t>(model->m_pRwClump)));
 
 			RpClump* newClump = CloneClumpPreservingOrder(model->m_pRwClump);
 			if (newClump) {
@@ -391,7 +391,7 @@ void CustomVehicleBindingManager::Process()
 
 				CWorld::Remove(vehicle);
 
-				ClientLog(std::format("[Client] Replacing RW object: vehicle={} oldRw=0x{:X} newRw=0x{:X} pos=({:.2f}, {:.2f}, {:.2f})",
+				ClientLog(LogLevel::Debug, std::format("[Client] Replacing RW object: vehicle={} oldRw=0x{:X} newRw=0x{:X} pos=({:.2f}, {:.2f}, {:.2f})",
 					vehicleId,
 					reinterpret_cast<std::uintptr_t>(vehicle->m_pRwObject),
 					reinterpret_cast<std::uintptr_t>(newClump),
@@ -399,7 +399,7 @@ void CustomVehicleBindingManager::Process()
 
 				vehicle->DeleteRwObject();
 				if (!vehicle->m_pRwObject) {
-					ClientLog(std::format("[Client] RW object deleted: vehicle={}", vehicleId));
+					ClientLog(LogLevel::Debug, std::format("[Client] RW object deleted: vehicle={}", vehicleId));
 				}
 
 				RwFrame* rootFrame = RpClumpGetFrame(newClump);
@@ -413,7 +413,7 @@ void CustomVehicleBindingManager::Process()
 				// initial root frame matrix (which is 0, 0, 0). (0, 0, 0) is the Farm in Red County!
 				// When overwritten, vehicle drops underground at the Farm.
 				vehicle->AttachToRwObject(reinterpret_cast<RwObject*>(newClump), false);
-				ClientLog(std::format("[Client] RW object attached: vehicle={} resultingRw=0x{:X}", vehicleId, reinterpret_cast<std::uintptr_t>(vehicle->m_pRwObject)));
+				ClientLog(LogLevel::Debug, std::format("[Client] RW object attached: vehicle={} resultingRw=0x{:X}", vehicleId, reinterpret_cast<std::uintptr_t>(vehicle->m_pRwObject)));
 
 				if (hadMatrix && vehicle->m_matrix) {
 					((void(__thiscall*)(CMatrix*, RwMatrix*))0x59AD20)(vehicle->m_matrix, &savedRwMatrix);
@@ -421,9 +421,9 @@ void CustomVehicleBindingManager::Process()
 				vehicle->m_placement = savedPlacement;
 
 				if (vehicle->m_pRwObject != reinterpret_cast<RwObject*>(newClump)) {
-					ClientLog(std::format("[Client] ERROR: AttachToRwObject did not leave expected RW object on vehicle {}", vehicleId));
+					ClientLog(LogLevel::Error, std::format("[Client] ERROR: AttachToRwObject did not leave expected RW object on vehicle {}", vehicleId));
 				} else {
-					ClientLog(std::format("[Client] SUCCESS: vehicle {} is visually bound to custom model {}", vehicleId, binding.customModelId));
+					ClientLog(LogLevel::Info, std::format("[Client] SUCCESS: vehicle {} is visually bound to custom model {}", vehicleId, binding.customModelId));
 				}
 
 				if (vehicle->m_nVehicleSubClass == VEHICLE_AUTOMOBILE || vehicle->m_nVehicleSubClass == VEHICLE_MTRUCK || vehicle->m_nVehicleSubClass == VEHICLE_QUAD) {
@@ -717,7 +717,7 @@ void CustomVehicleBindingManager::ApplyPaintjobToVehicle(CVehicle* vehicle, int 
 
 	auto* customModel = StreamingExtender::GetCustomModel(binding->customModelId);
 	if (!customModel) {
-		ClientLog(std::format("[Client] WAIT: customModel={} has no StreamingExtender model.", binding->customModelId));
+		ClientLog(LogLevel::Debug, std::format("[Client] WAIT: customModel={} has no StreamingExtender model.", binding->customModelId));
 		return;
 	}
 

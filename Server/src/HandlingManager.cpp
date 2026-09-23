@@ -27,6 +27,7 @@ std::unordered_map<uint32_t, CustomVeh::Protocol::VehicleDefinition> customVehic
 std::unordered_set<uint32_t> customVehicleModels;
 std::unordered_map<uint16_t, uint8_t> vehicleDoorStates;
 std::unordered_map<uint32_t, CustomVeh::Protocol::VehicleDefinition> stagedCustomVehicleDefs;
+std::unordered_map<uint32_t, ModelConfig> customVehicleConfigs;
 
 std::unordered_set<uint16_t> usOutgoingVehicleMods;
 std::unordered_set<uint32_t> usOutgoingModelMods;
@@ -418,7 +419,7 @@ void OnDestroyVehicle(int vehicleid)
 	CustomVehicleBindingRegistry::Instance().Unbind(static_cast<uint16_t>(vehicleid));
 }
 
-void OnPlayerConnect(IPlayer& player)
+void OnPlayerAuthorized(IPlayer& player)
 {
 	int playerid = player.getID();
 	if (!gPlayers.HasExtendedVeh(playerid))
@@ -998,6 +999,7 @@ void UnregisterCustomVehicle(uint32_t customModelId)
 	customVehicleDefs.erase(customModelId);
 	customVehicleModels.erase(customModelId);
 	gCustomModelHandlings.erase(customModelId);
+	customVehicleConfigs.erase(customModelId);
 	CVehicleMgr::VehicleRegistry::Get().UnregisterCustomModel(customModelId);
 	SendCustomVehicleDestroyToAll(customModelId);
 }
@@ -1025,6 +1027,9 @@ void BeginCustomVehicleDef(uint32_t customModelId, uint32_t visualBase, uint32_t
 	stHandlingEntry& entry = gCustomModelHandlings[customModelId];
 	HandlingDefault::copyDefaultModelHandling(handlingBase, &entry.handlingData);
 	entry.handlingModMap.clear();
+
+	// Auto-check and load model.ini if present in models/{customModelId}/
+	LoadCustomVehicleConfig(customModelId);
 }
 
 bool SetCustomVehicleAsset(uint32_t customModelId, std::string filename, CustomVeh::Protocol::AssetDescriptor CustomVeh::Protocol::VehicleDefinition::*asset)
@@ -1338,6 +1343,28 @@ void SendCustomVehicleDefToPlayer(IPlayer& player, uint32_t modelId)
 	bs.Write(def.modelInfo.comprate);
 	bs.Write(def.modelInfo.numExtras);
 	bs.Write(def.modelInfo.wheelUpgradeClass);
+
+	if (def.flags & CustomVeh::Protocol::HasAnyAudio)
+	{
+		bs.Write(def.customAudio.volume);
+		bs.Write(def.customAudio.minDistance);
+		bs.Write(def.customAudio.maxDistance);
+		bs.Write(def.customAudio.pitchMultiplier);
+		bs.Write(def.customAudio.accelPitchFactor);
+		bs.Write(def.customAudio.muteNative);
+
+		if (def.flags & CustomVeh::Protocol::HasAudioEngine)
+			writeAsset(def.audioEngine);
+		if (def.flags & CustomVeh::Protocol::HasAudioAccel)
+			writeAsset(def.audioAccel);
+		if (def.flags & CustomVeh::Protocol::HasAudioDecel)
+			writeAsset(def.audioDecel);
+		if (def.flags & CustomVeh::Protocol::HasAudioBrake)
+			writeAsset(def.audioBrake);
+		if (def.flags & CustomVeh::Protocol::HasAudioCrash)
+			writeAsset(def.audioCrash);
+	}
+
 	player.sendPacket(Span<uint8_t>(pkt.data.GetData(), pkt.data.GetNumberOfBitsUsed()), 0, true);
 }
 
@@ -1370,5 +1397,432 @@ void SendCustomVehicleDestroyToAll(uint32_t modelId)
 			SendCustomVehicleDestroyToPlayer(*player, modelId);
 		}
 	}
+}
+
+bool LoadCustomVehicleConfig(uint32_t customModelId)
+{
+	ExtendedVehCompo* compo = ExtendedVehCompo::get();
+	ICore* core_ = compo ? compo->getCore() : nullptr;
+
+	fs::path iniPath = fs::path(g_modelsDir) / std::to_string(customModelId) / "model.ini";
+	if (!fs::exists(iniPath))
+	{
+		fs::path fallback = fs::path(g_modelsDir) / (std::to_string(customModelId) + ".ini");
+		if (fs::exists(fallback))
+			iniPath = fallback;
+		else
+			return false;
+	}
+
+	uint32_t fallbackBase = 411;
+	auto itStaged = stagedCustomVehicleDefs.find(customModelId);
+	if (itStaged != stagedCustomVehicleDefs.end())
+	{
+		fallbackBase = itStaged->second.handlingBaseModel;
+	}
+	else
+	{
+		auto itComm = customVehicleDefs.find(customModelId);
+		if (itComm != customVehicleDefs.end())
+			fallbackBase = itComm->second.handlingBaseModel;
+	}
+
+	ModelConfig config;
+	if (!ModelConfigParser::ParseFile(iniPath, config, fallbackBase))
+	{
+		if (core_)
+			core_->logLn(LogLevel::Warning, "[ExtendedVeh] LoadCustomVehicleConfig: Failed to parse '%s' for model %u", iniPath.string().c_str(), customModelId);
+		return false;
+	}
+
+	customVehicleConfigs[customModelId] = config;
+
+	// Apply base models and sounds to staged definition if available
+	if (itStaged != stagedCustomVehicleDefs.end())
+	{
+		if (config.visualBase > 0)
+			itStaged->second.visualBaseModel = config.visualBase;
+		if (config.audioBase > 0)
+			itStaged->second.audioBaseModel = config.audioBase;
+		if (config.handlingBase > 0)
+			itStaged->second.handlingBaseModel = config.handlingBase;
+		if (config.engineOnSound >= 0)
+			itStaged->second.engineSoundId.OnSound = config.engineOnSound;
+		if (config.engineOffSound >= 0)
+			itStaged->second.engineSoundId.OffSound = config.engineOffSound;
+		if (config.accelerateSound >= 0)
+			itStaged->second.celerateSoundId.accelerateSound = config.accelerateSound;
+		if (config.decelerateSound >= 0)
+			itStaged->second.celerateSoundId.decelerateSound = config.decelerateSound;
+	}
+
+	// Apply IDE settings (wheels, scale, class, extras, etc.)
+	if (config.hasIde)
+	{
+		SetCustomVehicleModelInfo(customModelId,
+			config.vehicleClass,
+			config.wheelModelId,
+			config.wheelScaleFront,
+			config.wheelScaleRear,
+			config.frequency,
+			config.level,
+			config.compRules,
+			config.numExtras,
+			config.wheelUpgradeClass);
+	}
+
+	// Apply handling attributes (preserving front lights!)
+	if (config.hasHandling)
+	{
+		stHandlingEntry& entry = gCustomModelHandlings[customModelId];
+		eVehicleLightsSize originalFrontLights = entry.handlingData.m_nFrontLights;
+
+		entry.handlingData = config.handlingData;
+		entry.handlingData.m_nFrontLights = originalFrontLights; // Front lights are 100% fixed!
+
+		for (const auto& [attrib, mod] : config.handlingMods)
+		{
+			if (attrib == HANDL_FRONTLIGHTS)
+				continue; // DO NOT touch front lights!
+			entry.handlingModMap[attrib] = mod;
+		}
+
+		// If this model is already committed and in use, mark for outgoing broadcast
+		auto itComm = customVehicleDefs.find(customModelId);
+		if (itComm != customVehicleDefs.end())
+		{
+			std::lock_guard lock(g_outgoingModsMutex);
+			usOutgoingModelMods.insert(customModelId);
+		}
+	}
+
+	// Apply custom audio configuration to staged or committed definition
+	if (config.hasAudio)
+	{
+		auto applyAudioConfig = [&](CustomVeh::Protocol::VehicleDefinition& def) {
+			def.customAudio.volume = config.audioVolume;
+			def.customAudio.minDistance = config.audioMinDistance;
+			def.customAudio.maxDistance = config.audioMaxDistance;
+			def.customAudio.pitchMultiplier = config.audioPitchMultiplier;
+			def.customAudio.accelPitchFactor = config.audioAccelPitchFactor;
+			def.customAudio.muteNative = config.audioMuteNative;
+
+			auto setupSlot = [&](const std::string& filename, CustomVeh::Protocol::AssetType type,
+				CustomVeh::Protocol::AssetFlags flag, CustomVeh::Protocol::AssetDescriptor& desc) {
+				if (filename.empty()) return;
+				fs::path p = fs::path(g_modelsDir) / std::to_string(customModelId) / filename;
+				if (!fs::exists(p)) {
+					if (core_) core_->logLn(LogLevel::Warning, "[ExtendedVeh] Audio file '%s' does not exist for model %u", p.string().c_str(), customModelId);
+					return;
+				}
+				desc.type = type;
+				strncpy(desc.filename, filename.c_str(), sizeof(desc.filename) - 1);
+				desc.filename[sizeof(desc.filename) - 1] = '\0';
+				std::string shaHex;
+				if (ComputeFileSha256(p.string(), shaHex)) {
+					strncpy(desc.sha256, shaHex.c_str(), sizeof(desc.sha256) - 1);
+					desc.sha256[sizeof(desc.sha256) - 1] = '\0';
+				}
+				std::error_code ec;
+				desc.size = fs::file_size(p, ec);
+				if (ec) desc.size = 0;
+				def.flags |= flag;
+			};
+
+			if (!config.engineFile.empty())
+				setupSlot(config.engineFile, CustomVeh::Protocol::AssetType::AudioEngine, CustomVeh::Protocol::HasAudioEngine, def.audioEngine);
+			if (!config.accelerationFile.empty())
+				setupSlot(config.accelerationFile, CustomVeh::Protocol::AssetType::AudioAccel, CustomVeh::Protocol::HasAudioAccel, def.audioAccel);
+			if (!config.deaccelerationFile.empty())
+				setupSlot(config.deaccelerationFile, CustomVeh::Protocol::AssetType::AudioDecel, CustomVeh::Protocol::HasAudioDecel, def.audioDecel);
+			if (!config.brakeFile.empty())
+				setupSlot(config.brakeFile, CustomVeh::Protocol::AssetType::AudioBrake, CustomVeh::Protocol::HasAudioBrake, def.audioBrake);
+			if (!config.crashFile.empty())
+				setupSlot(config.crashFile, CustomVeh::Protocol::AssetType::AudioCrash, CustomVeh::Protocol::HasAudioCrash, def.audioCrash);
+		};
+
+		if (itStaged != stagedCustomVehicleDefs.end())
+			applyAudioConfig(itStaged->second);
+		auto itComm = customVehicleDefs.find(customModelId);
+		if (itComm != customVehicleDefs.end())
+			applyAudioConfig(itComm->second);
+	}
+
+	if (core_)
+	{
+		core_->logLn(LogLevel::Message, "[ExtendedVeh] LoadCustomVehicleConfig: Successfully loaded configuration for model %u from '%s'", customModelId, iniPath.string().c_str());
+	}
+	return true;
+}
+
+bool DefineCustomVehicleFromConfig(uint32_t customModelId, uint32_t defaultVisualBase)
+{
+	ExtendedVehCompo* compo = ExtendedVehCompo::get();
+	ICore* core_ = compo ? compo->getCore() : nullptr;
+
+	fs::path iniPath = fs::path(g_modelsDir) / std::to_string(customModelId) / "model.ini";
+	if (!fs::exists(iniPath))
+	{
+		fs::path fallback = fs::path(g_modelsDir) / (std::to_string(customModelId) + ".ini");
+		if (fs::exists(fallback))
+			iniPath = fallback;
+	}
+
+	ModelConfig config;
+	bool hasIni = false;
+	if (fs::exists(iniPath))
+	{
+		hasIni = ModelConfigParser::ParseFile(iniPath, config, defaultVisualBase);
+	}
+
+	uint32_t visualBase = (config.visualBase > 0) ? config.visualBase : defaultVisualBase;
+	uint32_t audioBase = (config.audioBase > 0) ? config.audioBase : visualBase;
+	uint32_t handlingBase = (config.handlingBase > 0) ? config.handlingBase : visualBase;
+
+	CustomVeh::Protocol::EngineSound engineSound{};
+	engineSound.OnSound = config.engineOnSound;
+	engineSound.OffSound = config.engineOffSound;
+
+	BeginCustomVehicleDef(customModelId, visualBase, audioBase, handlingBase, engineSound);
+
+	if (!SetCustomVehicleDff(customModelId))
+	{
+		if (core_)
+			core_->logLn(LogLevel::Warning, "[ExtendedVeh] DefineCustomVehicleFromConfig: Missing DFF for model %u", customModelId);
+		stagedCustomVehicleDefs.erase(customModelId);
+		return false;
+	}
+
+	if (!SetCustomVehicleTxd(customModelId))
+	{
+		if (core_)
+			core_->logLn(LogLevel::Warning, "[ExtendedVeh] DefineCustomVehicleFromConfig: Missing TXD for model %u", customModelId);
+		stagedCustomVehicleDefs.erase(customModelId);
+		return false;
+	}
+
+	// COL is optional
+	SetCustomVehicleCol(customModelId);
+
+	if (hasIni)
+	{
+		LoadCustomVehicleConfig(customModelId);
+	}
+
+	return CommitCustomVehicleDef(customModelId);
+}
+
+int LoadAllCustomVehicles(uint32_t defaultVisualBase)
+{
+	ExtendedVehCompo* compo = ExtendedVehCompo::get();
+	ICore* core_ = compo ? compo->getCore() : nullptr;
+
+	if (!fs::exists(g_modelsDir) || !fs::is_directory(g_modelsDir))
+	{
+		if (core_)
+			core_->logLn(LogLevel::Warning, "[ExtendedVeh] LoadAllCustomVehicles: Models directory '%s' does not exist", g_modelsDir.c_str());
+		return 0;
+	}
+
+	int loadedCount = 0;
+	std::error_code ec;
+	for (const auto& entry : fs::directory_iterator(g_modelsDir, ec))
+	{
+		if (!entry.is_directory())
+			continue;
+
+		std::string folderName = entry.path().filename().string();
+		if (folderName.empty() || !std::all_of(folderName.begin(), folderName.end(), ::isdigit))
+			continue;
+
+		try
+		{
+			uint32_t modelId = static_cast<uint32_t>(std::stoul(folderName));
+			if (modelId >= CVehicleMgr::CUSTOM_MODEL_START && modelId <= CVehicleMgr::MAX_NETWORK_VEHICLES)
+			{
+				fs::path dffPath = entry.path() / "model.dff";
+				fs::path iniPath = entry.path() / "model.ini";
+				if (fs::exists(dffPath) || fs::exists(iniPath))
+				{
+					if (DefineCustomVehicleFromConfig(modelId, defaultVisualBase))
+					{
+						loadedCount++;
+					}
+				}
+			}
+		}
+		catch (...) {}
+	}
+
+	if (core_)
+	{
+		core_->logLn(LogLevel::Message, "[ExtendedVeh] LoadAllCustomVehicles: Auto-loaded %d custom vehicle model(s) from '%s'", loadedCount, g_modelsDir.c_str());
+	}
+	return loadedCount;
+}
+
+bool GetCustomVehicleName(uint32_t customModelId, std::string& name)
+{
+	auto it = customVehicleConfigs.find(customModelId);
+	if (it != customVehicleConfigs.end() && !it->second.name.empty())
+	{
+		name = it->second.name;
+		return true;
+	}
+	return false;
+}
+
+bool SetCustomVehicleName(uint32_t customModelId, const std::string& name)
+{
+	customVehicleConfigs[customModelId].name = name;
+	return true;
+}
+
+bool GetCustomVehicleConfigString(uint32_t customModelId, const std::string& key, std::string& outValue)
+{
+	auto it = customVehicleConfigs.find(customModelId);
+	if (it == customVehicleConfigs.end())
+		return false;
+
+	std::string lowerKey = ModelConfigParser::ToLower(key);
+	auto propIt = it->second.customProperties.find(lowerKey);
+	if (propIt != it->second.customProperties.end())
+	{
+		outValue = propIt->second;
+		return true;
+	}
+	return false;
+}
+
+bool SetCustomVehicleConfigString(uint32_t customModelId, const std::string& key, const std::string& value)
+{
+	std::string lowerKey = ModelConfigParser::ToLower(key);
+	customVehicleConfigs[customModelId].customProperties[lowerKey] = value;
+	return true;
+}
+
+bool GetCustomVehicleConfigInt(uint32_t customModelId, const std::string& key, int& outValue)
+{
+	std::string s;
+	if (GetCustomVehicleConfigString(customModelId, key, s))
+	{
+		try
+		{
+			outValue = std::stoi(s);
+			return true;
+		}
+		catch (...) {}
+	}
+	return false;
+}
+
+bool SetCustomVehicleConfigInt(uint32_t customModelId, const std::string& key, int value)
+{
+	return SetCustomVehicleConfigString(customModelId, key, std::to_string(value));
+}
+
+bool GetCustomVehicleConfigFloat(uint32_t customModelId, const std::string& key, float& outValue)
+{
+	std::string s;
+	if (GetCustomVehicleConfigString(customModelId, key, s))
+	{
+		try
+		{
+			outValue = std::stof(s);
+			return true;
+		}
+		catch (...) {}
+	}
+	return false;
+}
+
+bool SetCustomVehicleConfigFloat(uint32_t customModelId, const std::string& key, float value)
+{
+	return SetCustomVehicleConfigString(customModelId, key, std::to_string(value));
+}
+
+const std::vector<std::array<uint8_t, 4>>* GetCustomVehicleColorVariations(uint32_t customModelId)
+{
+	auto it = customVehicleConfigs.find(customModelId);
+	if (it != customVehicleConfigs.end() && it->second.hasCarcols)
+	{
+		return &it->second.colorVariations;
+	}
+	return nullptr;
+}
+
+const std::vector<int>* GetCustomVehicleAllowedUpgrades(uint32_t customModelId)
+{
+	auto it = customVehicleConfigs.find(customModelId);
+	if (it != customVehicleConfigs.end() && it->second.hasCarmods)
+	{
+		return &it->second.modIds;
+	}
+	return nullptr;
+}
+
+int GetCustomVehicleColorVariationsCount(uint32_t customModelId)
+{
+	auto it = customVehicleConfigs.find(customModelId);
+	if (it != customVehicleConfigs.end() && it->second.hasCarcols)
+	{
+		return static_cast<int>(it->second.colorVariations.size());
+	}
+	return 0;
+}
+
+bool GetCustomVehicleColorVariation(uint32_t customModelId, int index, int& p, int& s, int& t, int& q)
+{
+	auto it = customVehicleConfigs.find(customModelId);
+	if (it != customVehicleConfigs.end() && it->second.hasCarcols)
+	{
+		if (index >= 0 && index < static_cast<int>(it->second.colorVariations.size()))
+		{
+			const auto& var = it->second.colorVariations[static_cast<size_t>(index)];
+			p = var[0];
+			s = var[1];
+			t = var[2];
+			q = var[3];
+			return true;
+		}
+	}
+	return false;
+}
+
+bool GetCustomVehicleDefaultColors(uint32_t customModelId, int& p, int& s, int& t, int& q)
+{
+	auto it = customVehicleConfigs.find(customModelId);
+	if (it != customVehicleConfigs.end() && it->second.hasCarcols)
+	{
+		p = it->second.defaultPrimaryColor;
+		s = it->second.defaultSecondaryColor;
+		t = it->second.defaultTertiaryColor;
+		q = it->second.defaultQuaternaryColor;
+		return true;
+	}
+	return false;
+}
+
+int GetCustomVehicleAllowedUpgradesCount(uint32_t customModelId)
+{
+	auto it = customVehicleConfigs.find(customModelId);
+	if (it != customVehicleConfigs.end() && it->second.hasCarmods)
+	{
+		return static_cast<int>(it->second.modIds.size());
+	}
+	return 0;
+}
+
+int GetCustomVehicleAllowedUpgrade(uint32_t customModelId, int index)
+{
+	auto it = customVehicleConfigs.find(customModelId);
+	if (it != customVehicleConfigs.end() && it->second.hasCarmods)
+	{
+		if (index >= 0 && index < static_cast<int>(it->second.modIds.size()))
+		{
+			return it->second.modIds[static_cast<size_t>(index)];
+		}
+	}
+	return -1;
 }
 }

@@ -44,6 +44,11 @@ public:
 		int8_t sirenType { 1 };
 	};
 
+	CustomVehicleBindingRegistry(const CustomVehicleBindingRegistry&) = delete;
+	CustomVehicleBindingRegistry& operator=(const CustomVehicleBindingRegistry&) = delete;
+	CustomVehicleBindingRegistry(CustomVehicleBindingRegistry&&) = delete;
+	CustomVehicleBindingRegistry& operator=(CustomVehicleBindingRegistry&&) = delete;
+
 	static CustomVehicleBindingRegistry& Instance()
 	{
 		static CustomVehicleBindingRegistry instance;

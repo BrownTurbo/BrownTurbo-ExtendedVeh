@@ -49,7 +49,7 @@ function(ListFilesInSubmodule directory_path pattern)
     get_filename_component(_baseDir "${directory_path}" ABSOLUTE)
 
     # Use native CMake globbing (no PowerShell / Bash required)
-    file(GLOB_RECURSE _matchedFiles RELATIVE "${_baseDir}" "${_baseDir}/${pattern}")
+    file(GLOB_RECURSE _matchedFiles CONFIGURE_DEPENDS RELATIVE "${_baseDir}" "${_baseDir}/${pattern}")
 
     unset(_Temp)
     foreach(_relFile IN LISTS _matchedFiles)

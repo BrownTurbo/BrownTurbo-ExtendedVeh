@@ -51,7 +51,7 @@ namespace
 
 	uint64_t CacheKey(uint32_t modelId, ModelFileKind kind)
 	{
-		return (static_cast<uint64_t>(modelId) << 2) | static_cast<uint64_t>(kind);
+		return (static_cast<uint64_t>(modelId) << 8) | static_cast<uint64_t>(kind);
 	}
 
 	const char* FileExtensionFor(ModelFileKind kind)
@@ -64,6 +64,12 @@ namespace
 			return ".txd";
 		case ModelFileKind::Col:
 			return ".col";
+		case ModelFileKind::AudioEngine:
+		case ModelFileKind::AudioAccel:
+		case ModelFileKind::AudioDecel:
+		case ModelFileKind::AudioBrake:
+		case ModelFileKind::AudioCrash:
+			return "";
 		}
 		return "";
 	}
@@ -81,10 +87,14 @@ namespace
 		fs::path path = GetAssetPath(modelId, static_cast<CustomVeh::Protocol::AssetType>(kind));
 		if (!fs::exists(path))
 		{
-			fs::path fallbackPath = fs::path(g_modelsDir) / (std::to_string(modelId) + FileExtensionFor(kind));
-			if (fs::exists(fallbackPath))
+			const char* ext = FileExtensionFor(kind);
+			if (ext && ext[0] != '\0')
 			{
-				path = fallbackPath;
+				fs::path fallbackPath = fs::path(g_modelsDir) / (std::to_string(modelId) + ext);
+				if (fs::exists(fallbackPath))
+				{
+					path = fallbackPath;
+				}
 			}
 		}
 		if (!IsPathInsideBase(g_modelsDir, path))
@@ -171,7 +181,7 @@ void InvalidateCache(uint32_t modelId, ModelFileKind kind)
 
 void OnRequestFile(IPlayer& player, uint32_t modelId, ModelFileKind kind)
 {
-	if (kind != ModelFileKind::Dff && kind != ModelFileKind::Txd && kind != ModelFileKind::Col)
+	if (!IsModelFileKind(kind) && !IsAudioFileKind(kind))
 		return;
 
 	const int playerId = player.getID();
@@ -271,6 +281,9 @@ void OnRequestFile(IPlayer& player, uint32_t modelId, ModelFileKind kind)
 
 void CancelTransfer(IPlayer& player, uint32_t modelId, ModelFileKind kind)
 {
+	if (!IsModelFileKind(kind) && !IsAudioFileKind(kind))
+		return;
+
 	const int playerId = player.getID();
 	std::lock_guard<std::mutex> lock(g_activeMutex);
 	g_activeTransfers.erase(
@@ -379,6 +392,9 @@ void ProcessTick()
 // Stores per-player result for later Pawn/native query.
 void OnClientReportFileStored(IPlayer& player, uint32_t modelId, ModelFileKind kind, bool success)
 {
+	if (!IsModelFileKind(kind) && !IsAudioFileKind(kind))
+		return;
+
 	const int pid = player.getID();
 	const uint64_t key = CacheKey(modelId, kind);
 

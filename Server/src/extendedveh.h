@@ -39,6 +39,7 @@ class ExtendedVehCompo final : public IComponent,
 							   public NetworkOutEventHandler,
 							   public PoolEventHandler<IVehicle>,
 							   public PlayerConnectEventHandler,
+							   public PlayerSpawnEventHandler,
 							   public VehicleEventHandler,
 							   public PoolIDProvider
 {
@@ -77,9 +78,15 @@ public:
 
 	void onPlayerDisconnect(IPlayer& player, PeerDisconnectReason reason) override;
 
+	bool onPlayerRequestSpawn(IPlayer& player) override { return true; }
+	void onPlayerSpawn(IPlayer& player) override;
+
 	void onVehicleStreamIn(IVehicle& vehicle, IPlayer& player) override;
 	void onPlayerEnterVehicle(IPlayer& player, IVehicle& vehicle, bool passenger) override;
 	bool onVehiclePaintJob(IPlayer& player, IVehicle& vehicle, int paintJob) override;
+
+	void SyncCustomVehicleToPlayer(IVehicle& vehicle, IPlayer& player);
+	void SyncCustomVehiclesToPlayer(IPlayer& player);
 
 	void onPoolEntryCreated(IVehicle& vehicle) override;
 

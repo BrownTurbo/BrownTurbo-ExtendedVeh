@@ -93,24 +93,24 @@ std::vector<HandlingManager::HandlingAttribEntry> HandlingManager::ParseAttribEn
 	if (!bs)
 		return entries;
 	if (count > 64) {
-		ClientLog(std::format("[Client] ParseAttribEntries: Rejecting excess count {} (max 64)", count));
+		ClientLog(LogLevel::Error, std::format("[Client] ParseAttribEntries: Rejecting excess count {} (max 64)", count));
 		return {};
 	}
 	entries.reserve(count);
 
 	for (int i = 0; i < count; ++i) {
 		if (bs->GetNumberOfUnreadBits() < 16) {
-			ClientLog(std::format("[Client] ParseAttribEntries: Truncated bitstream at entry {} of {}", i, count));
+			ClientLog(LogLevel::Error, std::format("[Client] ParseAttribEntries: Truncated bitstream at entry {} of {}", i, count));
 			return {};
 		}
 		CHandlingAttrib attrib;
 		if (!bs->Read(attrib)) {
-			ClientLog(std::format("[Client] ParseAttribEntries: Failed reading attrib at index {}", i));
+			ClientLog(LogLevel::Error, std::format("[Client] ParseAttribEntries: Failed reading attrib at index {}", i));
 			return {};
 		}
 		uint8_t typeByte;
 		if (!bs->Read(typeByte)) {
-			ClientLog(std::format("[Client] ParseAttribEntries: Failed reading typeByte for attrib {}", static_cast<int>(attrib)));
+			ClientLog(LogLevel::Error, std::format("[Client] ParseAttribEntries: Failed reading typeByte for attrib {}", static_cast<int>(attrib)));
 			return {};
 		}
 		CHandlingAttribType expectedType = GetHandlingAttribType(attrib);
@@ -123,41 +123,41 @@ std::vector<HandlingManager::HandlingAttribEntry> HandlingManager::ParseAttribEn
 		case TYPE_FLOAT: {
 			float v;
 			if (!bs->Read(v)) {
-				ClientLog(std::format("[Client] ParseAttribEntries: Failed reading float for attrib {}", static_cast<int>(attrib)));
+				ClientLog(LogLevel::Error, std::format("[Client] ParseAttribEntries: Failed reading float for attrib {}", static_cast<int>(attrib)));
 				return {};
 			}
 			entry.value.f = v;
-			ClientLog(std::format("[Client] ParseAttribEntries: Entry {}: attrib={} (FLOAT), val={:.4f}", i, static_cast<int>(attrib), v));
+			ClientLog(LogLevel::Debug, std::format("[Client] ParseAttribEntries: Entry {}: attrib={} (FLOAT), val={:.4f}", i, static_cast<int>(attrib), v));
 			break;
 		}
 		case TYPE_UINT:
 		case TYPE_FLAG: {
 			uint32_t v;
 			if (!bs->Read(v)) {
-				ClientLog(std::format("[Client] ParseAttribEntries: Failed reading uint for attrib {}", static_cast<int>(attrib)));
+				ClientLog(LogLevel::Error, std::format("[Client] ParseAttribEntries: Failed reading uint for attrib {}", static_cast<int>(attrib)));
 				return {};
 			}
 			entry.value.u = v;
-			ClientLog(std::format("[Client] ParseAttribEntries: Entry {}: attrib={} (UINT/FLAG), val={:#x} ({})", i, static_cast<int>(attrib), v, v));
+			ClientLog(LogLevel::Debug, std::format("[Client] ParseAttribEntries: Entry {}: attrib={} (UINT/FLAG), val={:#x} ({})", i, static_cast<int>(attrib), v, v));
 			break;
 		}
 		case TYPE_BYTE: {
 			uint8_t v;
 			if (!bs->Read(v)) {
-				ClientLog(std::format("[Client] ParseAttribEntries: Failed reading byte for attrib {}", static_cast<int>(attrib)));
+				ClientLog(LogLevel::Error, std::format("[Client] ParseAttribEntries: Failed reading byte for attrib {}", static_cast<int>(attrib)));
 				return {};
 			}
 			entry.value.b = v;
-			ClientLog(std::format("[Client] ParseAttribEntries: Entry {}: attrib={} (BYTE), val={}", i, static_cast<int>(attrib), static_cast<int>(v)));
+			ClientLog(LogLevel::Debug, std::format("[Client] ParseAttribEntries: Entry {}: attrib={} (BYTE), val={}", i, static_cast<int>(attrib), static_cast<int>(v)));
 			break;
 		}
 		default:
-			ClientLog(std::format("[Client] ParseAttribEntries: Unknown expectedType for attrib {}", static_cast<int>(attrib)));
+			ClientLog(LogLevel::Warning, std::format("[Client] ParseAttribEntries: Unknown expectedType for attrib {}", static_cast<int>(attrib)));
 			break;
 		}
 
 		if (!CanSetHandlingAttrib(attrib)) {
-			ClientLog(std::format("[Client] ParseAttribEntries: Attrib {} is read-only, skipping", static_cast<int>(attrib)));
+			ClientLog(LogLevel::Debug, std::format("[Client] ParseAttribEntries: Attrib {} is read-only, skipping", static_cast<int>(attrib)));
 			continue;
 		}
 		entries.push_back(entry);
@@ -333,7 +333,7 @@ void HandlingManager::ProcessPendingCommands()
 			if (IsVehiclePointerValid(gtaVeh) && gtaVeh->m_pHandlingData) {
 				auto attribs = std::move(it->second);
 				it = m_pendingVehicleAttribs.erase(it);
-				ClientLog(std::format("[Client] ProcessPendingCommands: Vehicle {} is now available, applying {} queued attribs", targetVehId, attribs.size()));
+				ClientLog(LogLevel::Info, std::format("[Client] ProcessPendingCommands: Vehicle {} is now available, applying {} queued attribs", targetVehId, attribs.size()));
 				ProcessVehicleMods(targetVehId, attribs);
 			} else {
 				++it;
@@ -675,7 +675,7 @@ void HandlingManager::OnVehicleStreamIn(CVehicle* pVehicle, uint16_t sampId)
 				appliedCount++;
 			}
 		}
-		ClientLog(std::format("[Client] OnVehicleStreamIn: Applied {} cached missing door(s) for vehicle {}", appliedCount, sampId));
+		ClientLog(LogLevel::Info, std::format("[Client] OnVehicleStreamIn: Applied {} cached missing door(s) for vehicle {}", appliedCount, sampId));
 	}
 
 	// 1. Check if there are pending attributes for this vehicle
@@ -693,7 +693,7 @@ void HandlingManager::OnVehicleStreamIn(CVehicle* pVehicle, uint16_t sampId)
 		handling->m_transmissionData.InitGearRatios();
 		RecalculateDerivedHandling(handling, pVehicle);
 		m_pendingVehicleAttribs.erase(pendingIt);
-		ClientLog(std::format("[Client] OnVehicleStreamIn: Applied pending handling for vehicle {}", sampId));
+		ClientLog(LogLevel::Info, std::format("[Client] OnVehicleStreamIn: Applied pending handling for vehicle {}", sampId));
 		return;
 	}
 
@@ -701,7 +701,7 @@ void HandlingManager::OnVehicleStreamIn(CVehicle* pVehicle, uint16_t sampId)
 	auto vehIt = m_vehicleHandlings.find(sampId);
 	if (vehIt != m_vehicleHandlings.end()) {
 		RecalculateDerivedHandling(vehIt->second.get(), pVehicle);
-		ClientLog(std::format("[Client] OnVehicleStreamIn: Reapplied custom handling for vehicle {}", sampId));
+		ClientLog(LogLevel::Info, std::format("[Client] OnVehicleStreamIn: Reapplied custom handling for vehicle {}", sampId));
 		return;
 	}
 
@@ -714,14 +714,14 @@ void HandlingManager::OnVehicleStreamIn(CVehicle* pVehicle, uint16_t sampId)
 	auto modelIt = m_modelHandlings.find(modelId);
 	if (modelIt != m_modelHandlings.end()) {
 		RecalculateDerivedHandling(modelIt->second.get(), pVehicle);
-		ClientLog(std::format("[Client] OnVehicleStreamIn: Reapplied model handling for vehicle {} (model {})", sampId, modelId));
+		ClientLog(LogLevel::Info, std::format("[Client] OnVehicleStreamIn: Reapplied model handling for vehicle {} (model {})", sampId, modelId));
 		return;
 	} else if (binding && binding->customModelId > 0) {
 		auto* customModel = StreamingExtender::GetCustomModel(binding->customModelId);
 		if (customModel) {
 			tHandlingData* customBaseHandling = static_cast<tHandlingData*>(&gHandlingDataMgr.m_aVehicleHandling[customModel->m_nHandlingId]);
 			RecalculateDerivedHandling(customBaseHandling, pVehicle);
-			ClientLog(std::format("[Client] OnVehicleStreamIn: Reapplied custom base handling for vehicle {} (custom model {})", sampId, modelId));
+			ClientLog(LogLevel::Info, std::format("[Client] OnVehicleStreamIn: Reapplied custom base handling for vehicle {} (custom model {})", sampId, modelId));
 			return;
 		}
 	}
@@ -1019,7 +1019,7 @@ void HandlingManager::ProcessVehicleMods(uint16_t sampVehicleId, const std::vect
 	if (!IsVehiclePointerValid(gtaVehicle) || !gtaVehicle->m_pHandlingData) {
 		auto& pending = m_pendingVehicleAttribs[sampVehicleId];
 		pending.insert(pending.end(), entries.begin(), entries.end());
-		ClientLog(std::format("[Client] ProcessVehicleMods: Vehicle {} not in pool, queued {} attribs", sampVehicleId, entries.size()));
+		ClientLog(LogLevel::Info, std::format("[Client] ProcessVehicleMods: Vehicle {} not in pool, queued {} attribs", sampVehicleId, entries.size()));
 		return;
 	}
 
@@ -1041,7 +1041,7 @@ void HandlingManager::ProcessVehicleMods(uint16_t sampVehicleId, const std::vect
 	handling->m_transmissionData.InitGearRatios();
 
 	RecalculateDerivedHandling(handling, gtaVehicle);
-	ClientLog(std::format("[Client] ProcessVehicleMods: Applied {} attribs to vehicle {}. Mass={:.1f}, MaxVel={:.1f} km/h (game={:.4f}), Accel={:.5f}, Gears={}, Submerged={}, Buoyancy={:.4f}, ModelFlags={:#x}",
+	ClientLog(LogLevel::Info, std::format("[Client] ProcessVehicleMods: Applied {} attribs to vehicle {}. Mass={:.1f}, MaxVel={:.1f} km/h (game={:.4f}), Accel={:.5f}, Gears={}, Submerged={}, Buoyancy={:.4f}, ModelFlags={:#x}",
 		entries.size(), sampVehicleId, handling->m_fMass,
 		(handling->m_transmissionData.m_fMaxGearVelocity / 1.2f) * 180.0f,
 		handling->m_transmissionData.m_fMaxGearVelocity,
@@ -1079,9 +1079,9 @@ void HandlingManager::ProcessVehicleDoorState(uint16_t sampVehicleId, uint8_t do
 
 	if (IsVehiclePointerValid(gtaVehicle)) {
 		ApplyDoorState(gtaVehicle, doorId, missing);
-		ClientLog(std::format("[Client] ProcessVehicleDoorState: Applied doorId {} (missing={}) to vehicleId {}", doorId, missing, sampVehicleId));
+		ClientLog(LogLevel::Info, std::format("[Client] ProcessVehicleDoorState: Applied doorId {} (missing={}) to vehicleId {}", doorId, missing, sampVehicleId));
 	} else {
-		ClientLog(std::format("[Client] ProcessVehicleDoorState: vehicleId {} not in pool, cached doorId {} (missing={})", sampVehicleId, doorId, missing));
+		ClientLog(LogLevel::Info, std::format("[Client] ProcessVehicleDoorState: vehicleId {} not in pool, cached doorId {} (missing={})", sampVehicleId, doorId, missing));
 	}
 }
 
@@ -1190,7 +1190,7 @@ void HandlingManager::ProcessModelMods(uint16_t modelId, const std::vector<Handl
 	RecalculateDerivedHandling(handling);
 
 	ApplyModelToVehicles(modelId, handling);
-	ClientLog(std::format("[Client] ProcessModelMods: Applied {} attribs to model {}", entries.size(), modelId));
+	ClientLog(LogLevel::Info, std::format("[Client] ProcessModelMods: Applied {} attribs to model {}", entries.size(), modelId));
 }
 
 void HandlingManager::ResetModel(uint16_t modelId)
@@ -1268,7 +1268,7 @@ void HandlingManager::SendHandlingPacket(CustomVehAction action, RakNet::BitStre
 		packet.Write(reinterpret_cast<const char*>(bs->GetData()), bs->GetNumberOfBytesUsed());
 	}
 	bool sent = rakhook::send(&packet, HIGH_PRIORITY, RELIABLE_ORDERED, 0);
-	ClientLog(std::format("[Client] SendHandlingPacket: action={}, bytes={}, sent={}", static_cast<int>(action), packet.GetNumberOfBytesUsed(), sent));
+	ClientLog(LogLevel::Debug, std::format("[Client] SendHandlingPacket: action={}, bytes={}, sent={}", static_cast<int>(action), packet.GetNumberOfBytesUsed(), sent));
 }
 
 void HandlingManager::ResetInitState()
@@ -1280,11 +1280,11 @@ void HandlingManager::ResetInitState()
 void HandlingManager::SendInitPacket()
 {
 	if (m_initSent.exchange(true, std::memory_order_acq_rel)) {
-		ClientLog("[Client] ACTION_INIT already sent for current session.");
+		ClientLog(LogLevel::Debug, "[Client] ACTION_INIT already sent for current session.");
 		return;
 	}
 
-	ClientLog(std::format("[Client] Sending ACTION_INIT packet (compat_ver=0x{:X})...", EXTENDEDVEH_COMPAT_VERSION));
+	ClientLog(LogLevel::Info, std::format("[Client] Sending ACTION_INIT packet (compat_ver=0x{:X})...", EXTENDEDVEH_COMPAT_VERSION));
 	RakNet::BitStream bs;
 	bs.Write(static_cast<uint32_t>(EXTENDEDVEH_COMPAT_VERSION));
 	SendHandlingPacket(ACTION_INIT, &bs);
@@ -1295,21 +1295,21 @@ bool HandlingManager::ProcessAction(CustomVehAction action, RakNet::BitStream* b
 	if (action != ACTION_RESET_ALL && bs == nullptr)
 		return false;
 
-	ClientLog(std::format("[Client] ProcessAction: action={}", static_cast<int>(action)));
+	ClientLog(LogLevel::Debug, std::format("[Client] ProcessAction: action={}", static_cast<int>(action)));
 
 	switch (action) {
 	case ACTION_INIT_RESPONSE: {
 		uint32_t compat_ver;
 		bool allowed;
 		if (!bs->Read(compat_ver) || !bs->Read(allowed)) {
-			ClientLog("[Client] ACTION_INIT_RESPONSE: Failed to read packet data");
+			ClientLog(LogLevel::Error, "[Client] ACTION_INIT_RESPONSE: Failed to read packet data");
 			return false;
 		}
 
-		ClientLog(std::format("[Client] ACTION_INIT_RESPONSE: allowed={}, server_compat_ver=0x{:X}", allowed, compat_ver));
+		ClientLog(LogLevel::Info, std::format("[Client] ACTION_INIT_RESPONSE: allowed={}, server_compat_ver=0x{:X}", allowed, compat_ver));
 		if (allowed && compat_ver == EXTENDEDVEH_COMPAT_VERSION) {
 			m_isServerAuthorized.store(true, std::memory_order_release);
-			ClientLog("[Client] authorization established.");
+			ClientLog(LogLevel::Info, "[Client] authorization established.");
 			SendMsg(-1, "{00FF00}[ExtendedVeh]{FFFFFF} Server authorized handling modifications.");
 		} else {
 			SendMsg(-1, "{FF0000}[ExtendedVeh] Version mismatch with server.");
@@ -1320,18 +1320,18 @@ bool HandlingManager::ProcessAction(CustomVehAction action, RakNet::BitStream* b
 
 	case ACTION_SET_VEHICLE_HANDLING: {
 		if (!m_isServerAuthorized.load(std::memory_order_acquire)) {
-			ClientLog("[Client] ACTION_SET_VEHICLE_HANDLING: rejected (server not authorized)");
+			ClientLog(LogLevel::Warning, "[Client] ACTION_SET_VEHICLE_HANDLING: rejected (server not authorized)");
 			return false;
 		}
 
 		uint16_t vehicleId;
 		uint8_t count;
 		if (!bs->Read(vehicleId) || !bs->Read(count)) {
-			ClientLog("[Client] ACTION_SET_VEHICLE_HANDLING: Failed to read vehicleId/count");
+			ClientLog(LogLevel::Error, "[Client] ACTION_SET_VEHICLE_HANDLING: Failed to read vehicleId/count");
 			return false;
 		}
 
-		ClientLog(std::format("[Client] ACTION_SET_VEHICLE_HANDLING: vehicleId={}, count={}", vehicleId, count));
+		ClientLog(LogLevel::Debug, std::format("[Client] ACTION_SET_VEHICLE_HANDLING: vehicleId={}, count={}", vehicleId, count));
 		auto entries = ParseAttribEntries(count, bs);
 		ProcessVehicleMods(vehicleId, entries);
 		return true;
@@ -1342,11 +1342,11 @@ bool HandlingManager::ProcessAction(CustomVehAction action, RakNet::BitStream* b
 		uint8_t doorId;
 		bool missing;
 		if (!bs->Read(vehicleId) || !bs->Read(doorId) || !bs->Read(missing)) {
-			ClientLog("[Client] ACTION_SET_VEHICLE_DOOR_STATE: Failed to read vehicleId/doorId/missing");
+			ClientLog(LogLevel::Error, "[Client] ACTION_SET_VEHICLE_DOOR_STATE: Failed to read vehicleId/doorId/missing");
 			return false;
 		}
 
-		ClientLog(std::format("[Client] ACTION_SET_VEHICLE_DOOR_STATE: vehicleId={}, doorId={}, missing={}", vehicleId, doorId, missing));
+		ClientLog(LogLevel::Debug, std::format("[Client] ACTION_SET_VEHICLE_DOOR_STATE: vehicleId={}, doorId={}, missing={}", vehicleId, doorId, missing));
 		MainThreadQueue::Instance().Push([vehicleId, doorId, missing]() {
 			HandlingManager::ProcessVehicleDoorState(vehicleId, doorId, missing);
 		});
@@ -1356,26 +1356,26 @@ bool HandlingManager::ProcessAction(CustomVehAction action, RakNet::BitStream* b
 	case ACTION_RESET_VEHICLE: {
 		uint16_t vehicleId;
 		if (!bs->Read(vehicleId)) {
-			ClientLog("[Client] ACTION_RESET_VEHICLE: Failed to read vehicleId");
+			ClientLog(LogLevel::Error, "[Client] ACTION_RESET_VEHICLE: Failed to read vehicleId");
 			return false;
 		}
-		ClientLog(std::format("[Client] ACTION_RESET_VEHICLE: vehicleId={}", vehicleId));
+		ClientLog(LogLevel::Info, std::format("[Client] ACTION_RESET_VEHICLE: vehicleId={}", vehicleId));
 		ResetVehicle(vehicleId);
 		return true;
 	}
 
 	case ACTION_SET_MODEL_HANDLING: {
 		if (!m_isServerAuthorized.load(std::memory_order_acquire)) {
-			ClientLog("[Client] ACTION_SET_MODEL_HANDLING: rejected (server not authorized)");
+			ClientLog(LogLevel::Warning, "[Client] ACTION_SET_MODEL_HANDLING: rejected (server not authorized)");
 			return false;
 		}
 		uint16_t modelId;
 		uint8_t count;
 		if (!bs->Read(modelId) || !bs->Read(count)) {
-			ClientLog("[Client] ACTION_SET_MODEL_HANDLING: Failed to read modelId/count");
+			ClientLog(LogLevel::Error, "[Client] ACTION_SET_MODEL_HANDLING: Failed to read modelId/count");
 			return false;
 		}
-		ClientLog(std::format("[Client] ACTION_SET_MODEL_HANDLING: modelId={}, count={}", modelId, count));
+		ClientLog(LogLevel::Debug, std::format("[Client] ACTION_SET_MODEL_HANDLING: modelId={}, count={}", modelId, count));
 		auto entries = ParseAttribEntries(count, bs);
 		ProcessModelMods(modelId, entries);
 		return true;
@@ -1384,26 +1384,26 @@ bool HandlingManager::ProcessAction(CustomVehAction action, RakNet::BitStream* b
 	case ACTION_RESET_MODEL: {
 		uint16_t modelId;
 		if (!bs->Read(modelId)) {
-			ClientLog("[Client] ACTION_RESET_MODEL: Failed to read modelId");
+			ClientLog(LogLevel::Error, "[Client] ACTION_RESET_MODEL: Failed to read modelId");
 			return false;
 		}
-		ClientLog(std::format("[Client] ACTION_RESET_MODEL: modelId={}", modelId));
+		ClientLog(LogLevel::Info, std::format("[Client] ACTION_RESET_MODEL: modelId={}", modelId));
 		ResetModel(modelId);
 		return true;
 	}
 
 	case ACTION_SET_PLAYER_HANDLING: {
 		if (!m_isServerAuthorized.load(std::memory_order_acquire)) {
-			ClientLog("[Client] ACTION_SET_PLAYER_HANDLING: rejected (server not authorized)");
+			ClientLog(LogLevel::Warning, "[Client] ACTION_SET_PLAYER_HANDLING: rejected (server not authorized)");
 			return false;
 		}
 		uint16_t playerId;
 		uint8_t count;
 		if (!bs->Read(playerId) || !bs->Read(count)) {
-			ClientLog("[Client] ACTION_SET_PLAYER_HANDLING: Failed to read playerId/count");
+			ClientLog(LogLevel::Error, "[Client] ACTION_SET_PLAYER_HANDLING: Failed to read playerId/count");
 			return false;
 		}
-		ClientLog(std::format("[Client] ACTION_SET_PLAYER_HANDLING: playerId={}, count={}", playerId, count));
+		ClientLog(LogLevel::Debug, std::format("[Client] ACTION_SET_PLAYER_HANDLING: playerId={}, count={}", playerId, count));
 		auto entries = ParseAttribEntries(count, bs);
 		ProcessPlayerMods(playerId, entries);
 		return true;
@@ -1412,14 +1412,14 @@ bool HandlingManager::ProcessAction(CustomVehAction action, RakNet::BitStream* b
 	case ACTION_RESET_PLAYER_HANDLING: {
 		uint16_t playerId;
 		if (!bs->Read(playerId)) {
-			ClientLog("[Client] ACTION_RESET_PLAYER_HANDLING: Failed to read playerId");
+			ClientLog(LogLevel::Error, "[Client] ACTION_RESET_PLAYER_HANDLING: Failed to read playerId");
 			return false;
 		}
 		if (!m_isServerAuthorized.load(std::memory_order_acquire)) {
-			ClientLog("[Client] ACTION_RESET_PLAYER_HANDLING: rejected (server not authorized)");
+			ClientLog(LogLevel::Warning, "[Client] ACTION_RESET_PLAYER_HANDLING: rejected (server not authorized)");
 			return false;
 		}
-		ClientLog(std::format("[Client] ACTION_RESET_PLAYER_HANDLING: playerId={}", playerId));
+		ClientLog(LogLevel::Info, std::format("[Client] ACTION_RESET_PLAYER_HANDLING: playerId={}", playerId));
 		ResetPlayerHandling(playerId);
 		return true;
 	}
@@ -1427,10 +1427,10 @@ bool HandlingManager::ProcessAction(CustomVehAction action, RakNet::BitStream* b
 	case ACTION_GET_VEHICLE_HANDLING: {
 		uint16_t vehicleId;
 		if (!bs->Read(vehicleId)) {
-			ClientLog("[Client] ACTION_GET_VEHICLE_HANDLING: Failed to read vehicleId");
+			ClientLog(LogLevel::Error, "[Client] ACTION_GET_VEHICLE_HANDLING: Failed to read vehicleId");
 			return false;
 		}
-		ClientLog(std::format("[Client] ACTION_GET_VEHICLE_HANDLING: vehicleId={}", vehicleId));
+		ClientLog(LogLevel::Debug, std::format("[Client] ACTION_GET_VEHICLE_HANDLING: vehicleId={}", vehicleId));
 		tHandlingData* data = nullptr;
 		auto it = m_vehicleHandlings.find(vehicleId);
 		if (it != m_vehicleHandlings.end()) {
@@ -1454,10 +1454,10 @@ bool HandlingManager::ProcessAction(CustomVehAction action, RakNet::BitStream* b
 	case ACTION_GET_MODEL_HANDLING: {
 		uint16_t modelId;
 		if (!bs->Read(modelId)) {
-			ClientLog("[Client] ACTION_GET_MODEL_HANDLING: Failed to read modelId");
+			ClientLog(LogLevel::Error, "[Client] ACTION_GET_MODEL_HANDLING: Failed to read modelId");
 			return false;
 		}
-		ClientLog(std::format("[Client] ACTION_GET_MODEL_HANDLING: modelId={}", modelId));
+		ClientLog(LogLevel::Debug, std::format("[Client] ACTION_GET_MODEL_HANDLING: modelId={}", modelId));
 		tHandlingData* data = nullptr;
 		auto it = m_modelHandlings.find(modelId);
 		if (it != m_modelHandlings.end()) {
@@ -1481,10 +1481,10 @@ bool HandlingManager::ProcessAction(CustomVehAction action, RakNet::BitStream* b
 	case ACTION_GET_PLAYER_HANDLING: {
 		uint16_t playerId;
 		if (!bs->Read(playerId)) {
-			ClientLog("[Client] ACTION_GET_PLAYER_HANDLING: Failed to read playerId");
+			ClientLog(LogLevel::Error, "[Client] ACTION_GET_PLAYER_HANDLING: Failed to read playerId");
 			return false;
 		}
-		ClientLog(std::format("[Client] ACTION_GET_PLAYER_HANDLING: playerId={}", playerId));
+		ClientLog(LogLevel::Debug, std::format("[Client] ACTION_GET_PLAYER_HANDLING: playerId={}", playerId));
 		tHandlingData* data = nullptr;
 		auto it = m_playerHandlings.find(playerId);
 		if (it != m_playerHandlings.end()) {
@@ -1500,7 +1500,7 @@ bool HandlingManager::ProcessAction(CustomVehAction action, RakNet::BitStream* b
 	}
 
 	case ACTION_RESET_ALL: {
-		ClientLog("[Client] ACTION_RESET_ALL: Resetting all vehicles, models, and players");
+		ClientLog(LogLevel::Info, "[Client] ACTION_RESET_ALL: Resetting all vehicles, models, and players");
 		// Reset all vehicles, models, and players
 		std::lock_guard<std::recursive_mutex> lock(m_handlingMutex);
 		m_pendingVehicleAttribs.clear();
@@ -1539,7 +1539,7 @@ bool HandlingManager::ProcessAction(CustomVehAction action, RakNet::BitStream* b
 		return true;
 	}
 	case ACTION_ASSET_BEGIN: {
-		ClientLog("[Client] ACTION_ASSET_BEGIN");
+		ClientLog(LogLevel::Debug, "[Client] ACTION_ASSET_BEGIN");
 		ModelTransferClient::Instance().OnTransferBegin(bs);
 		return true;
 	}
@@ -1548,24 +1548,24 @@ bool HandlingManager::ProcessAction(CustomVehAction action, RakNet::BitStream* b
 		return true;
 	}
 	case ACTION_ASSET_END: {
-		ClientLog("[Client] ACTION_ASSET_END");
+		ClientLog(LogLevel::Debug, "[Client] ACTION_ASSET_END");
 		ModelTransferClient::Instance().OnTransferEnd(bs);
 		return true;
 	}
 	case ACTION_ASSET_CANCEL:
 	case ACTION_ASSET_REJECTED: {
-		ClientLog(std::format("[Client] ACTION_ASSET_CANCEL / REJECTED: action={}", static_cast<int>(action)));
+		ClientLog(LogLevel::Warning, std::format("[Client] ACTION_ASSET_CANCEL / REJECTED: action={}", static_cast<int>(action)));
 		ModelTransferClient::Instance().OnTransferCancel(bs);
 		return true;
 	}
 	case static_cast<CustomVehAction>(CustomVeh::Protocol::Action::CustomVehicleBind): {
 		CustomVeh::Protocol::VehicleBinding binding {};
 		if (bs->Read(reinterpret_cast<char*>(&binding), sizeof(binding))) {
-			ClientLog(std::format("[Client] CustomVehicleBind: vehId={}, customModelId={}", binding.sampVehicleId, binding.customModelId));
+			ClientLog(LogLevel::Info, std::format("[Client] CustomVehicleBind: vehId={}, customModelId={}", binding.sampVehicleId, binding.customModelId));
 			CustomVehicleBindingManager::Instance().Bind(
 				binding.sampVehicleId, binding.customModelId);
 		} else {
-			ClientLog("[Client] CustomVehicleBind: Failed to read binding");
+			ClientLog(LogLevel::Error, "[Client] CustomVehicleBind: Failed to read binding");
 			return false;
 		}
 		return true;
@@ -1573,13 +1573,13 @@ bool HandlingManager::ProcessAction(CustomVehAction action, RakNet::BitStream* b
 	case static_cast<CustomVehAction>(CustomVeh::Protocol::Action::CustomVehicleUnbind): {
 		CustomVeh::Protocol::VehicleUnbinding unbinding {};
 		if (bs->Read(reinterpret_cast<char*>(&unbinding), sizeof(unbinding))) {
-			ClientLog(std::format("[Client] CustomVehicleUnbind: vehId={}", unbinding.sampVehicleId));
+			ClientLog(LogLevel::Info, std::format("[Client] CustomVehicleUnbind: vehId={}", unbinding.sampVehicleId));
 			uint16_t vehicleId = unbinding.sampVehicleId;
 			MainThreadQueue::Instance().Push([vehicleId]() {
 				CustomVehicleBindingManager::Instance().Unbind(vehicleId);
 			});
 		} else {
-			ClientLog("[Client] CustomVehicleUnbind: Failed to read unbinding");
+			ClientLog(LogLevel::Error, "[Client] CustomVehicleUnbind: Failed to read unbinding");
 			return false;
 		}
 		return true;
@@ -1587,7 +1587,7 @@ bool HandlingManager::ProcessAction(CustomVehAction action, RakNet::BitStream* b
 	case static_cast<CustomVehAction>(CustomVeh::Protocol::Action::SetVehicleStance): {
 		CustomVeh::Protocol::VehicleStancePacket stance {};
 		if (bs->Read(reinterpret_cast<char*>(&stance), sizeof(stance))) {
-			ClientLog(std::format("[Client] SetVehicleStance: vehId={}, frontScale={:.2f}, rearScale={:.2f}, frontCamber={:.2f}, rearCamber={:.2f}, frontTrack={:.2f}, rearTrack={:.2f}",
+			ClientLog(LogLevel::Info, std::format("[Client] SetVehicleStance: vehId={}, frontScale={:.2f}, rearScale={:.2f}, frontCamber={:.2f}, rearCamber={:.2f}, frontTrack={:.2f}, rearTrack={:.2f}",
 				stance.sampVehicleId, stance.frontWheelScale, stance.rearWheelScale, stance.frontCamber, stance.rearCamber, stance.frontTrackWidth, stance.rearTrackWidth));
 			CustomVehicleBindingManager::Instance().SetVehicleStance(
 				stance.sampVehicleId, stance.frontWheelScale, stance.rearWheelScale,
@@ -1598,7 +1598,7 @@ bool HandlingManager::ProcessAction(CustomVehAction action, RakNet::BitStream* b
 	case static_cast<CustomVehAction>(CustomVeh::Protocol::Action::SetVehicleExtras): {
 		CustomVeh::Protocol::VehicleExtrasPacket extras {};
 		if (bs->Read(reinterpret_cast<char*>(&extras), sizeof(extras))) {
-			ClientLog(std::format("[Client] SetVehicleExtras: vehId={}, mask=0x{:X}", extras.sampVehicleId, extras.extrasMask));
+			ClientLog(LogLevel::Info, std::format("[Client] SetVehicleExtras: vehId={}, mask=0x{:X}", extras.sampVehicleId, extras.extrasMask));
 			CustomVehicleBindingManager::Instance().SetVehicleExtras(extras.sampVehicleId, extras.extrasMask);
 		}
 		return true;
@@ -1606,7 +1606,7 @@ bool HandlingManager::ProcessAction(CustomVehAction action, RakNet::BitStream* b
 	case static_cast<CustomVehAction>(CustomVeh::Protocol::Action::SetVehiclePaintjob): {
 		CustomVeh::Protocol::VehiclePaintjobPacket pj {};
 		if (bs->Read(reinterpret_cast<char*>(&pj), sizeof(pj))) {
-			ClientLog(std::format("[Client] SetVehiclePaintjob: vehId={}, paintjob={}", pj.sampVehicleId, static_cast<int>(pj.paintjobIndex)));
+			ClientLog(LogLevel::Info, std::format("[Client] SetVehiclePaintjob: vehId={}, paintjob={}", pj.sampVehicleId, static_cast<int>(pj.paintjobIndex)));
 			CustomVehicleBindingManager::Instance().SetVehiclePaintjob(pj.sampVehicleId, pj.paintjobIndex);
 		}
 		return true;
@@ -1614,7 +1614,7 @@ bool HandlingManager::ProcessAction(CustomVehAction action, RakNet::BitStream* b
 	case static_cast<CustomVehAction>(CustomVeh::Protocol::Action::SetVehicleNeon): {
 		CustomVeh::Protocol::VehicleNeonPacket neon {};
 		if (bs->Read(reinterpret_cast<char*>(&neon), sizeof(neon))) {
-			ClientLog(std::format("[Client] SetVehicleNeon: vehId={}, enabled={}, r={}, g={}, b={}, size={:.2f}",
+			ClientLog(LogLevel::Info, std::format("[Client] SetVehicleNeon: vehId={}, enabled={}, r={}, g={}, b={}, size={:.2f}",
 				neon.sampVehicleId, neon.enabled != 0, neon.r, neon.g, neon.b, neon.size));
 			CustomVehicleBindingManager::Instance().SetVehicleNeon(neon.sampVehicleId, neon.enabled != 0, neon.r, neon.g, neon.b, neon.size);
 		}
@@ -1623,7 +1623,7 @@ bool HandlingManager::ProcessAction(CustomVehAction action, RakNet::BitStream* b
 	case static_cast<CustomVehAction>(CustomVeh::Protocol::Action::SetVehicleWindowTint): {
 		CustomVeh::Protocol::VehicleWindowTintPacket tint {};
 		if (bs->Read(reinterpret_cast<char*>(&tint), sizeof(tint))) {
-			ClientLog(std::format("[Client] SetVehicleWindowTint: vehId={}, alpha={}, r={}, g={}, b={}",
+			ClientLog(LogLevel::Info, std::format("[Client] SetVehicleWindowTint: vehId={}, alpha={}, r={}, g={}, b={}",
 				tint.sampVehicleId, tint.alpha, tint.r, tint.g, tint.b));
 			CustomVehicleBindingManager::Instance().SetVehicleWindowTint(tint.sampVehicleId, tint.alpha, tint.r, tint.g, tint.b);
 		}
@@ -1632,7 +1632,7 @@ bool HandlingManager::ProcessAction(CustomVehAction action, RakNet::BitStream* b
 	case static_cast<CustomVehAction>(CustomVeh::Protocol::Action::SetVehicleWheelColor): {
 		CustomVeh::Protocol::VehicleWheelColorPacket wc {};
 		if (bs->Read(reinterpret_cast<char*>(&wc), sizeof(wc))) {
-			ClientLog(std::format("[Client] SetVehicleWheelColor: vehId={}, r={}, g={}, b={}",
+			ClientLog(LogLevel::Info, std::format("[Client] SetVehicleWheelColor: vehId={}, r={}, g={}, b={}",
 				wc.sampVehicleId, wc.r, wc.g, wc.b));
 			CustomVehicleBindingManager::Instance().SetVehicleWheelColor(wc.sampVehicleId, wc.r, wc.g, wc.b);
 		}
@@ -1641,7 +1641,7 @@ bool HandlingManager::ProcessAction(CustomVehAction action, RakNet::BitStream* b
 	case static_cast<CustomVehAction>(CustomVeh::Protocol::Action::SetVehicleBackfire): {
 		CustomVeh::Protocol::VehicleBackfirePacket bf {};
 		if (bs->Read(reinterpret_cast<char*>(&bf), sizeof(bf))) {
-			ClientLog(std::format("[Client] SetVehicleBackfire: vehId={}, enabled={}",
+			ClientLog(LogLevel::Info, std::format("[Client] SetVehicleBackfire: vehId={}, enabled={}",
 				bf.sampVehicleId, bf.enabled != 0));
 			CustomVehicleBindingManager::Instance().SetVehicleBackfire(bf.sampVehicleId, bf.enabled != 0);
 		}
@@ -1650,7 +1650,7 @@ bool HandlingManager::ProcessAction(CustomVehAction action, RakNet::BitStream* b
 	case static_cast<CustomVehAction>(CustomVeh::Protocol::Action::SetVehicleHorn): {
 		CustomVeh::Protocol::VehicleHornPacket horn {};
 		if (bs->Read(reinterpret_cast<char*>(&horn), sizeof(horn))) {
-			ClientLog(std::format("[Client] SetVehicleHorn: vehId={}, soundId={}, pitch={:.2f}",
+			ClientLog(LogLevel::Info, std::format("[Client] SetVehicleHorn: vehId={}, soundId={}, pitch={:.2f}",
 				horn.sampVehicleId, horn.hornSoundId, horn.hornPitch));
 			CustomVehicleBindingManager::Instance().SetVehicleHorn(horn.sampVehicleId, horn.hornSoundId, horn.hornPitch);
 		}
@@ -1659,7 +1659,7 @@ bool HandlingManager::ProcessAction(CustomVehAction action, RakNet::BitStream* b
 	case static_cast<CustomVehAction>(CustomVeh::Protocol::Action::SetVehicleSiren): {
 		CustomVeh::Protocol::VehicleSirenPacket siren {};
 		if (bs->Read(reinterpret_cast<char*>(&siren), sizeof(siren))) {
-			ClientLog(std::format("[Client] SetVehicleSiren: vehId={}, enabled={}, type={}",
+			ClientLog(LogLevel::Info, std::format("[Client] SetVehicleSiren: vehId={}, enabled={}, type={}",
 				siren.sampVehicleId, siren.enabled != 0, siren.sirenType));
 			CustomVehicleBindingManager::Instance().SetVehicleSiren(siren.sampVehicleId, siren.enabled != 0, siren.sirenType);
 		}
@@ -1668,7 +1668,7 @@ bool HandlingManager::ProcessAction(CustomVehAction action, RakNet::BitStream* b
 	case static_cast<CustomVehAction>(CustomVeh::Protocol::Action::SetVehicleLights): {
 		CustomVeh::Protocol::VehicleLightsPacket lights {};
 		if (bs->Read(reinterpret_cast<char*>(&lights), sizeof(lights))) {
-			ClientLog(std::format("[Client] SetVehicleLights: vehId={}, category={}, scale={:.2f}",
+			ClientLog(LogLevel::Info, std::format("[Client] SetVehicleLights: vehId={}, category={}, scale={:.2f}",
 				lights.sampVehicleId, lights.lightingCategory, lights.lightScaleMult));
 			CustomVehicleBindingManager::Instance().SetVehicleLights(lights.sampVehicleId, lights.lightingCategory, lights.lightScaleMult);
 		}
@@ -1677,14 +1677,14 @@ bool HandlingManager::ProcessAction(CustomVehAction action, RakNet::BitStream* b
 	case static_cast<CustomVehAction>(CustomVeh::Protocol::Action::SetVehicleWheel): {
 		CustomVeh::Protocol::VehicleWheelPacket wheel {};
 		if (bs->Read(reinterpret_cast<char*>(&wheel), sizeof(wheel))) {
-			ClientLog(std::format("[Client] SetVehicleWheel: vehId={}, wheelModelId={}",
+			ClientLog(LogLevel::Info, std::format("[Client] SetVehicleWheel: vehId={}, wheelModelId={}",
 				wheel.sampVehicleId, wheel.wheelModelId));
 			CustomVehicleBindingManager::Instance().SetVehicleWheel(wheel.sampVehicleId, wheel.wheelModelId);
 		}
 		return true;
 	}
 	default:
-		ClientLog(std::format("[Client] ProcessAction: Unknown or unhandled action {}", static_cast<int>(action)));
+		ClientLog(LogLevel::Warning, std::format("[Client] ProcessAction: Unknown or unhandled action {}", static_cast<int>(action)));
 		break;
 	}
 	return false;

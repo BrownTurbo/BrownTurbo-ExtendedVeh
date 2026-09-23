@@ -59,6 +59,22 @@ enum CHandlingAttribType
 	TYPE_FLAG
 };
 
+namespace HandlingMgr
+{
+#pragma pack(push, 1)
+struct stHandlingMod
+{
+	CHandlingAttribType type;
+	union
+	{
+		float fval;
+		unsigned int uival;
+		uint8_t bval;
+	};
+};
+#pragma pack(pop)
+}
+
 CHandlingAttribType GetHandlingAttributeType(CHandlingAttrib attribute);
 bool CanSetHandlingAttrib(CHandlingAttrib attribute);
 

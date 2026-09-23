@@ -55,14 +55,40 @@ namespace CustomVeh::Protocol {
 	enum class AssetType : uint8_t {
 		Dff = 0,
 		Txd = 1,
-		Col = 2
+		Col = 2,
+		AudioEngine = 3,
+		AudioAccel = 4,
+		AudioDecel = 5,
+		AudioBrake = 6,
+		AudioCrash = 7
 	};
+
+	inline constexpr bool IsModelAsset(AssetType type) noexcept
+	{
+		return type == AssetType::Dff || type == AssetType::Txd || type == AssetType::Col;
+	}
+
+	inline constexpr bool IsAudioAsset(AssetType type) noexcept
+	{
+		return type >= AssetType::AudioEngine && type <= AssetType::AudioCrash;
+	}
+
+	inline constexpr bool IsValidAssetType(AssetType type) noexcept
+	{
+		return IsModelAsset(type) || IsAudioAsset(type);
+	}
 
 	enum AssetFlags : uint32_t {
 		None = 0,
 		HasDff = 1u << 0,
 		HasTxd = 1u << 1,
-		HasCol = 1u << 2
+		HasCol = 1u << 2,
+		HasAudioEngine = 1u << 3,
+		HasAudioAccel = 1u << 4,
+		HasAudioDecel = 1u << 5,
+		HasAudioBrake = 1u << 6,
+		HasAudioCrash = 1u << 7,
+		HasAnyAudio = (HasAudioEngine | HasAudioAccel | HasAudioDecel | HasAudioBrake | HasAudioCrash)
 	};
 
 	enum class RejectReason : uint8_t {
@@ -114,6 +140,15 @@ namespace CustomVeh::Protocol {
 		uint8_t wheelUpgradeClass = 0;
 	};
 
+	struct CustomAudioInstructions {
+		float volume = 1.0f;
+		float minDistance = 5.0f;
+		float maxDistance = 90.0f;
+		float pitchMultiplier = 1.0f;
+		float accelPitchFactor = 0.5f;
+		uint8_t muteNative = 1;
+	};
+
 	// Full custom vehicle definition sent server->client.
 	struct VehicleDefinition {
 		uint32_t customModelId = 0;
@@ -127,6 +162,12 @@ namespace CustomVeh::Protocol {
 		AssetDescriptor txd = {};
 		AssetDescriptor col = {};
 		ModelInfo modelInfo = {};
+		CustomAudioInstructions customAudio = {};
+		AssetDescriptor audioEngine = {};
+		AssetDescriptor audioAccel = {};
+		AssetDescriptor audioDecel = {};
+		AssetDescriptor audioBrake = {};
+		AssetDescriptor audioCrash = {};
 	};
 
 	struct VehicleBinding {

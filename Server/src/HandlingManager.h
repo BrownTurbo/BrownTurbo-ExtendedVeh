@@ -2,6 +2,7 @@
 #include "CVehicleManager.hpp"
 #include "HandlingEnum.h"
 #include "HandlingStruct.h"
+#include "ModelConfigParser.h"
 #include "../../Shared/CustomVehicleProtocol.hpp"
 
 #include <Impl/network_impl.hpp>
@@ -17,19 +18,6 @@
 
 namespace HandlingMgr
 {
-#pragma pack(push, 1)
-struct stHandlingMod
-{
-	CHandlingAttribType type;
-	union
-	{
-		float fval;
-		unsigned int uival;
-		uint8_t bval;
-	};
-};
-#pragma pack(pop)
-
 struct stHandlingEntry
 {
 	struct tHandlingData handlingData;
@@ -47,6 +35,7 @@ extern std::unordered_map<uint16_t, struct stHandlingEntry> playerHandlings; // 
 extern std::unordered_map<uint32_t, CustomVeh::Protocol::VehicleDefinition> customVehicleDefs; // key = modelId
 extern std::unordered_set<uint32_t> customVehicleModels;
 extern std::unordered_map<uint16_t, uint8_t> vehicleDoorStates; // key = vehicleid, value = bitmask of missing doors (bits 0..5)
+extern std::unordered_map<uint32_t, ModelConfig> customVehicleConfigs; // key = modelId
 
 stHandlingEntry* GetModelHandlingEntry(uint32_t modelid);
 void __WriteHandlingEntryToBitStream(NetworkBitStream* bs, const struct stHandlingEntry& entry);
@@ -57,7 +46,7 @@ void BroadcastVehicleCorrection(uint16_t vehicleid);
 void InitializeModelHandlings();
 void OnCreateVehicle(int vehicleid);
 void OnDestroyVehicle(int vehicleid);
-void OnPlayerConnect(IPlayer& player); // call this from OnPlayerConnect (or rather from ACTION_INIT handler) so model handling modifications are sent to the player
+void OnPlayerAuthorized(IPlayer& player); // call this from ACTION_INIT handler so model handling modifications are sent to the authorized player
 void OnPlayerDisconnect(IPlayer& player, PeerDisconnectReason reason);
 void OnVehicleStreamIn(IVehicle& vehicle, IPlayer& player); // call from OnVehicleStreamIn so handling modifications for this individual vehicle are sent to the player
 
@@ -113,4 +102,29 @@ void SendCustomVehicleDefToPlayer(IPlayer& player, uint32_t modelId);
 void SendCustomVehicleDefToAll(uint32_t modelId);
 void SendCustomVehicleDestroyToPlayer(IPlayer& player, uint32_t modelId);
 void SendCustomVehicleDestroyToAll(uint32_t modelId);
+
+bool LoadCustomVehicleConfig(uint32_t customModelId);
+bool DefineCustomVehicleFromConfig(uint32_t customModelId, uint32_t defaultVisualBase = 411);
+int LoadAllCustomVehicles(uint32_t defaultVisualBase = 411);
+
+bool GetCustomVehicleName(uint32_t customModelId, std::string& name);
+bool SetCustomVehicleName(uint32_t customModelId, const std::string& name);
+
+bool GetCustomVehicleConfigString(uint32_t customModelId, const std::string& key, std::string& outValue);
+bool SetCustomVehicleConfigString(uint32_t customModelId, const std::string& key, const std::string& value);
+
+bool GetCustomVehicleConfigInt(uint32_t customModelId, const std::string& key, int& outValue);
+bool SetCustomVehicleConfigInt(uint32_t customModelId, const std::string& key, int value);
+
+bool GetCustomVehicleConfigFloat(uint32_t customModelId, const std::string& key, float& outValue);
+bool SetCustomVehicleConfigFloat(uint32_t customModelId, const std::string& key, float value);
+
+const std::vector<std::array<uint8_t, 4>>* GetCustomVehicleColorVariations(uint32_t customModelId);
+const std::vector<int>* GetCustomVehicleAllowedUpgrades(uint32_t customModelId);
+
+int GetCustomVehicleColorVariationsCount(uint32_t customModelId);
+bool GetCustomVehicleColorVariation(uint32_t customModelId, int index, int& p, int& s, int& t, int& q);
+bool GetCustomVehicleDefaultColors(uint32_t customModelId, int& p, int& s, int& t, int& q);
+int GetCustomVehicleAllowedUpgradesCount(uint32_t customModelId);
+int GetCustomVehicleAllowedUpgrade(uint32_t customModelId, int index);
 }

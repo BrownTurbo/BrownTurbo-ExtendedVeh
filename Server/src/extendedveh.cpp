@@ -33,6 +33,7 @@ void ExtendedVehCompo::onLoad(ICore* c)
 	get() = this;
 
 	core_->getPlayers().getPlayerConnectDispatcher().addEventHandler(this);
+	core_->getPlayers().getPlayerSpawnDispatcher().addEventHandler(this);
 
 	HandlingDefault::Initialize();
 	HandlingMgr::InitializeModelHandlings();
@@ -243,6 +244,8 @@ void ExtendedVehCompo::onFree(IComponent* component)
 	else if (component == this)
 	{
 		core_->getEventDispatcher().removeEventHandler(this);
+		core_->getPlayers().getPlayerConnectDispatcher().removeEventHandler(this);
+		core_->getPlayers().getPlayerSpawnDispatcher().removeEventHandler(this);
 		for (auto network : core_->getNetworks())
 		{
 			network->getInEventDispatcher().removeEventHandler(this);
@@ -288,11 +291,13 @@ void ExtendedVehCompo::onIncomingConnection(IPlayer& player,
 
 void ExtendedVehCompo::onPlayerConnect(IPlayer& player)
 {
+	int playerid = player.getID();
 	if (core_)
 	{
-		core_->logLn(LogLevel::Debug, "[ExtendedVeh] OnPlayerConnect: playerid=%d", player.getID());
+		core_->logLn(LogLevel::Debug, "[ExtendedVeh] OnPlayerConnect: playerid=%d", playerid);
 	}
-	HandlingMgr::OnPlayerConnect(player);
+	gPlayers.Reset(playerid);
+	HandlingMgr::ResetPlayerHandling(playerid);
 }
 
 void ExtendedVehCompo::onPlayerDisconnect(IPlayer& player,
@@ -308,6 +313,135 @@ void ExtendedVehCompo::onPlayerDisconnect(IPlayer& player,
 	ModelTransferMgr::OnPlayerDisconnect(player);
 }
 
+void ExtendedVehCompo::onPlayerSpawn(IPlayer& player)
+{
+	int playerid = player.getID();
+	if (core_)
+	{
+		core_->logLn(LogLevel::Debug, "[ExtendedVeh] onPlayerSpawn: playerid=%d", playerid);
+	}
+
+	if (!gPlayers.HasExtendedVeh(playerid))
+		return;
+
+	SyncCustomVehiclesToPlayer(player);
+}
+
+void ExtendedVehCompo::SyncCustomVehicleToPlayer(IVehicle& vehicle, IPlayer& player)
+{
+	if (!gPlayers.HasExtendedVeh(player.getID()))
+		return;
+
+	const uint16_t vId = static_cast<uint16_t>(vehicle.getID());
+	const auto customModel = CustomVehicleBindingRegistry::Instance().Get(vId);
+	if (!customModel)
+		return;
+
+	CustomVehicleTransport::SendVehicleBind(player, vId, *customModel);
+
+	auto stanceOpt = CustomVehicleBindingRegistry::Instance().GetStance(vId);
+	if (stanceOpt)
+	{
+		CustomVehicleTransport::SendVehicleStance(player, *stanceOpt);
+	}
+
+	auto extrasOpt = CustomVehicleBindingRegistry::Instance().GetExtras(vId);
+	if (extrasOpt)
+	{
+		CustomVeh::Protocol::VehicleExtrasPacket pkt {};
+		pkt.sampVehicleId = vId;
+		pkt.extrasMask = *extrasOpt;
+		CustomVehicleTransport::SendVehicleExtras(player, pkt);
+	}
+
+	int pj = -1;
+	auto pjOpt = CustomVehicleBindingRegistry::Instance().GetPaintjob(vId);
+	if (pjOpt)
+		pj = *pjOpt;
+	else
+		pj = vehicle.getPaintJob();
+
+	if (pj >= 0)
+	{
+		CustomVeh::Protocol::VehiclePaintjobPacket pkt {};
+		pkt.sampVehicleId = vId;
+		pkt.paintjobIndex = static_cast<int8_t>(pj);
+		CustomVehicleTransport::SendVehiclePaintjob(player, pkt);
+	}
+
+	auto neonOpt = CustomVehicleBindingRegistry::Instance().GetNeon(vId);
+	if (neonOpt)
+	{
+		CustomVehicleTransport::SendVehicleNeon(player, *neonOpt);
+	}
+
+	auto tintOpt = CustomVehicleBindingRegistry::Instance().GetWindowTint(vId);
+	if (tintOpt)
+	{
+		CustomVehicleTransport::SendVehicleWindowTint(player, *tintOpt);
+	}
+
+	auto wcOpt = CustomVehicleBindingRegistry::Instance().GetWheelColor(vId);
+	if (wcOpt)
+	{
+		CustomVehicleTransport::SendVehicleWheelColor(player, *wcOpt);
+	}
+
+	auto bfOpt = CustomVehicleBindingRegistry::Instance().GetBackfire(vId);
+	if (bfOpt)
+	{
+		CustomVeh::Protocol::VehicleBackfirePacket pkt {};
+		pkt.sampVehicleId = vId;
+		pkt.enabled = *bfOpt ? 1 : 0;
+		CustomVehicleTransport::SendVehicleBackfire(player, pkt);
+	}
+
+	auto hornOpt = CustomVehicleBindingRegistry::Instance().GetHorn(vId);
+	if (hornOpt)
+	{
+		CustomVehicleTransport::SendVehicleHorn(player, *hornOpt);
+	}
+
+	auto sirenOpt = CustomVehicleBindingRegistry::Instance().GetSiren(vId);
+	if (sirenOpt)
+	{
+		CustomVehicleTransport::SendVehicleSiren(player, *sirenOpt);
+	}
+
+	auto lightsOpt = CustomVehicleBindingRegistry::Instance().GetLights(vId);
+	if (lightsOpt)
+	{
+		CustomVehicleTransport::SendVehicleLights(player, *lightsOpt);
+	}
+
+	auto wheelOpt = CustomVehicleBindingRegistry::Instance().GetWheel(vId);
+	if (wheelOpt)
+	{
+		CustomVehicleTransport::SendVehicleWheel(player, *wheelOpt);
+	}
+}
+
+void ExtendedVehCompo::SyncCustomVehiclesToPlayer(IPlayer& player)
+{
+	if (!vehicles_)
+		return;
+
+	if (!gPlayers.HasExtendedVeh(player.getID()))
+		return;
+
+	for (IVehicle* vehicle : *vehicles_)
+	{
+		if (!vehicle)
+			continue;
+
+		if (!vehicle->isStreamedInForPlayer(player))
+			continue;
+
+		HandlingMgr::OnVehicleStreamIn(*vehicle, player);
+		SyncCustomVehicleToPlayer(*vehicle, player);
+	}
+}
+
 void ExtendedVehCompo::onVehicleStreamIn(IVehicle& vehicle, IPlayer& player)
 {
 	core_->logLn(LogLevel::Debug, "[ExtendedVeh] OnVehicleStreamIn(%d,%d)",
@@ -316,96 +450,7 @@ void ExtendedVehCompo::onVehicleStreamIn(IVehicle& vehicle, IPlayer& player)
 	// Send handling modifications for this vehicle
 	HandlingMgr::OnVehicleStreamIn(vehicle, player);
 
-	const auto customModel = CustomVehicleBindingRegistry::Instance().Get(static_cast<uint16_t>(vehicle.getID()));
-	if (!customModel)
-		return;
-
-	if (gPlayers.HasExtendedVeh(player.getID()))
-	{
-		uint16_t vId = static_cast<uint16_t>(vehicle.getID());
-		CustomVehicleTransport::SendVehicleBind(player, vId, *customModel);
-
-		auto stanceOpt = CustomVehicleBindingRegistry::Instance().GetStance(vId);
-		if (stanceOpt)
-		{
-			CustomVehicleTransport::SendVehicleStance(player, *stanceOpt);
-		}
-
-		auto extrasOpt = CustomVehicleBindingRegistry::Instance().GetExtras(vId);
-		if (extrasOpt)
-		{
-			CustomVeh::Protocol::VehicleExtrasPacket pkt {};
-			pkt.sampVehicleId = vId;
-			pkt.extrasMask = *extrasOpt;
-			CustomVehicleTransport::SendVehicleExtras(player, pkt);
-		}
-
-		int pj = -1;
-		auto pjOpt = CustomVehicleBindingRegistry::Instance().GetPaintjob(vId);
-		if (pjOpt)
-			pj = *pjOpt;
-		else
-			pj = vehicle.getPaintJob();
-
-		if (pj >= 0)
-		{
-			CustomVeh::Protocol::VehiclePaintjobPacket pkt {};
-			pkt.sampVehicleId = vId;
-			pkt.paintjobIndex = static_cast<int8_t>(pj);
-			CustomVehicleTransport::SendVehiclePaintjob(player, pkt);
-		}
-
-		auto neonOpt = CustomVehicleBindingRegistry::Instance().GetNeon(vId);
-		if (neonOpt)
-		{
-			CustomVehicleTransport::SendVehicleNeon(player, *neonOpt);
-		}
-
-		auto tintOpt = CustomVehicleBindingRegistry::Instance().GetWindowTint(vId);
-		if (tintOpt)
-		{
-			CustomVehicleTransport::SendVehicleWindowTint(player, *tintOpt);
-		}
-
-		auto wcOpt = CustomVehicleBindingRegistry::Instance().GetWheelColor(vId);
-		if (wcOpt)
-		{
-			CustomVehicleTransport::SendVehicleWheelColor(player, *wcOpt);
-		}
-
-		auto bfOpt = CustomVehicleBindingRegistry::Instance().GetBackfire(vId);
-		if (bfOpt)
-		{
-			CustomVeh::Protocol::VehicleBackfirePacket pkt {};
-			pkt.sampVehicleId = vId;
-			pkt.enabled = *bfOpt ? 1 : 0;
-			CustomVehicleTransport::SendVehicleBackfire(player, pkt);
-		}
-
-		auto hornOpt = CustomVehicleBindingRegistry::Instance().GetHorn(vId);
-		if (hornOpt)
-		{
-			CustomVehicleTransport::SendVehicleHorn(player, *hornOpt);
-		}
-
-		auto sirenOpt = CustomVehicleBindingRegistry::Instance().GetSiren(vId);
-		if (sirenOpt)
-		{
-			CustomVehicleTransport::SendVehicleSiren(player, *sirenOpt);
-		}
-
-		auto lightsOpt = CustomVehicleBindingRegistry::Instance().GetLights(vId);
-		if (lightsOpt)
-		{
-			CustomVehicleTransport::SendVehicleLights(player, *lightsOpt);
-		}
-
-		auto wheelOpt = CustomVehicleBindingRegistry::Instance().GetWheel(vId);
-		if (wheelOpt)
-		{
-			CustomVehicleTransport::SendVehicleWheel(player, *wheelOpt);
-		}
-	}
+	SyncCustomVehicleToPlayer(vehicle, player);
 }
 
 bool ExtendedVehCompo::onVehiclePaintJob(IPlayer& player, IVehicle& vehicle, int paintJob)
@@ -438,6 +483,11 @@ void ExtendedVehCompo::onPlayerEnterVehicle(IPlayer& player, IVehicle& vehicle, 
 
 	// Ensure entering players (especially passengers) receive the vehicle's latest handling
 	HandlingMgr::OnVehicleStreamIn(vehicle, player);
+
+	if (gPlayers.HasExtendedVeh(player.getID()))
+	{
+		SyncCustomVehicleToPlayer(vehicle, player);
+	}
 }
 
 void ExtendedVehCompo::onPoolEntryCreated(IVehicle& vehicle)

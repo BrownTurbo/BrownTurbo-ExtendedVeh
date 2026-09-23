@@ -4,13 +4,46 @@
 #include <fstream>
 #include <mutex>
 
-void ClientLog(const std::string& msg)
+static const char* LogLevelToString(LogLevel level)
+{
+	switch (level)
+	{
+	case LogLevel::Trace:
+		return "TRACE";
+	case LogLevel::Debug:
+		return "DEBUG";
+	case LogLevel::Warning:
+		return "WARN";
+	case LogLevel::Error:
+		return "ERROR";
+	case LogLevel::Info:
+	case LogLevel::None:
+	default:
+		return "INFO";
+	}
+}
+
+void ClientLog(const std::string& msg, LogLevel level)
 {
 	static std::mutex logMutex;
 	std::lock_guard<std::mutex> lock(logMutex);
+
+	if (level == LogLevel::None)
+	{
+		level = LogLevel::Info;
+	}
+
+	SYSTEMTIME st;
+	GetLocalTime(&st);
+	char prefix[48];
+	snprintf(prefix, sizeof(prefix), "[%04u-%02u-%02u %02u:%02u:%02u.%03u]<%s> ",
+		st.wYear, st.wMonth, st.wDay,
+		st.wHour, st.wMinute, st.wSecond, st.wMilliseconds,
+		LogLevelToString(level));
+
 	std::ofstream log("brownturbo-extendedveh.log", std::ios::app);
 	if (log.is_open()) {
-		log << msg << "\n";
+		log << prefix << msg << "\n";
 		log.flush();
 	}
 }

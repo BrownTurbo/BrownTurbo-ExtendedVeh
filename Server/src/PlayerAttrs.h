@@ -21,6 +21,12 @@ private:
 	std::unordered_map<int, PlayerAttrs> m_map;
 
 public:
+	PlayerAttrsMap() = default;
+	PlayerAttrsMap(const PlayerAttrsMap&) = delete;
+	PlayerAttrsMap& operator=(const PlayerAttrsMap&) = delete;
+	PlayerAttrsMap(PlayerAttrsMap&&) = delete;
+	PlayerAttrsMap& operator=(PlayerAttrsMap&&) = delete;
+
 	PlayerAttrs& operator[](int playerid)
 	{
 		std::lock_guard<std::mutex> lock(m_mutex);

@@ -30,13 +30,17 @@ bool Actions::Process(CustomVehAction id, NetworkBitStream& bs, IPlayer& player)
 		if (compat_ver >= EXTVEH_COMPAT_VERSION)
 		{
 			pkt.data.Write(true);
+			const bool alreadyAuthorized = gPlayers.HasExtendedVeh(playerid);
 			gPlayers.SetExtendedVeh(playerid, true);
 			if (core_)
 			{
 				core_->logLn(LogLevel::Message, "[ExtendedVeh] Player %d reports having chandling plugin (compat_ver=0x%X). Sent INIT_RESPONSE(allowed=true)", playerid, compat_ver);
 			}
 			player.sendPacket(Span<uint8_t>(pkt.data.GetData(), pkt.data.GetNumberOfBitsUsed()), 0, false);
-			HandlingMgr::OnPlayerConnect(player);
+			if (!alreadyAuthorized)
+			{
+				HandlingMgr::OnPlayerAuthorized(player);
+			}
 			return true;
 		}
 		else
@@ -211,35 +215,51 @@ bool Actions::Process(CustomVehAction id, NetworkBitStream& bs, IPlayer& player)
 	{
 		uint32_t modelId;
 		uint8_t kindByte;
-		if (!bs.Read(modelId) || !bs.Read(kindByte) || kindByte > static_cast<uint8_t>(ModelFileKind::Col))
+		if (!bs.Read(modelId) || !bs.Read(kindByte))
 		{
 			if (core_)
 				core_->logLn(LogLevel::Warning, "[ExtendedVeh] ACTION_ASSET_REQUEST: Malformed request from player %d", playerid);
 			return false;
 		}
+		const auto kind = static_cast<ModelFileKind>(kindByte);
+		if (!IsModelFileKind(kind) && !IsAudioFileKind(kind))
+		{
+			if (core_)
+				core_->logLn(LogLevel::Warning, "[ExtendedVeh] ACTION_ASSET_REQUEST: Invalid file kind %u from player %d", kindByte, playerid);
+			return false;
+		}
 		if (!gPlayers.HasExtendedVeh(playerid)) {
 			if (core_)
-				core_->logLn( LogLevel::Warning, "[ExtendedVeh] ACTION_ASSET_REQUEST: Unauthorized player %d", playerid);
+				core_->logLn(LogLevel::Warning, "[ExtendedVeh] ACTION_ASSET_REQUEST: Unauthorized player %d", playerid);
 			return false;
 		}
 		if (core_)
-			core_->logLn(LogLevel::Debug, "[ExtendedVeh] ACTION_ASSET_REQUEST: Player %d requested model %u kind %u", playerid, modelId, kindByte);
-		ModelTransferMgr::OnRequestFile(player, modelId, static_cast<ModelFileKind>(kindByte));
+			core_->logLn(LogLevel::Debug, "[ExtendedVeh] ACTION_ASSET_REQUEST: Player %d requested model %u %s %u",
+				playerid, modelId, IsAudioFileKind(kind) ? "audio kind" : "model kind", kindByte);
+		ModelTransferMgr::OnRequestFile(player, modelId, kind);
 		return true;
 	}
 	case ACTION_ASSET_CANCEL:
 	{
 		uint32_t modelId;
 		uint8_t kindByte;
-		if (!bs.Read(modelId) || !bs.Read(kindByte) || kindByte > static_cast<uint8_t>(ModelFileKind::Col))
+		if (!bs.Read(modelId) || !bs.Read(kindByte))
 		{
 			if (core_)
 				core_->logLn(LogLevel::Warning, "[ExtendedVeh] ACTION_ASSET_CANCEL: Malformed cancel from player %d", playerid);
 			return false;
 		}
+		const auto kind = static_cast<ModelFileKind>(kindByte);
+		if (!IsModelFileKind(kind) && !IsAudioFileKind(kind))
+		{
+			if (core_)
+				core_->logLn(LogLevel::Warning, "[ExtendedVeh] ACTION_ASSET_CANCEL: Invalid file kind %u from player %d", kindByte, playerid);
+			return false;
+		}
 		if (core_)
-			core_->logLn(LogLevel::Debug, "[ExtendedVeh] ACTION_ASSET_CANCEL: Player %d canceled transfer for model %u kind %u", playerid, modelId, kindByte);
-		ModelTransferMgr::CancelTransfer(player, modelId, static_cast<ModelFileKind>(kindByte));
+			core_->logLn(LogLevel::Debug, "[ExtendedVeh] ACTION_ASSET_CANCEL: Player %d canceled transfer for model %u %s %u",
+				playerid, modelId, IsAudioFileKind(kind) ? "audio kind" : "model kind", kindByte);
+		ModelTransferMgr::CancelTransfer(player, modelId, kind);
 		return true;
 	}
 	case ACTION_ASSET_READY:
@@ -247,15 +267,23 @@ bool Actions::Process(CustomVehAction id, NetworkBitStream& bs, IPlayer& player)
 		uint32_t modelId;
 		uint8_t kindByte;
 		uint8_t successByte = 0;
-		if (!bs.Read(modelId) || !bs.Read(kindByte) || !bs.Read(successByte) || kindByte > static_cast<uint8_t>(ModelFileKind::Col))
+		if (!bs.Read(modelId) || !bs.Read(kindByte) || !bs.Read(successByte))
 		{
 			if (core_)
 				core_->logLn(LogLevel::Warning, "[ExtendedVeh] ACTION_ASSET_READY: Malformed ready report from player %d", playerid);
 			return false;
 		}
+		const auto kind = static_cast<ModelFileKind>(kindByte);
+		if (!IsModelFileKind(kind) && !IsAudioFileKind(kind))
+		{
+			if (core_)
+				core_->logLn(LogLevel::Warning, "[ExtendedVeh] ACTION_ASSET_READY: Invalid file kind %u from player %d", kindByte, playerid);
+			return false;
+		}
 		if (core_)
-			core_->logLn(LogLevel::Debug, "[ExtendedVeh] ACTION_ASSET_READY: Player %d reported file stored for model %u kind %u (success=%d)", playerid, modelId, kindByte, successByte);
-		ModelTransferMgr::OnClientReportFileStored(player, modelId, static_cast<ModelFileKind>(kindByte), successByte != 0);
+			core_->logLn(LogLevel::Debug, "[ExtendedVeh] ACTION_ASSET_READY: Player %d reported file stored for model %u %s %u (success=%d)",
+				playerid, modelId, IsAudioFileKind(kind) ? "audio kind" : "model kind", kindByte, successByte);
+		ModelTransferMgr::OnClientReportFileStored(player, modelId, kind, successByte != 0);
 		return true;
 	}
 	default:

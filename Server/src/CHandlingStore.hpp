@@ -21,6 +21,12 @@ private:
 	mutable std::shared_mutex m_mutex;
 
 public:
+	CHandlingStore() = default;
+	CHandlingStore(const CHandlingStore&) = delete;
+	CHandlingStore& operator=(const CHandlingStore&) = delete;
+	CHandlingStore(CHandlingStore&&) = delete;
+	CHandlingStore& operator=(CHandlingStore&&) = delete;
+
 	tHandlingData* GetModelHandling(uint32_t modelId)
 	{
 		std::shared_lock<std::shared_mutex> lock(m_mutex);

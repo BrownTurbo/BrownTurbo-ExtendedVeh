@@ -19,9 +19,36 @@
 
 namespace fs = std::filesystem;
 
-enum class ModelFileKind : uint8_t { Dff = 0,
+enum class ModelFileKind : uint8_t {
+	Dff = 0,
 	Txd = 1,
-	Col = 2 };
+	Col = 2,
+	AudioEngine = 3,
+	AudioAccel = 4,
+	AudioDecel = 5,
+	AudioBrake = 6,
+	AudioCrash = 7
+};
+
+inline constexpr bool IsModelFileKind(ModelFileKind kind) noexcept
+{
+	return kind == ModelFileKind::Dff || kind == ModelFileKind::Txd || kind == ModelFileKind::Col;
+}
+
+inline constexpr bool IsAudioFileKind(ModelFileKind kind) noexcept
+{
+	return kind >= ModelFileKind::AudioEngine && kind <= ModelFileKind::AudioCrash;
+}
+
+inline constexpr bool IsValidFileKind(ModelFileKind kind) noexcept
+{
+	return IsModelFileKind(kind) || IsAudioFileKind(kind);
+}
+
+inline constexpr bool IsValidFileKind(uint8_t kindByte) noexcept
+{
+	return IsValidFileKind(static_cast<ModelFileKind>(kindByte));
+}
 
 struct TransferProgress {
 	uint32_t modelId = 0;
@@ -77,6 +104,9 @@ public:
 
 	// Thread-safe snapshot for UI - includes attempts & lastError now
 	std::vector<TransferProgress> Snapshot() const;
+	bool HasActiveTransfers() const;
+	bool HasFailedTransfers() const;
+	void ClearHistory();
 
 	void Shutdown();
 	void FailImmediately(std::unordered_map<uint64_t, InFlight>::iterator it, const std::string& err);
@@ -90,7 +120,7 @@ private:
 
 	static uint64_t Key(uint32_t modelId, ModelFileKind kind)
 	{
-		return (static_cast<uint64_t>(modelId) << 2) | static_cast<uint64_t>(kind);
+		return (static_cast<uint64_t>(modelId) << 8) | static_cast<uint64_t>(kind);
 	}
 
 	void FinishTransfer(uint64_t key, bool success, const std::string& err = {});
@@ -100,6 +130,7 @@ private:
 
 	mutable std::mutex m_mutex;
 	std::unordered_map<uint64_t, InFlight> m_active;
+	std::vector<TransferProgress> m_completed;
 
 	// Worker thread
 	std::thread m_worker;

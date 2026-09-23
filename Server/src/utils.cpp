@@ -1,5 +1,6 @@
 #include "utils.h"
 #include "defs.h"
+#include "HandlingManager.h"
 
 std::string Sha256Hex(const uint8_t* data, size_t length)
 {
@@ -102,6 +103,29 @@ fs::path GetAssetPath(std::uint32_t customModelId, CustomVeh::Protocol::AssetTyp
 		return modelDirectory / "model.txd";
 	case CustomVeh::Protocol::AssetType::Col:
 		return modelDirectory / "model.col";
+	case CustomVeh::Protocol::AssetType::AudioEngine:
+	case CustomVeh::Protocol::AssetType::AudioAccel:
+	case CustomVeh::Protocol::AssetType::AudioDecel:
+	case CustomVeh::Protocol::AssetType::AudioBrake:
+	case CustomVeh::Protocol::AssetType::AudioCrash:
+	{
+		auto it = HandlingMgr::customVehicleConfigs.find(customModelId);
+		if (it != HandlingMgr::customVehicleConfigs.end())
+		{
+			const auto& cfg = it->second;
+			if (type == CustomVeh::Protocol::AssetType::AudioEngine && !cfg.engineFile.empty())
+				return modelDirectory / cfg.engineFile;
+			if (type == CustomVeh::Protocol::AssetType::AudioAccel && !cfg.accelerationFile.empty())
+				return modelDirectory / cfg.accelerationFile;
+			if (type == CustomVeh::Protocol::AssetType::AudioDecel && !cfg.deaccelerationFile.empty())
+				return modelDirectory / cfg.deaccelerationFile;
+			if (type == CustomVeh::Protocol::AssetType::AudioBrake && !cfg.brakeFile.empty())
+				return modelDirectory / cfg.brakeFile;
+			if (type == CustomVeh::Protocol::AssetType::AudioCrash && !cfg.crashFile.empty())
+				return modelDirectory / cfg.crashFile;
+		}
+		break;
+	}
 	}
 
 	return {};

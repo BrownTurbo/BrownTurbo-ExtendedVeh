@@ -187,6 +187,7 @@ inline const char* GetVehicleCategoryName(VehicleCategory cat) noexcept
 		return "Train";
 	case VehicleCategory::Trailer:
 		return "Trailer";
+	case VehicleCategory::Unknown:
 	default:
 		return "Unknown";
 	}

@@ -243,6 +243,30 @@ native bool:DestroyCustomVehicle(customModelId);
 native bool:IsCustomVehicleModel(customModelId);
 native bool:IsVehicleCustom(vehicleid);
 
+// Custom Vehicle Model INI Configuration & Override Natives
+native bool:LoadCustomVehicleConfig(customModelId);
+native bool:DefineCustomVehicleFromConfig(customModelId, defaultVisualBase = 411);
+native LoadAllCustomVehicles(defaultVisualBase = 411);
+
+native bool:GetCustomVehicleName(customModelId, output[], maxlen = sizeof(output));
+native bool:SetCustomVehicleName(customModelId, const name[]);
+
+native bool:GetCustomVehicleConfigString(customModelId, const key[], output[], maxlen = sizeof(output));
+native bool:SetCustomVehicleConfigString(customModelId, const key[], const value[]);
+
+native bool:GetCustomVehicleConfigInt(customModelId, const key[], &result);
+native bool:SetCustomVehicleConfigInt(customModelId, const key[], value);
+
+native bool:GetCustomVehicleConfigFloat(customModelId, const key[], &Float:result);
+native bool:SetCustomVehicleConfigFloat(customModelId, const key[], Float:value);
+
+native GetCustomVehicleColorVariationsCount(customModelId);
+native bool:GetCustomVehicleColorVariation(customModelId, variationIndex, &primary, &secondary, &tertiary, &quaternary);
+native bool:GetCustomVehicleDefaultColors(customModelId, &primary, &secondary, &tertiary, &quaternary);
+
+native GetCustomVehicleAllowedUpgradesCount(customModelId);
+native GetCustomVehicleAllowedUpgrade(customModelId, index);
+
 /*
  * Custom Vehicle Instance Customization Natives
  *

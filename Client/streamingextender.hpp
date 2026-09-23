@@ -18,6 +18,7 @@
 #include "defs.h"
 #include "handling_manager.hpp"
 #include "rpworld.h"
+#include "utils.h"
 
 class StreamingExtender;
 inline CBaseModelInfo* GetEngineModelInfo(int modelId);
@@ -118,14 +119,14 @@ public:
 
 		CBaseModelInfo* visualBase = GetEngineModelInfo(static_cast<int>(def.visualBaseModel));
 		if (!visualBase) {
-			ClientLog(std::format(
+			ClientLog(LogLevel::Error, std::format(
 				"[Client] Streaming ERROR: visual base model {} not found.",
 				def.visualBaseModel));
 			return nullptr;
 		}
 
 		if (visualBase->GetModelType() != MODEL_INFO_VEHICLE) {
-			ClientLog(std::format(
+			ClientLog(LogLevel::Error, std::format(
 				"[Streaming] ERROR: visual base model {} is not a vehicle model.",
 				def.visualBaseModel));
 			return nullptr;
@@ -135,7 +136,7 @@ public:
 
 		const int gtaSlot = AllocateGtaModelSlot();
 		if (!IsValidGtaModelSlot(gtaSlot)) {
-			ClientLog(std::format(
+			ClientLog(LogLevel::Error, std::format(
 				"[Streaming] ERROR: no free GTA model-info slot available for custom model {}.",
 				def.customModelId));
 			return nullptr;
@@ -146,11 +147,11 @@ public:
 		entry->modelInfo = nullptr;
 		s_customModels[def.customModelId] = entry;
 
-		ClientLog(std::format("[Streaming] Creating custom model {} using GTA model slot {} (base={}).", def.customModelId, gtaSlot, def.visualBaseModel));
+		ClientLog(LogLevel::Info, std::format("[Streaming] Creating custom model {} using GTA model slot {} (base={}).", def.customModelId, gtaSlot, def.visualBaseModel));
 
 		CVehicleModelInfo* newModel = new CVehicleModelInfo();
 		if (!newModel) {
-			ClientLog(std::format(
+			ClientLog(LogLevel::Error, std::format(
 				"[Streaming] ERROR: failed to allocate CVehicleModelInfo for custom model {}.",
 				def.customModelId));
 			s_customModels.erase(def.customModelId);
@@ -199,7 +200,7 @@ public:
 
 		entry->modelInfo = newModel;
 
-		ClientLog(std::format("[Streaming] Custom model {} registered: gtaSlot={} modelInfo=0x{:08X}", def.customModelId, gtaSlot, reinterpret_cast<std::uintptr_t>(newModel)));
+		ClientLog(LogLevel::Info, std::format("[Streaming] Custom model {} registered: gtaSlot={} modelInfo=0x{:08X}", def.customModelId, gtaSlot, reinterpret_cast<std::uintptr_t>(newModel)));
 		return newModel;
 	}
 
@@ -285,12 +286,12 @@ public:
 		if (!pInfo || !pClump)
 			return false;
 
-		ClientLog(std::format("[Client]  FinalizeClump -> pInfo=0x{:08X} pClump=0x{:08X}", reinterpret_cast<std::uintptr_t>(pInfo), reinterpret_cast<std::uintptr_t>(pClump)));
+		ClientLog(LogLevel::Debug, std::format("[Client]  FinalizeClump -> pInfo=0x{:08X} pClump=0x{:08X}", reinterpret_cast<std::uintptr_t>(pInfo), reinterpret_cast<std::uintptr_t>(pClump)));
 
 		if (pInfo->m_pRwClump) {
-			ClientLog("[Client]  FinalizeClump -> deleting old RW clump");
+			ClientLog(LogLevel::Debug, "[Client]  FinalizeClump -> deleting old RW clump");
 			pInfo->DeleteRwObject();
-			ClientLog("[Client]  FinalizeClump -> old RW clump deleted");
+			ClientLog(LogLevel::Debug, "[Client]  FinalizeClump -> old RW clump deleted");
 		}
 		// CRITICAL: If m_pVehicleStruct was set (e.g. by a previous SetClump call),
 		// release it from GTA:SA's CPool<CVehicleStructure> BEFORE calling SetClump.
@@ -299,25 +300,25 @@ public:
 		// causes CPool depletion (at most 70 entries on SA 1.0 US).
 		// Verified: MTA:SA CRenderWareSA.cpp:406-417 uses destructor 0x4C7410 + release 0x4C9580.
 		if (pInfo->m_pVehicleStruct) {
-			ClientLog(std::format("[Client]  FinalizeClump -> releasing vehicle struct=0x{:08X}", reinterpret_cast<std::uintptr_t>(pInfo->m_pVehicleStruct)));
+			ClientLog(LogLevel::Debug, std::format("[Client]  FinalizeClump -> releasing vehicle struct=0x{:08X}", reinterpret_cast<std::uintptr_t>(pInfo->m_pVehicleStruct)));
 			auto CVehicleStructure_Destructor = reinterpret_cast<void(__thiscall*)(CVehicleModelInfo::CVehicleStructure*)>(0x4C7410);
 			auto CVehicleStructure_Release    = reinterpret_cast<void(__cdecl*)(CVehicleModelInfo::CVehicleStructure*)>(0x4C9580);
 			CVehicleStructure_Destructor(pInfo->m_pVehicleStruct);
 			CVehicleStructure_Release(pInfo->m_pVehicleStruct);
 			pInfo->m_pVehicleStruct = nullptr;
-			ClientLog("[Client]  FinalizeClump -> vehicle struct released");
+			ClientLog(LogLevel::Debug, "[Client]  FinalizeClump -> vehicle struct released");
 		}
-		ClientLog("[Client]  FinalizeClump -> BEFORE SetupVehicleVariables");
+		ClientLog(LogLevel::Debug, "[Client]  FinalizeClump -> BEFORE SetupVehicleVariables");
 		CVisibilityPlugins::SetupVehicleVariables(pClump);
-		ClientLog("[Client]  FinalizeClump -> AFTER SetupVehicleVariables");
+		ClientLog(LogLevel::Debug, "[Client]  FinalizeClump -> AFTER SetupVehicleVariables");
 
-		ClientLog("[Client]  FinalizeClump -> BEFORE SetClump");
+		ClientLog(LogLevel::Debug, "[Client]  FinalizeClump -> BEFORE SetClump");
 		pInfo->SetClump(pClump);   // SetClump allocates m_pVehicleStruct from pool + fills dummies
-		ClientLog("[Client]  FinalizeClump -> AFTER SetClump");
+		ClientLog(LogLevel::Debug, "[Client]  FinalizeClump -> AFTER SetClump");
 
-		ClientLog("[Client]  FinalizeClump -> BEFORE SetAtomicRenderCallbacks");
+		ClientLog(LogLevel::Debug, "[Client]  FinalizeClump -> BEFORE SetAtomicRenderCallbacks");
 		pInfo->SetAtomicRenderCallbacks();
-		ClientLog("[Client]  FinalizeClump -> AFTER SetAtomicRenderCallbacks");
+		ClientLog(LogLevel::Debug, "[Client]  FinalizeClump -> AFTER SetAtomicRenderCallbacks");
 
 		// ExtractDummiesFromClump is a fallback only: it fills any dummy slot that
 		// PreprocessHierarchy left as (0,0,0), using the RpClump frame hierarchy.

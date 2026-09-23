@@ -60,8 +60,33 @@ enum class ModelFileKind : uint8_t
 {
 	Dff = 0,
 	Txd = 1,
-	Col = 2
+	Col = 2,
+	AudioEngine = 3,
+	AudioAccel = 4,
+	AudioDecel = 5,
+	AudioBrake = 6,
+	AudioCrash = 7
 };
+
+inline constexpr bool IsModelFileKind(ModelFileKind kind) noexcept
+{
+	return kind == ModelFileKind::Dff || kind == ModelFileKind::Txd || kind == ModelFileKind::Col;
+}
+
+inline constexpr bool IsAudioFileKind(ModelFileKind kind) noexcept
+{
+	return kind >= ModelFileKind::AudioEngine && kind <= ModelFileKind::AudioCrash;
+}
+
+inline constexpr bool IsValidFileKind(ModelFileKind kind) noexcept
+{
+	return IsModelFileKind(kind) || IsAudioFileKind(kind);
+}
+
+inline constexpr bool IsValidFileKind(uint8_t kindByte) noexcept
+{
+	return IsValidFileKind(static_cast<ModelFileKind>(kindByte));
+}
 
 inline constexpr int kFileTransferChannel = 1;
 inline constexpr uint32_t kFileChunkSize = 4096;

@@ -20,8 +20,20 @@
 
 namespace fs = std::filesystem;
 
+enum class LogLevel : uint8_t
+{
+	None = 0,
+	Trace,
+	Debug,
+	Info,
+	Warning,
+	Error
+};
+using ClientLogLevel = LogLevel;
+
 bool SendMsg(int color, const char* msg);
-void ClientLog(const std::string& msg);
+void ClientLog(const std::string& msg, LogLevel level = LogLevel::None);
+inline void ClientLog(LogLevel level, const std::string& msg) { ClientLog(msg, level); }
 
 using PlayerPoolVariant = std::variant<
 	std::nullptr_t,

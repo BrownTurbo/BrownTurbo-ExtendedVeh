@@ -1639,6 +1639,126 @@ SCRIPT_API(IsVehicleCustom, bool(IVehicle& vehicle))
     return false;
 }
 
+// native bool:LoadCustomVehicleConfig(customModelId);
+SCRIPT_API(LoadCustomVehicleConfig, bool(int customModelId))
+{
+	ExtendedVehCompo* compo = ExtendedVehCompo::get();
+	ICore* core_ = compo ? compo->getCore() : nullptr;
+	if (customModelId < CVehicleMgr::CUSTOM_MODEL_START || customModelId > CVehicleMgr::MAX_NETWORK_VEHICLES)
+	{
+		if (core_)
+			core_->logLn(LogLevel::Warning, "[ExtendedVeh] LoadCustomVehicleConfig: Invalid customModelId %d", customModelId);
+		return false;
+	}
+	bool ret = HandlingMgr::LoadCustomVehicleConfig(static_cast<uint32_t>(customModelId));
+	if (core_)
+		core_->logLn(LogLevel::Debug, "[ExtendedVeh] LoadCustomVehicleConfig(model=%d) returning %s", customModelId, ret ? "true" : "false");
+	return ret;
+}
+
+// native bool:DefineCustomVehicleFromConfig(customModelId, defaultVisualBase = 411);
+SCRIPT_API(DefineCustomVehicleFromConfig, bool(int customModelId, int defaultVisualBase))
+{
+	ExtendedVehCompo* compo = ExtendedVehCompo::get();
+	ICore* core_ = compo ? compo->getCore() : nullptr;
+	if (customModelId < CVehicleMgr::CUSTOM_MODEL_START || customModelId > CVehicleMgr::MAX_NETWORK_VEHICLES)
+	{
+		if (core_)
+			core_->logLn(LogLevel::Warning, "[ExtendedVeh] DefineCustomVehicleFromConfig: Invalid customModelId %d", customModelId);
+		return false;
+	}
+	uint32_t base = (defaultVisualBase >= 400 && defaultVisualBase <= 611) ? static_cast<uint32_t>(defaultVisualBase) : 411;
+	bool ret = HandlingMgr::DefineCustomVehicleFromConfig(static_cast<uint32_t>(customModelId), base);
+	if (core_)
+		core_->logLn(LogLevel::Message, "[ExtendedVeh] DefineCustomVehicleFromConfig(model=%d, defaultBase=%u) returning %s", customModelId, base, ret ? "true" : "false");
+	return ret;
+}
+
+// native LoadAllCustomVehicles(defaultVisualBase = 411);
+SCRIPT_API(LoadAllCustomVehicles, int(int defaultVisualBase))
+{
+	uint32_t base = (defaultVisualBase >= 400 && defaultVisualBase <= 611) ? static_cast<uint32_t>(defaultVisualBase) : 411;
+	return HandlingMgr::LoadAllCustomVehicles(base);
+}
+
+// native bool:GetCustomVehicleName(customModelId, output[], maxlen = sizeof(output));
+SCRIPT_API(GetCustomVehicleName, bool(int customModelId, std::string& output))
+{
+	return HandlingMgr::GetCustomVehicleName(static_cast<uint32_t>(customModelId), output);
+}
+
+// native bool:SetCustomVehicleName(customModelId, const name[]);
+SCRIPT_API(SetCustomVehicleName, bool(int customModelId, const std::string& name))
+{
+	return HandlingMgr::SetCustomVehicleName(static_cast<uint32_t>(customModelId), name);
+}
+
+// native bool:GetCustomVehicleConfigString(customModelId, const key[], output[], maxlen = sizeof(output));
+SCRIPT_API(GetCustomVehicleConfigString, bool(int customModelId, const std::string& key, std::string& output))
+{
+	return HandlingMgr::GetCustomVehicleConfigString(static_cast<uint32_t>(customModelId), key, output);
+}
+
+// native bool:SetCustomVehicleConfigString(customModelId, const key[], const value[]);
+SCRIPT_API(SetCustomVehicleConfigString, bool(int customModelId, const std::string& key, const std::string& value))
+{
+	return HandlingMgr::SetCustomVehicleConfigString(static_cast<uint32_t>(customModelId), key, value);
+}
+
+// native bool:GetCustomVehicleConfigInt(customModelId, const key[], &result);
+SCRIPT_API(GetCustomVehicleConfigInt, bool(int customModelId, const std::string& key, int& result))
+{
+	return HandlingMgr::GetCustomVehicleConfigInt(static_cast<uint32_t>(customModelId), key, result);
+}
+
+// native bool:SetCustomVehicleConfigInt(customModelId, const key[], value);
+SCRIPT_API(SetCustomVehicleConfigInt, bool(int customModelId, const std::string& key, int value))
+{
+	return HandlingMgr::SetCustomVehicleConfigInt(static_cast<uint32_t>(customModelId), key, value);
+}
+
+// native bool:GetCustomVehicleConfigFloat(customModelId, const key[], &Float:result);
+SCRIPT_API(GetCustomVehicleConfigFloat, bool(int customModelId, const std::string& key, float& result))
+{
+	return HandlingMgr::GetCustomVehicleConfigFloat(static_cast<uint32_t>(customModelId), key, result);
+}
+
+// native bool:SetCustomVehicleConfigFloat(customModelId, const key[], Float:value);
+SCRIPT_API(SetCustomVehicleConfigFloat, bool(int customModelId, const std::string& key, float value))
+{
+	return HandlingMgr::SetCustomVehicleConfigFloat(static_cast<uint32_t>(customModelId), key, value);
+}
+
+// native GetCustomVehicleColorVariationsCount(customModelId);
+SCRIPT_API(GetCustomVehicleColorVariationsCount, int(int customModelId))
+{
+	return HandlingMgr::GetCustomVehicleColorVariationsCount(static_cast<uint32_t>(customModelId));
+}
+
+// native bool:GetCustomVehicleColorVariation(customModelId, variationIndex, &primary, &secondary, &tertiary, &quaternary);
+SCRIPT_API(GetCustomVehicleColorVariation, bool(int customModelId, int variationIndex, int& primary, int& secondary, int& tertiary, int& quaternary))
+{
+	return HandlingMgr::GetCustomVehicleColorVariation(static_cast<uint32_t>(customModelId), variationIndex, primary, secondary, tertiary, quaternary);
+}
+
+// native bool:GetCustomVehicleDefaultColors(customModelId, &primary, &secondary, &tertiary, &quaternary);
+SCRIPT_API(GetCustomVehicleDefaultColors, bool(int customModelId, int& primary, int& secondary, int& tertiary, int& quaternary))
+{
+	return HandlingMgr::GetCustomVehicleDefaultColors(static_cast<uint32_t>(customModelId), primary, secondary, tertiary, quaternary);
+}
+
+// native GetCustomVehicleAllowedUpgradesCount(customModelId);
+SCRIPT_API(GetCustomVehicleAllowedUpgradesCount, int(int customModelId))
+{
+	return HandlingMgr::GetCustomVehicleAllowedUpgradesCount(static_cast<uint32_t>(customModelId));
+}
+
+// native GetCustomVehicleAllowedUpgrade(customModelId, index);
+SCRIPT_API(GetCustomVehicleAllowedUpgrade, int(int customModelId, int index))
+{
+	return HandlingMgr::GetCustomVehicleAllowedUpgrade(static_cast<uint32_t>(customModelId), index);
+}
+
 namespace CustomVehicleNatives
 {
 inline bool BindCustomVehicle(IVehicle& vehicle, int customModelId)
