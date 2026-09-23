@@ -13,7 +13,7 @@ IDirect3DDevice9* g_imguiDevice = nullptr;
 
 static inline void LogImGuiStage(const char* stage, LogLevel level = LogLevel::Debug)
 {
-	ClientLog(level, std::format("[Client] ImGui Stage: {}", stage));
+	ClientLog(level, std::format("ImGui Stage: {}", stage));
 }
 
 static inline const char* GetModelFileKindName(ModelFileKind kind)
@@ -61,7 +61,7 @@ void RenderTransferWindow()
 	if (!ImGui::Begin("Asset Downloader", &open, ImGuiWindowFlags_NoCollapse)) {
 		ImGui::End();
 		if (!open) {
-			ClientLog(LogLevel::Info, "[Client] RenderTransferWindow: window closed by user");
+			ClientLog(LogLevel::Info, "RenderTransferWindow: window closed by user");
 			g_windowVisible.store(false, std::memory_order_relaxed);
 			g_manuallyToggled.store(true, std::memory_order_relaxed);
 			io.MouseDrawCursor = false;
@@ -71,7 +71,7 @@ void RenderTransferWindow()
 	}
 
 	if (!open) {
-		ClientLog(LogLevel::Debug, "[Client] RenderTransferWindow: open == false");
+		ClientLog(LogLevel::Debug, "RenderTransferWindow: open == false");
 		g_windowVisible.store(false, std::memory_order_relaxed);
 		g_manuallyToggled.store(true, std::memory_order_relaxed);
 		io.MouseDrawCursor = false;
@@ -81,7 +81,7 @@ void RenderTransferWindow()
 	}
 
 	auto transfers = ModelTransferClient::Instance().Snapshot();
-	ClientLog(LogLevel::Debug, std::format("[Client] RenderTransferWindow: rendering table with {} snapshot transfers", transfers.size()));
+	ClientLog(LogLevel::Debug, std::format("RenderTransferWindow: rendering table with {} snapshot transfers", transfers.size()));
 
 	// Summary stats
 	size_t activeCount = 0;
@@ -278,7 +278,7 @@ LRESULT CALLBACK hkWndProc(HWND hwnd, UINT u_msg, WPARAM w_param, LPARAM l_param
 		bool newVis = !g_windowVisible.load(std::memory_order_relaxed);
 		g_windowVisible.store(newVis, std::memory_order_relaxed);
 		g_manuallyToggled.store(true, std::memory_order_relaxed);
-		ClientLog(LogLevel::Info, std::format("[Client] hkWndProc: toggleKey pressed (key=0x{:X})! new g_windowVisible={}", static_cast<int>(w_param), newVis));
+		ClientLog(LogLevel::Info, std::format("hkWndProc: toggleKey pressed (key=0x{:X})! new g_windowVisible={}", static_cast<int>(w_param), newVis));
 		if (!newVis && g_bwasInitialized && ImGui::GetCurrentContext() != nullptr) {
 			ImGui::GetIO().MouseDrawCursor = false;
 		}
@@ -482,27 +482,27 @@ void BackgroundInitializationWorker()
 		if (statusES == MH_OK) {
 			MH_STATUS enableStatus =MH_EnableHook(g_targetEndScene);
 			if (enableStatus == MH_OK) {
-				ClientLog(LogLevel::Info, "[Client] Direct3D 9 hkEndScene hooked successfully via MinHook");
+				ClientLog(LogLevel::Info, "Direct3D 9 hkEndScene hooked successfully via MinHook");
 			} else {
-				ClientLog(LogLevel::Error, std::format("[Client] Failed to enable Direct3D 9 hkEndScene hook: {}", MH_StatusToString(enableStatus)));
+				ClientLog(LogLevel::Error, std::format("Failed to enable Direct3D 9 hkEndScene hook: {}", MH_StatusToString(enableStatus)));
 			}
 		} else {
-			ClientLog(LogLevel::Error, std::format("[Client] Failed to hook Direct3D 9 hkEndScene via MinHook: {}", MH_StatusToString(statusES)));
+			ClientLog(LogLevel::Error, std::format("Failed to hook Direct3D 9 hkEndScene via MinHook: {}", MH_StatusToString(statusES)));
 		}
 
 		MH_STATUS statusReset = MH_CreateHook(g_targetReset, reinterpret_cast<void*>(&hkReset), reinterpret_cast<void**>(&oReset));
 		if (statusReset == MH_OK) {
 			MH_STATUS enableStatus = MH_EnableHook(g_targetReset);
 			if (enableStatus == MH_OK) {
-				ClientLog(LogLevel::Info, "[Client] Direct3D 9 hkReset hooked successfully via MinHook");
+				ClientLog(LogLevel::Info, "Direct3D 9 hkReset hooked successfully via MinHook");
 			} else {
-				ClientLog(LogLevel::Error, std::format("[Client] Failed to enable Direct3D 9 hkReset hook: {}", MH_StatusToString(enableStatus)));
+				ClientLog(LogLevel::Error, std::format("Failed to enable Direct3D 9 hkReset hook: {}", MH_StatusToString(enableStatus)));
 			}
 		} else {
-			ClientLog(LogLevel::Error, std::format("[Client] Failed to hook Direct3D 9 hkReset via MinHook: {}", MH_StatusToString(statusReset)));
+			ClientLog(LogLevel::Error, std::format("Failed to hook Direct3D 9 hkReset via MinHook: {}", MH_StatusToString(statusReset)));
 		}
 	} else {
-		ClientLog(LogLevel::Error, "[Client] Failed to hook Direct3D 9: DEVICE_PTR was 0 after timeout");
+		ClientLog(LogLevel::Error, "Failed to hook Direct3D 9: DEVICE_PTR was 0 after timeout");
 	}
 }
 

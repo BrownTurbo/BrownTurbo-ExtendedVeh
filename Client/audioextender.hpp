@@ -430,7 +430,7 @@ public:
 		def.audioFiles.brakeFile = brakePath.string();
 		def.audioFiles.crashFile = crashPath.string();
 
-		ClientLog(LogLevel::Info, std::format("[Client] Registered custom audio for model {}: vol={:.2f}, minD={:.1f}, maxD={:.1f}, pitchM={:.2f}, accelP={:.2f}, muteNative={}",
+		ClientLog(LogLevel::Info, std::format("Registered custom audio for model {}: vol={:.2f}, minD={:.1f}, maxD={:.1f}, pitchM={:.2f}, accelP={:.2f}, muteNative={}",
 			customModelId, instructions.volume, instructions.minDistance, instructions.maxDistance,
 			instructions.pitchMultiplier, instructions.accelPitchFactor, instructions.muteNative));
 	}

@@ -120,7 +120,7 @@ public:
 		CBaseModelInfo* visualBase = GetEngineModelInfo(static_cast<int>(def.visualBaseModel));
 		if (!visualBase) {
 			ClientLog(LogLevel::Error, std::format(
-				"[Client] Streaming ERROR: visual base model {} not found.",
+				"Streaming ERROR: visual base model {} not found.",
 				def.visualBaseModel));
 			return nullptr;
 		}
@@ -286,12 +286,12 @@ public:
 		if (!pInfo || !pClump)
 			return false;
 
-		ClientLog(LogLevel::Debug, std::format("[Client]  FinalizeClump -> pInfo=0x{:08X} pClump=0x{:08X}", reinterpret_cast<std::uintptr_t>(pInfo), reinterpret_cast<std::uintptr_t>(pClump)));
+		ClientLog(LogLevel::Debug, std::format(" FinalizeClump -> pInfo=0x{:08X} pClump=0x{:08X}", reinterpret_cast<std::uintptr_t>(pInfo), reinterpret_cast<std::uintptr_t>(pClump)));
 
 		if (pInfo->m_pRwClump) {
-			ClientLog(LogLevel::Debug, "[Client]  FinalizeClump -> deleting old RW clump");
+			ClientLog(LogLevel::Debug, " FinalizeClump -> deleting old RW clump");
 			pInfo->DeleteRwObject();
-			ClientLog(LogLevel::Debug, "[Client]  FinalizeClump -> old RW clump deleted");
+			ClientLog(LogLevel::Debug, " FinalizeClump -> old RW clump deleted");
 		}
 		// CRITICAL: If m_pVehicleStruct was set (e.g. by a previous SetClump call),
 		// release it from GTA:SA's CPool<CVehicleStructure> BEFORE calling SetClump.
@@ -300,25 +300,25 @@ public:
 		// causes CPool depletion (at most 70 entries on SA 1.0 US).
 		// Verified: MTA:SA CRenderWareSA.cpp:406-417 uses destructor 0x4C7410 + release 0x4C9580.
 		if (pInfo->m_pVehicleStruct) {
-			ClientLog(LogLevel::Debug, std::format("[Client]  FinalizeClump -> releasing vehicle struct=0x{:08X}", reinterpret_cast<std::uintptr_t>(pInfo->m_pVehicleStruct)));
+			ClientLog(LogLevel::Debug, std::format(" FinalizeClump -> releasing vehicle struct=0x{:08X}", reinterpret_cast<std::uintptr_t>(pInfo->m_pVehicleStruct)));
 			auto CVehicleStructure_Destructor = reinterpret_cast<void(__thiscall*)(CVehicleModelInfo::CVehicleStructure*)>(0x4C7410);
 			auto CVehicleStructure_Release    = reinterpret_cast<void(__cdecl*)(CVehicleModelInfo::CVehicleStructure*)>(0x4C9580);
 			CVehicleStructure_Destructor(pInfo->m_pVehicleStruct);
 			CVehicleStructure_Release(pInfo->m_pVehicleStruct);
 			pInfo->m_pVehicleStruct = nullptr;
-			ClientLog(LogLevel::Debug, "[Client]  FinalizeClump -> vehicle struct released");
+			ClientLog(LogLevel::Debug, " FinalizeClump -> vehicle struct released");
 		}
-		ClientLog(LogLevel::Debug, "[Client]  FinalizeClump -> BEFORE SetupVehicleVariables");
+		ClientLog(LogLevel::Debug, " FinalizeClump -> BEFORE SetupVehicleVariables");
 		CVisibilityPlugins::SetupVehicleVariables(pClump);
-		ClientLog(LogLevel::Debug, "[Client]  FinalizeClump -> AFTER SetupVehicleVariables");
+		ClientLog(LogLevel::Debug, " FinalizeClump -> AFTER SetupVehicleVariables");
 
-		ClientLog(LogLevel::Debug, "[Client]  FinalizeClump -> BEFORE SetClump");
+		ClientLog(LogLevel::Debug, " FinalizeClump -> BEFORE SetClump");
 		pInfo->SetClump(pClump);   // SetClump allocates m_pVehicleStruct from pool + fills dummies
-		ClientLog(LogLevel::Debug, "[Client]  FinalizeClump -> AFTER SetClump");
+		ClientLog(LogLevel::Debug, " FinalizeClump -> AFTER SetClump");
 
-		ClientLog(LogLevel::Debug, "[Client]  FinalizeClump -> BEFORE SetAtomicRenderCallbacks");
+		ClientLog(LogLevel::Debug, " FinalizeClump -> BEFORE SetAtomicRenderCallbacks");
 		pInfo->SetAtomicRenderCallbacks();
-		ClientLog(LogLevel::Debug, "[Client]  FinalizeClump -> AFTER SetAtomicRenderCallbacks");
+		ClientLog(LogLevel::Debug, " FinalizeClump -> AFTER SetAtomicRenderCallbacks");
 
 		// ExtractDummiesFromClump is a fallback only: it fills any dummy slot that
 		// PreprocessHierarchy left as (0,0,0), using the RpClump frame hierarchy.

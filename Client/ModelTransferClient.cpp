@@ -54,7 +54,7 @@ void ModelTransferClient::Shutdown()
 
 void ModelTransferClient::ManualRetry(uint32_t modelId, ModelFileKind kind)
 {
-	ClientLog(LogLevel::Info, std::format("[Client] ModelTransferClient::ManualRetry: modelId={}, kind={}", modelId, static_cast<int>(kind)));
+	ClientLog(LogLevel::Info, std::format("ModelTransferClient::ManualRetry: modelId={}, kind={}", modelId, static_cast<int>(kind)));
 	const uint64_t key = Key(modelId, kind);
 	{
 		std::lock_guard<std::mutex> lock(m_mutex);
@@ -104,9 +104,9 @@ void ModelTransferClient::EnsureWorkerStarted()
 void ModelTransferClient::RequestFile(uint32_t modelId, ModelFileKind kind, const std::string& expectedSha256Hex,
 	std::function<void(bool, const fs::path&)> onReady)
 {
-	ClientLog(LogLevel::Info, std::format("[Client] ModelTransferClient::RequestFile: modelId={}, kind={}, expectedSha='{}'", modelId, static_cast<int>(kind), expectedSha256Hex));
+	ClientLog(LogLevel::Info, std::format("ModelTransferClient::RequestFile: modelId={}, kind={}, expectedSha='{}'", modelId, static_cast<int>(kind), expectedSha256Hex));
 	if (auto cached = ModelCache::Instance().TryGet(modelId, static_cast<uint8_t>(kind), expectedSha256Hex)) {
-		ClientLog(LogLevel::Info, std::format("[Client] ModelTransferClient::RequestFile: cache HIT for modelId={}, kind={}, path='{}'", modelId, static_cast<int>(kind), cached->string()));
+		ClientLog(LogLevel::Info, std::format("ModelTransferClient::RequestFile: cache HIT for modelId={}, kind={}, path='{}'", modelId, static_cast<int>(kind), cached->string()));
 		{
 			std::lock_guard<std::mutex> lock(m_mutex);
 			TransferProgress prog;
@@ -120,7 +120,7 @@ void ModelTransferClient::RequestFile(uint32_t modelId, ModelFileKind kind, cons
 		return;
 	}
 
-	ClientLog(LogLevel::Debug, std::format("[Client] ModelTransferClient::RequestFile: cache MISS for modelId={}, kind={}, starting network transfer...", modelId, static_cast<int>(kind)));
+	ClientLog(LogLevel::Debug, std::format("ModelTransferClient::RequestFile: cache MISS for modelId={}, kind={}, starting network transfer...", modelId, static_cast<int>(kind)));
 	EnsureWorkerStarted();
 
 	InFlight entry;
@@ -140,7 +140,7 @@ void ModelTransferClient::RequestFile(uint32_t modelId, ModelFileKind kind, cons
 	}
 
 	// Auto-show download window when network transfer starts
-	ClientLog(LogLevel::Info, std::format("[Client] ModelTransferClient::RequestFile: auto-showing download window for modelId={}, kind={}", modelId, static_cast<int>(kind)));
+	ClientLog(LogLevel::Info, std::format("ModelTransferClient::RequestFile: auto-showing download window for modelId={}, kind={}", modelId, static_cast<int>(kind)));
 	g_windowVisible.store(true, std::memory_order_release);
 
 	// Build RakNet packet: PKT_EXTVEH (251) + ACTION_REQUEST_FILE_TRANSFER (30) + modelId + kind
@@ -152,7 +152,7 @@ void ModelTransferClient::RequestFile(uint32_t modelId, ModelFileKind kind, cons
 		bs.Write(modelId);
 		bs.Write(static_cast<uint8_t>(kind));
 		rakhook::send(&bs, HIGH_PRIORITY, RELIABLE_ORDERED, TransferConfig::Instance().RequestChannel);
-		ClientLog(LogLevel::Debug, std::format("[Client] ModelTransferClient::RequestFile: sent RakNet AssetRequest packet for modelId={}, kind={}", modelId, static_cast<int>(kind)));
+		ClientLog(LogLevel::Debug, std::format("ModelTransferClient::RequestFile: sent RakNet AssetRequest packet for modelId={}, kind={}", modelId, static_cast<int>(kind)));
 	});
 }
 
@@ -165,7 +165,7 @@ std::vector<TransferProgress> ModelTransferClient::Snapshot() const
 		result.push_back(entry.progress);
 	for (auto& entry : m_completed)
 		result.push_back(entry);
-	ClientLog(LogLevel::Debug, std::format("[Client] ModelTransferClient::Snapshot: returning {} transfers ({} active, {} completed/cached)", result.size(), m_active.size(), m_completed.size()));
+	ClientLog(LogLevel::Debug, std::format("ModelTransferClient::Snapshot: returning {} transfers ({} active, {} completed/cached)", result.size(), m_active.size(), m_completed.size()));
 	return result;
 }
 
@@ -193,7 +193,7 @@ void ModelTransferClient::ClearHistory()
 
 void ModelTransferClient::FailImmediately(std::unordered_map<uint64_t, InFlight>::iterator it, const std::string& err)
 {
-	ClientLog(LogLevel::Error, std::format("[Client] ModelTransferClient::FailImmediately: modelId={}, kind={}, err='{}'", it->second.progress.modelId, static_cast<int>(it->second.progress.kind), err));
+	ClientLog(LogLevel::Error, std::format("ModelTransferClient::FailImmediately: modelId={}, kind={}, err='{}'", it->second.progress.modelId, static_cast<int>(it->second.progress.kind), err));
 	it->second.progress.failed = true;
 	it->second.progress.lastError = err;
 	it->second.progress.statusText = "failed";
@@ -288,7 +288,7 @@ void ModelTransferClient::OnTransferBegin(RakNet::BitStream* bs)
 
 	const auto& cfg = TransferConfig::Instance();
 	if (compressedSize == 0 || compressedSize > cfg.clientMaxCompressedSize || uncompressedSize == 0 || uncompressedSize > cfg.clientMaxUncompressedSize || totalChunks == 0) {
-		ClientLog(LogLevel::Error, std::format("[Client] ModelTransferClient::OnTransferBegin: REJECTED invalid size modelId={}, kind={}, compSize={}, uncompSize={}, totalChunks={}", modelId, static_cast<int>(kindByte), compressedSize, uncompressedSize, totalChunks));
+		ClientLog(LogLevel::Error, std::format("ModelTransferClient::OnTransferBegin: REJECTED invalid size modelId={}, kind={}, compSize={}, uncompSize={}, totalChunks={}", modelId, static_cast<int>(kindByte), compressedSize, uncompressedSize, totalChunks));
 		// Reject: unexpected size (too large or zero)
 		std::lock_guard<std::mutex> lock(m_mutex);
 		auto it = m_active.find(Key(modelId, static_cast<ModelFileKind>(kindByte)));
@@ -303,12 +303,12 @@ void ModelTransferClient::OnTransferBegin(RakNet::BitStream* bs)
 		return;
 	}
 
-	ClientLog(LogLevel::Info, std::format("[Client] ModelTransferClient::OnTransferBegin: ACCEPTED modelId={}, kind={}, compSize={}, uncompSize={}, totalChunks={}, sha='{}'", modelId, static_cast<int>(kindByte), compressedSize, uncompressedSize, totalChunks, shaBuf));
+	ClientLog(LogLevel::Info, std::format("ModelTransferClient::OnTransferBegin: ACCEPTED modelId={}, kind={}, compSize={}, uncompSize={}, totalChunks={}, sha='{}'", modelId, static_cast<int>(kindByte), compressedSize, uncompressedSize, totalChunks, shaBuf));
 
 	std::lock_guard<std::mutex> lock(m_mutex);
 	auto it = m_active.find(Key(modelId, static_cast<ModelFileKind>(kindByte)));
 	if (it == m_active.end()) {
-		ClientLog(LogLevel::Warning, std::format("[Client] ModelTransferClient::OnTransferBegin: WARNING: modelId={}, kind={} not found in m_active!", modelId, static_cast<int>(kindByte)));
+		ClientLog(LogLevel::Warning, std::format("ModelTransferClient::OnTransferBegin: WARNING: modelId={}, kind={} not found in m_active!", modelId, static_cast<int>(kindByte)));
 		return;
 	}
 
@@ -351,7 +351,7 @@ void ModelTransferClient::OnTransferChunk(RakNet::BitStream* bs)
 
 	auto& entry = it->second;
 	if (chunkIndex >= entry.progress.totalChunks) {
-		ClientLog(LogLevel::Error, std::format("[Client] ModelTransferClient::OnTransferChunk: ERROR chunkIndex {} >= totalChunks {}", chunkIndex, entry.progress.totalChunks));
+		ClientLog(LogLevel::Error, std::format("ModelTransferClient::OnTransferChunk: ERROR chunkIndex {} >= totalChunks {}", chunkIndex, entry.progress.totalChunks));
 		ScheduleRetry(it, "chunk index out of bounds");
 		return;
 	}
@@ -363,19 +363,19 @@ void ModelTransferClient::OnTransferChunk(RakNet::BitStream* bs)
 
 	const uint32_t offset = static_cast<std::uint64_t>(chunkIndex * 4096u);
 	if (offset >= entry.compressedBuffer.size()) {
-		ClientLog(LogLevel::Error, std::format("[Client] ModelTransferClient::OnTransferChunk: ERROR offset {} >= buffer {}", offset, entry.compressedBuffer.size()));
+		ClientLog(LogLevel::Error, std::format("ModelTransferClient::OnTransferChunk: ERROR offset {} >= buffer {}", offset, entry.compressedBuffer.size()));
 		ScheduleRetry(it, "chunk offset out of bounds");
 		return;
 	}
 	const uint32_t remaining = static_cast<uint32_t>(entry.compressedBuffer.size() - offset);
 	if (chunkLen > remaining) {
-		ClientLog(LogLevel::Error, std::format("[Client] ModelTransferClient::OnTransferChunk: ERROR chunkLen {} > remaining {}", chunkLen, remaining));
+		ClientLog(LogLevel::Error, std::format("ModelTransferClient::OnTransferChunk: ERROR chunkLen {} > remaining {}", chunkLen, remaining));
 		ScheduleRetry(it, "chunk exceeds compressed buffer");
 		return;
 	}
 
 	if (!bs->Read(reinterpret_cast<char*>(entry.compressedBuffer.data() + offset), chunkLen)) {
-		ClientLog(LogLevel::Error, std::format("[Client] ModelTransferClient::OnTransferChunk: ERROR failed to read payload"));
+		ClientLog(LogLevel::Error, std::format("ModelTransferClient::OnTransferChunk: ERROR failed to read payload"));
 		ScheduleRetry(it, "failed to read chunk payload");
 		return;
 	}
@@ -386,7 +386,7 @@ void ModelTransferClient::OnTransferChunk(RakNet::BitStream* bs)
 	entry.progress.receivedChunks++;
 	entry.progress.receivedBytes += chunkLen;
 
-	ClientLog(LogLevel::Debug, std::format("[Client] ModelTransferClient::OnTransferChunk: modelId={}, kind={}, chunk={}/{}, len={}, bytes={}/{}", modelId, static_cast<int>(kindByte), chunkIndex + 1, entry.progress.totalChunks, chunkLen, entry.progress.receivedBytes, entry.progress.compressedSize));
+	ClientLog(LogLevel::Debug, std::format("ModelTransferClient::OnTransferChunk: modelId={}, kind={}, chunk={}/{}, len={}, bytes={}/{}", modelId, static_cast<int>(kindByte), chunkIndex + 1, entry.progress.totalChunks, chunkLen, entry.progress.receivedBytes, entry.progress.compressedSize));
 
 	// refresh startTime so the worker's timeout is relative to last activity
 	entry.progress.startTime = std::chrono::steady_clock::now();
@@ -468,9 +468,9 @@ void ModelTransferClient::OnTransferEnd(RakNet::BitStream* bs)
 		fs::path finalPath;
 		if (stored) {
 			finalPath = ModelCache::Instance().PathFor(modelId, static_cast<uint8_t>(kindByte));
-			ClientLog(LogLevel::Info, std::format("[Client] ModelTransferClient::OnTransferEnd: SUCCESS modelId={}, kind={}, decompressBytes={}, stored='{}'", modelId, static_cast<int>(kindByte), decompressed.size(), finalPath.string()));
+			ClientLog(LogLevel::Info, std::format("ModelTransferClient::OnTransferEnd: SUCCESS modelId={}, kind={}, decompressBytes={}, stored='{}'", modelId, static_cast<int>(kindByte), decompressed.size(), finalPath.string()));
 		} else {
-			ClientLog(LogLevel::Error, std::format("[Client] ModelTransferClient::OnTransferEnd: ERROR failed to store cache for modelId={}, kind={}", modelId, static_cast<int>(kindByte)));
+			ClientLog(LogLevel::Error, std::format("ModelTransferClient::OnTransferEnd: ERROR failed to store cache for modelId={}, kind={}", modelId, static_cast<int>(kindByte)));
 			std::lock_guard lock(m_mutex);
 			auto it = m_active.find(key);
 			if (it != m_active.end()) {
@@ -507,7 +507,7 @@ void ModelTransferClient::OnTransferEnd(RakNet::BitStream* bs)
 
 	// Not OK -> schedule retry if allowed
 	{
-		ClientLog(LogLevel::Error, std::format("[Client] ModelTransferClient::OnTransferEnd: FAILED validation (inflate or hash mismatch) modelId={}, kind={}, expectedSha='{}'", modelId, static_cast<int>(kindByte), expectedSha));
+		ClientLog(LogLevel::Error, std::format("ModelTransferClient::OnTransferEnd: FAILED validation (inflate or hash mismatch) modelId={}, kind={}, expectedSha='{}'", modelId, static_cast<int>(kindByte), expectedSha));
 		std::lock_guard<std::mutex> lock(m_mutex);
 		auto it = m_active.find(key);
 		if (it == m_active.end())
@@ -525,7 +525,7 @@ void ModelTransferClient::OnTransferCancel(RakNet::BitStream* bs)
 	if (!bs->Read(kindByte))
 		return;
 
-	ClientLog(LogLevel::Warning, std::format("[Client] ModelTransferClient::OnTransferCancel: server canceled transfer for modelId={}, kind={}", modelId, static_cast<int>(kindByte)));
+	ClientLog(LogLevel::Warning, std::format("ModelTransferClient::OnTransferCancel: server canceled transfer for modelId={}, kind={}", modelId, static_cast<int>(kindByte)));
 	const uint64_t key = Key(modelId, static_cast<ModelFileKind>(kindByte));
 	std::function<void(bool, const fs::path&)> onReady;
 	{
@@ -556,7 +556,7 @@ void ModelTransferClient::ScheduleRetry(std::unordered_map<uint64_t, InFlight>::
 		? ("retrying (" + std::to_string(entry.attempts) + "/" + std::to_string(cfgMaxAttempts) + ")")
 		: "failed";
 
-	ClientLog(LogLevel::Warning, std::format("[Client] ModelTransferClient::ScheduleRetry: modelId={}, kind={}, attempt={}/{}, err='{}'", entry.progress.modelId, static_cast<int>(entry.progress.kind), entry.attempts, cfgMaxAttempts, err));
+	ClientLog(LogLevel::Warning, std::format("ModelTransferClient::ScheduleRetry: modelId={}, kind={}, attempt={}/{}, err='{}'", entry.progress.modelId, static_cast<int>(entry.progress.kind), entry.attempts, cfgMaxAttempts, err));
 
 	if (entry.attempts > cfgMaxAttempts) {
 		// permanent failure - call onReady(false) on main thread and erase entry

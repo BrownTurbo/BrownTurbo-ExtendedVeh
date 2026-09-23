@@ -870,7 +870,7 @@ static void __cdecl Hooked_RegisterCoronaTexture(
 		uint32_t now = GetTickCount();
 		if (scale != 1.0f && (now - s_lastLog > 2000)) {
 			s_lastLog = now;
-			ClientLog(LogLevel::Debug, std::format("[Client] Corona scaled: cat={}, isFront={}, isRear={}, size={}, scale={:.2f}, radius={:.2f}->{:.2f}",
+			ClientLog(LogLevel::Debug, std::format("Corona scaled: cat={}, isFront={}, isRear={}, size={}, scale={:.2f}, radius={:.2f}->{:.2f}",
 				static_cast<int>(category), isFront, isRear, static_cast<int>(lightSize), scale, radius, radius * scale));
 		}
 	}
@@ -1052,7 +1052,7 @@ static void __cdecl Hooked_RegisterCoronaType(
 		uint32_t now = GetTickCount();
 		if (scale != 1.0f && (now - s_lastLogType > 2000)) {
 			s_lastLogType = now;
-			ClientLog(LogLevel::Debug, std::format("[Client] Corona[Type] scaled: cat={}, isFront={}, isRear={}, size={}, scale={:.2f}, radius={:.2f}->{:.2f}",
+			ClientLog(LogLevel::Debug, std::format("Corona[Type] scaled: cat={}, isFront={}, isRear={}, size={}, scale={:.2f}, radius={:.2f}->{:.2f}",
 				static_cast<int>(category), isFront, isRear, static_cast<int>(lightSize), scale, radius, radius * scale));
 		}
 	}
@@ -1238,7 +1238,7 @@ static void __cdecl Hooked_StoreCarLightShadow(
 		uint32_t now = GetTickCount();
 		if ((cfg.shadowFrontScale != 1.0f || cfg.shadowSideScale != 1.0f) && (now - s_lastShadowLog > 2000)) {
 			s_lastShadowLog = now;
-			ClientLog(LogLevel::Debug, std::format("[Client] CarLightShadow scaled: cat={}, isFront={}, size={}, frontScale={:.2f}, sideScale={:.2f}",
+			ClientLog(LogLevel::Debug, std::format("CarLightShadow scaled: cat={}, isFront={}, size={}, frontScale={:.2f}, sideScale={:.2f}",
 				static_cast<int>(category), isFront, static_cast<int>(lightSize), cfg.shadowFrontScale, cfg.shadowSideScale));
 		}
 	}
@@ -1378,7 +1378,7 @@ public:
 	{
 		g_localPlayerSpawned.store(spawned, std::memory_order_release);
 
-		ClientLog(LogLevel::Info, std::format("[Client] Local player spawned={}", spawned));
+		ClientLog(LogLevel::Info, std::format("Local player spawned={}", spawned));
 	}
 
 	bool ReadAssetDescriptor(RakNet::BitStream& bs, CustomVeh::Protocol::AssetDescriptor& asset)
@@ -1485,7 +1485,7 @@ private:
 			return;
 		}
 
-		ClientLog(LogLevel::Info, std::format("[Client] Starting asset transfer for model {}", pending->def.customModelId));
+		ClientLog(LogLevel::Info, std::format("Starting asset transfer for model {}", pending->def.customModelId));
 
 		auto pushToQueue = [this, pending]() {
 			if (pending->queuedForFinalize)
@@ -1614,7 +1614,7 @@ private:
 
 			pending->dff = BinaryRwParser::ExtractClump(raw);
 			if (pending->dff.empty()) {
-				ClientLog(LogLevel::Error, std::format("[Client] Corrupt DFF for model {}: ExtractClump failed. Invalidating cache.", pending->def.customModelId));
+				ClientLog(LogLevel::Error, std::format("Corrupt DFF for model {}: ExtractClump failed. Invalidating cache.", pending->def.customModelId));
 				ModelCache::Instance().Invalidate(pending->def.customModelId, static_cast<uint8_t>(ModelFileKind::Dff));
 				{
 					std::lock_guard<std::mutex> lock(pending->assetMutex);
@@ -1661,26 +1661,26 @@ private:
 			return;
 
 		if (!IsLocalPlayerSpawned()) {
-			ClientLog(LogLevel::Debug, std::format("[Client] Deferring finalization of model {} because local player has not spawned.", pending->def.customModelId));
+			ClientLog(LogLevel::Debug, std::format("Deferring finalization of model {} because local player has not spawned.", pending->def.customModelId));
 
 			std::lock_guard<std::mutex> lock(m_pendingFinalizeMutex);
 			m_pendingFinalizeQueue.push(std::move(pending));
 			return;
 		}
 
-		ClientLog(LogLevel::Debug, std::format("[Client] FinalizeCustomVehicle: model={} dffState={} txdState={} txdPath='{}' dffBytes={} txdBytes={}", pending->def.customModelId, static_cast<int>(pending->dffState), static_cast<int>(pending->txdState), pending->txdPath.string(), pending->dff.size(), pending->txd.size()));
+		ClientLog(LogLevel::Debug, std::format("FinalizeCustomVehicle: model={} dffState={} txdState={} txdPath='{}' dffBytes={} txdBytes={}", pending->def.customModelId, static_cast<int>(pending->dffState), static_cast<int>(pending->txdState), pending->txdPath.string(), pending->dff.size(), pending->txd.size()));
 
 		if (pending->dffState != AssetState::Ready || pending->txdState != AssetState::Ready) {
-			ClientLog(LogLevel::Error, std::format("[Client] FinalizeCustomVehicle: ABORT model={} - assets not ready (dff={} txd={})", pending->def.customModelId, (int)pending->dffState, (int)pending->txdState));
+			ClientLog(LogLevel::Error, std::format("FinalizeCustomVehicle: ABORT model={} - assets not ready (dff={} txd={})", pending->def.customModelId, (int)pending->dffState, (int)pending->txdState));
 			StreamingExtender::DestroyCustomModel(pending->def.customModelId);
-			SendMsg(0xFF0000, std::format("[Client] Failed to load essential assets for model {}", pending->def.customModelId).c_str());
+			SendMsg(0xFF0000, std::format("Failed to load essential assets for model {}", pending->def.customModelId).c_str());
 			return;
 		}
 
 		if (!pending->modelInfo) {
 			pending->modelInfo = StreamingExtender::CreateCustomModel(pending->def);
 			if (!pending->modelInfo) {
-				SendMsg(0xFF0000, std::format("[Client] Failed to create GTA model for custom model {}", pending->def.customModelId).c_str());
+				SendMsg(0xFF0000, std::format("Failed to create GTA model for custom model {}", pending->def.customModelId).c_str());
 				return;
 			}
 		}
@@ -1689,7 +1689,7 @@ private:
 		if (!newModel)
 			return;
 
-		ClientLog(LogLevel::Debug, std::format("[Client] FinalizeCustomVehicle: model={} modelInfo=0x{:X} txdPath='{}' txdBytes={}", pending->def.customModelId, reinterpret_cast<uintptr_t>(newModel), pending->txdPath.string(), pending->txd.size()));
+		ClientLog(LogLevel::Debug, std::format("FinalizeCustomVehicle: model={} modelInfo=0x{:X} txdPath='{}' txdBytes={}", pending->def.customModelId, reinterpret_cast<uintptr_t>(newModel), pending->txdPath.string(), pending->txd.size()));
 
 		if (pending->txd.empty() && !pending->txdPath.empty()) {
 			std::ifstream file(pending->txdPath, std::ios::binary | std::ios::ate);
@@ -1702,12 +1702,12 @@ private:
 				}
 			}
 		}
-		ClientLog(LogLevel::Debug, std::format( "[Client] TXD buffer ready: model={} bytes={} path='{}'", pending->def.customModelId, pending->txd.size(), pending->txdPath.string()));
+		ClientLog(LogLevel::Debug, std::format( "TXD buffer ready: model={} bytes={} path='{}'", pending->def.customModelId, pending->txd.size(), pending->txdPath.string()));
 
 		if (pending->txd.empty()) {
-			ClientLog(LogLevel::Error, std::format("[Client] FinalizeCustomVehicle: ABORT model={} - txd empty after read attempt (txdPath='{}')", pending->def.customModelId, pending->txdPath.string()));
+			ClientLog(LogLevel::Error, std::format("FinalizeCustomVehicle: ABORT model={} - txd empty after read attempt (txdPath='{}')", pending->def.customModelId, pending->txdPath.string()));
 			StreamingExtender::DestroyCustomModel(pending->def.customModelId);
-			SendMsg(0xFF0000, std::format("[Client] TXD file empty or unreadable for model {}", pending->def.customModelId).c_str());
+			SendMsg(0xFF0000, std::format("TXD file empty or unreadable for model {}", pending->def.customModelId).c_str());
 			return;
 		}
 
@@ -1721,7 +1721,7 @@ private:
 
 		if (txdSlot < 0) {
 			StreamingExtender::DestroyCustomModel(pending->def.customModelId);
-			SendMsg(0xFF0000, std::format("[Client] Failed to allocate TXD slot for model {}", pending->def.customModelId).c_str());
+			SendMsg(0xFF0000, std::format("Failed to allocate TXD slot for model {}", pending->def.customModelId).c_str());
 			return;
 		}
 
@@ -1732,7 +1732,7 @@ private:
 
 		if (!txdStream) {
 			StreamingExtender::DestroyCustomModel(pending->def.customModelId);
-			SendMsg(0xFF0000, std::format("[Client] Failed to open TXD stream for model {}", pending->def.customModelId).c_str());
+			SendMsg(0xFF0000, std::format("Failed to open TXD stream for model {}", pending->def.customModelId).c_str());
 			return;
 		}
 
@@ -1740,10 +1740,10 @@ private:
 			RwStreamClose(txdStream, nullptr);
 			StreamingExtender::DestroyCustomModel(pending->def.customModelId);
 			ModelCache::Instance().Invalidate(pending->def.customModelId, static_cast<uint8_t>(ModelFileKind::Txd));
-			SendMsg(0xFF0000, std::format("[Client] Failed to load TXD for model {}", pending->def.customModelId).c_str());
+			SendMsg(0xFF0000, std::format("Failed to load TXD for model {}", pending->def.customModelId).c_str());
 			return;
 		}
-		ClientLog(LogLevel::Info, std::format("[Client] TXD loaded: model={} slot={} name='{}'", pending->def.customModelId, txdSlot, txdName));
+		ClientLog(LogLevel::Info, std::format("TXD loaded: model={} slot={} name='{}'", pending->def.customModelId, txdSlot, txdName));
 
 		RwStreamClose(txdStream, nullptr);
 
@@ -1756,7 +1756,7 @@ private:
 		RwStream* dffStream = RwStreamOpen(rwSTREAMMEMORY, rwSTREAMREAD, &dffMem);
 		if (dffStream != nullptr) {
 			if (RwStreamFindChunk(dffStream, rwID_CLUMP, nullptr, nullptr)) {
-				ClientLog(LogLevel::Debug, std::format("[Client] Loading DFF for model {}: bytes={}, txdSlot={}", pending->def.customModelId, pending->dff.size(), txdSlot));
+				ClientLog(LogLevel::Debug, std::format("Loading DFF for model {}: bytes={}, txdSlot={}", pending->def.customModelId, pending->dff.size(), txdSlot));
 
 				// CRITICAL FIX: GTA SA's collision plugin reader (0x41B2BD) executes during
 				// RpClumpStreamRead if the DFF has an embedded collision chunk. It accesses
@@ -1778,16 +1778,16 @@ private:
 				*reinterpret_cast<CBaseModelInfo**>(0x009689E0) = nullptr;
 				StopUsingCommonVehicleTexDictionary();
 
-				ClientLog(LogLevel::Debug, std::format("[Client] RpClumpStreamRead model {} -> clump=0x{:08X} (exc=0x{:08X})", pending->def.customModelId, reinterpret_cast<std::uintptr_t>(pClump), clumpException));
+				ClientLog(LogLevel::Debug, std::format("RpClumpStreamRead model {} -> clump=0x{:08X} (exc=0x{:08X})", pending->def.customModelId, reinterpret_cast<std::uintptr_t>(pClump), clumpException));
 				RwStreamClose(dffStream, nullptr);
 				if (pClump) {
 					auto* baseModelInfo = reinterpret_cast<CVehicleModelInfo*>(GetEngineModelInfo(static_cast<int>(pending->def.visualBaseModel)));
 					bool FinalizeRet = StreamingExtender::FinalizeClump(newModel, pClump, baseModelInfo);
-					ClientLog(LogLevel::Debug, std::format("[Client] StreamingExtender::FinalizeClump returned model={} result={} m_pRwClump=0x{:08X} m_pVehicleStruct=0x{:08X}", pending->def.customModelId, FinalizeRet, reinterpret_cast<std::uintptr_t>(newModel->m_pRwClump), reinterpret_cast<std::uintptr_t>(newModel->m_pVehicleStruct)));
+					ClientLog(LogLevel::Debug, std::format("StreamingExtender::FinalizeClump returned model={} result={} m_pRwClump=0x{:08X} m_pVehicleStruct=0x{:08X}", pending->def.customModelId, FinalizeRet, reinterpret_cast<std::uintptr_t>(newModel->m_pRwClump), reinterpret_cast<std::uintptr_t>(newModel->m_pVehicleStruct)));
 					if (!FinalizeRet) {
 						CTxdStore::PopCurrentTxd();
 						StreamingExtender::DestroyCustomModel(pending->def.customModelId);
-						SendMsg(0xFF0000, std::format("[Client] Failed to finalize clump for model {}", pending->def.customModelId).c_str());
+						SendMsg(0xFF0000, std::format("Failed to finalize clump for model {}", pending->def.customModelId).c_str());
 						return;
 					}
 					if (pending->colState == AssetState::Ready && (pending->def.flags & CustomVeh::Protocol::HasCol) != 0) {
@@ -1806,7 +1806,7 @@ private:
 							ExtendedVeh::Collision::CollisionLoader* colLoader = &ExtendedVeh::Collision::CollisionLoader::Instance();
 							if (!colLoader->LoadCollisionFromMemory(pending->col.data(), pending->col.size(), newModel)) {
 								ModelCache::Instance().Invalidate(pending->def.customModelId, static_cast<uint8_t>(ModelFileKind::Col));
-								SendMsg(0xFF8800, std::format("[Client] Warning: Failed to parse COL for model {}", pending->def.customModelId).c_str());
+								SendMsg(0xFF8800, std::format("Warning: Failed to parse COL for model {}", pending->def.customModelId).c_str());
 							}
 						}
 					}
@@ -1817,14 +1817,14 @@ private:
 						if (visualBase && visualBase->m_pColModel) {
 							newModel->m_pColModel = visualBase->m_pColModel;
 							newModel->bDoWeOwnTheColModel = 0;
-							ClientLog(LogLevel::Warning, std::format("[Client] Model {} using fallback collision from base model {}", pending->def.customModelId, pending->def.visualBaseModel));
+							ClientLog(LogLevel::Warning, std::format("Model {} using fallback collision from base model {}", pending->def.customModelId, pending->def.visualBaseModel));
 						}
 					}
 				} else {
 					CTxdStore::PopCurrentTxd();
 					StreamingExtender::DestroyCustomModel(pending->def.customModelId);
 					ModelCache::Instance().Invalidate(pending->def.customModelId, static_cast<uint8_t>(ModelFileKind::Dff));
-					SendMsg(0xFF0000, std::format("[Client] Failed to parse DFF for model {}", pending->def.customModelId).c_str());
+					SendMsg(0xFF0000, std::format("Failed to parse DFF for model {}", pending->def.customModelId).c_str());
 					return;
 				}
 			}
@@ -1840,12 +1840,12 @@ private:
 			CTxdStore::PopCurrentTxd();
 			StreamingExtender::DestroyCustomModel(pending->def.customModelId);
 			ModelCache::Instance().Invalidate(pending->def.customModelId, static_cast<uint8_t>(ModelFileKind::Dff));
-			SendMsg(0xFF0000, std::format("[Client] Failed to open DFF stream for model {}", pending->def.customModelId).c_str());
+			SendMsg(0xFF0000, std::format("Failed to open DFF stream for model {}", pending->def.customModelId).c_str());
 			return;
 		}
 
 		CTxdStore::PopCurrentTxd();
-		ClientLog(LogLevel::Info, std::format("[Client] Model {} finalized successfully. modelInfo=0x{:X}, rwClump=0x{:X}, txdSlot={}", pending->def.customModelId, reinterpret_cast<std::uintptr_t>(newModel), reinterpret_cast<std::uintptr_t>(newModel->m_pRwClump), newModel->m_nTxdIndex));
+		ClientLog(LogLevel::Info, std::format("Model {} finalized successfully. modelInfo=0x{:X}, rwClump=0x{:X}, txdSlot={}", pending->def.customModelId, reinterpret_cast<std::uintptr_t>(newModel), reinterpret_cast<std::uintptr_t>(newModel->m_pRwClump), newModel->m_nTxdIndex));
 
 		if (pending->def.flags & CustomVeh::Protocol::HasAnyAudio) {
 			AudioExtender::RegisterCustomAudio(
@@ -1911,7 +1911,7 @@ public:
 
 	void HandleCustomVehicleDef(const CustomVeh::Protocol::VehicleDefinition& def)
 	{
-		ClientLog(LogLevel::Info, std::format("[Client] Received definition for model {} (DFF='{}', TXD='{}', COL='{}').", def.customModelId, def.dff.filename, def.txd.filename, def.col.filename));
+		ClientLog(LogLevel::Info, std::format("Received definition for model {} (DFF='{}', TXD='{}', COL='{}').", def.customModelId, def.dff.filename, def.txd.filename, def.col.filename));
 		CustomVehicleBindingManager::SetBaseModelId(def.customModelId, def.visualBaseModel);
 		AudioExtender::RegisterVehicleAudio(def.customModelId, def.audioBaseModel, def.engineSoundId.OnSound, def.engineSoundId.OffSound, def.celerateSoundId.accelerateSound, def.celerateSoundId.decelerateSound);
 
@@ -1919,7 +1919,7 @@ public:
 		{
 			std::lock_guard<std::mutex> lock(m_pendingDefMutex);
 			if (m_activeModelIds.count(def.customModelId)) {
-				ClientLog(LogLevel::Warning, std::format("[Client] Ignoring duplicate VehicleDefinition for model {}.", def.customModelId));
+				ClientLog(LogLevel::Warning, std::format("Ignoring duplicate VehicleDefinition for model {}.", def.customModelId));
 				return;
 			}
 			m_activeModelIds.insert(def.customModelId);
@@ -1932,14 +1932,14 @@ public:
 		if (!IsLocalPlayerSpawned()) {
 			std::lock_guard<std::mutex> lock(m_pendingDefMutex);
 			m_pendingDefQueue.push(pending);
-			ClientLog(LogLevel::Debug, std::format("[Client] Player not spawned yet; queued asset download for model {} until spawn.", def.customModelId));
+			ClientLog(LogLevel::Debug, std::format("Player not spawned yet; queued asset download for model {} until spawn.", def.customModelId));
 			return;
 		}
 
 		// Dispatch to the main game thread - CreateModelAndBeginTransfers sends RakNet packets
 		// and must not run on the network receive thread.
 		MainThreadQueue::Instance().Push([this, pending]() {
-			ClientLog(LogLevel::Info, std::format("[Client] Starting asset transfer for model {} (dispatched to main thread).", pending->def.customModelId));
+			ClientLog(LogLevel::Info, std::format("Starting asset transfer for model {} (dispatched to main thread).", pending->def.customModelId));
 			CreateModelAndBeginTransfers(pending);
 		});
 	}
@@ -1967,10 +1967,10 @@ public:
 			auto pending = localQueue.front();
 			localQueue.pop();
 			if (StreamingExtender::IsCustomModel(pending->def.customModelId)) {
-				ClientLog(LogLevel::Warning, std::format("[Client] Custom model {} already exists; skipping creation.", pending->def.customModelId));
+				ClientLog(LogLevel::Warning, std::format("Custom model {} already exists; skipping creation.", pending->def.customModelId));
 				continue;
 			}
-			ClientLog(LogLevel::Info, std::format("[Client] Activating custom model {} after local player spawn (remaining queue={}).", pending->def.customModelId, localQueue.size()));
+			ClientLog(LogLevel::Info, std::format("Activating custom model {} after local player spawn (remaining queue={}).", pending->def.customModelId, localQueue.size()));
 			AudioExtender::RegisterVehicleAudio(pending->def.customModelId, pending->def.audioBaseModel, pending->def.engineSoundId.OnSound, pending->def.engineSoundId.OffSound, pending->def.celerateSoundId.accelerateSound, pending->def.celerateSoundId.decelerateSound);
 			CreateModelAndBeginTransfers(pending);
 		}
@@ -1991,12 +1991,12 @@ public:
 			localQueue.swap(m_pendingFinalizeQueue);
 		}
 
-		ClientLog(LogLevel::Debug, std::format("[Client] ProcessPendingFinalizations: processing {} deferred finalizations", localQueue.size()));
+		ClientLog(LogLevel::Debug, std::format("ProcessPendingFinalizations: processing {} deferred finalizations", localQueue.size()));
 
 		while (!localQueue.empty()) {
 			auto pending = localQueue.front();
 			localQueue.pop();
-			ClientLog(LogLevel::Info, std::format("[Client] Player spawned - finalizing deferred model {}.", pending->def.customModelId));
+			ClientLog(LogLevel::Info, std::format("Player spawned - finalizing deferred model {}.", pending->def.customModelId));
 			FinalizeCustomVehicle(pending);
 		}
 	}
@@ -2072,18 +2072,18 @@ public:
 bool ASIinitialized = false;
 void InitializeHooks()
 {
-	ClientLog(LogLevel::Info, "[Client] InitializeHooks thread started, waiting for samp.dll...");
+	ClientLog(LogLevel::Info, "InitializeHooks thread started, waiting for samp.dll...");
 	while (GetModuleHandleA("samp.dll") == nullptr) {
 		std::this_thread::sleep_for(std::chrono::milliseconds(100));
 	}
-	ClientLog(LogLevel::Info, std::format("[Client] samp.dll loaded at 0x{:X}", rakhook::samp_addr()));
+	ClientLog(LogLevel::Info, std::format("samp.dll loaded at 0x{:X}", rakhook::samp_addr()));
 
 	while (!ASIinitialized) {
 		if (rakhook::samp_addr() && rakhook::samp_version() != rakhook::samp_ver::unknown) {
 			if (IsGameInitialized()) {
 				if (rakhook::initialize()) {
 					ASIinitialized = true;
-					ClientLog(LogLevel::Info, std::format("[Client] rakhook initialized successfully (samp_version={})", static_cast<int>(rakhook::samp_version())));
+					ClientLog(LogLevel::Info, std::format("rakhook initialized successfully (samp_version={})", static_cast<int>(rakhook::samp_version())));
 					break;
 				}
 			}
@@ -2093,22 +2093,22 @@ void InitializeHooks()
 
 	rakhook::on_receive_rpc += [](unsigned char& id, RakNet::BitStream* bs) -> bool {
 		if (id == RPC_InitGame) {
-			ClientLog(LogLevel::Info, "[Client] Received RPC_InitGame (139), sending init packet...");
+			ClientLog(LogLevel::Info, "Received RPC_InitGame (139), sending init packet...");
 			_customVehInstance.SetLocalPlayerSpawned(false);
 			g_windowVisible.store(false, std::memory_order_relaxed);
 			ModelTransferClient::Instance().ClearHistory();
 			_customVehInstance.RequestClearAllCustomModels();
 			if (!HandlingManager::ProcessAction(ACTION_RESET_ALL, nullptr))
 			{
-				ClientLog(LogLevel::Error, "[Client] HandlingManager::ProcessAction failed to process ACTION_RESET_ALL.");
+				ClientLog(LogLevel::Error, "HandlingManager::ProcessAction failed to process ACTION_RESET_ALL.");
 			}
 			if (!_customVehInstance.IsServerAuthorized()) {
 				HandlingManager::ResetInitState();
 				HandlingManager::SendInitPacket();
-				ClientLog(LogLevel::Info, "[Client] Game session initialized; handshake sent.");
+				ClientLog(LogLevel::Info, "Game session initialized; handshake sent.");
 			}
 			else {
-				ClientLog(LogLevel::Debug, "[Client] localPlayer seems to be already authorized...");
+				ClientLog(LogLevel::Debug, "localPlayer seems to be already authorized...");
 			}
 		} else if (id == RPC_WorldPlayerAdd) {
 			size_t originalOffset = bs->GetReadOffset();
@@ -2123,14 +2123,14 @@ void InitializeHooks()
 			bs->SetReadOffset(originalOffset);
 			_customVehInstance.onPlayerStreamOut(playerId);
 		} else if (id == RPC_Spawn) {
-			ClientLog(LogLevel::Info, "[Client] RPC_Spawn received.");
+			ClientLog(LogLevel::Info, "RPC_Spawn received.");
 			_customVehInstance.SetLocalPlayerSpawned(true);
 			_customVehInstance.ProcessPendingDefinitions();
 			_customVehInstance.ProcessPendingFinalizations();
 			CustomVehicleBindingManager::Instance().Process();
 			return true;
 		} else if (id == RPC_GameModeRestart) {
-			ClientLog(LogLevel::Info, "[Client] Received RPC_GameModeRestart (142), resetting session state and re-sending init packet...");
+			ClientLog(LogLevel::Info, "Received RPC_GameModeRestart (142), resetting session state and re-sending init packet...");
 			_customVehInstance.SetLocalPlayerSpawned(false);
 			g_windowVisible.store(false, std::memory_order_relaxed);
 			HandlingManager::m_isServerAuthorized.store(false, std::memory_order_release);
@@ -2139,14 +2139,14 @@ void InitializeHooks()
 			_customVehInstance.RequestClearAllCustomModels();
 			if (!HandlingManager::ProcessAction(ACTION_RESET_ALL, nullptr))
 			{
-				ClientLog(LogLevel::Error, "[Client] HandlingManager::ProcessAction failed to process ACTION_RESET_ALL.");
+				ClientLog(LogLevel::Error, "HandlingManager::ProcessAction failed to process ACTION_RESET_ALL.");
 			}
 			HandlingManager::ResetInitState();
 			HandlingManager::SendInitPacket();
-			ClientLog(LogLevel::Info, "[Client] GameModeRestart processed; handshake re-sent.");
+			ClientLog(LogLevel::Info, "GameModeRestart processed; handshake re-sent.");
 			return true;
 		} else if (id == RPC_ServerQuit) {
-			ClientLog(LogLevel::Info, "[Client] Received RPC_ServerQuit (166).");
+			ClientLog(LogLevel::Info, "Received RPC_ServerQuit (166).");
 			_customVehInstance.SetLocalPlayerSpawned(false);
 			g_windowVisible.store(false, std::memory_order_relaxed);
 			HandlingManager::m_isServerAuthorized.store(false, std::memory_order_release);
@@ -2156,21 +2156,21 @@ void InitializeHooks()
 	};
 	rakhook::on_send_rpc += [](int& id, RakNet::BitStream* bs, PacketPriority& priority, PacketReliability& reliability, char& ord_channel, bool& sh_timestamp) -> bool {
 		if (id == RPC_RequestClass) {
-			ClientLog(LogLevel::Debug, "[Client] RPC_RequestClass sent.");
+			ClientLog(LogLevel::Debug, "RPC_RequestClass sent.");
 			_customVehInstance.SetLocalPlayerSpawned(false);
 			if (!_customVehInstance.IsServerAuthorized() && rakhook::orig && rakhook::orig->IsConnected()) {
 				HandlingManager::ResetInitState();
 				HandlingManager::SendInitPacket();
-				ClientLog(LogLevel::Info, "[Client] Handshake sent on RPC_RequestClass fallback.");
+				ClientLog(LogLevel::Info, "Handshake sent on RPC_RequestClass fallback.");
 			}
 			return true;
 		} else if (id == RPC_RequestSpawn) {
-			ClientLog(LogLevel::Debug, "[Client] RPC_RequestSpawn sent.");
+			ClientLog(LogLevel::Debug, "RPC_RequestSpawn sent.");
 			_customVehInstance.SetLocalPlayerSpawned(false);
 			if (!_customVehInstance.IsServerAuthorized() && rakhook::orig && rakhook::orig->IsConnected()) {
 				HandlingManager::ResetInitState();
 				HandlingManager::SendInitPacket();
-				ClientLog(LogLevel::Info, "[Client] Handshake sent on RPC_RequestSpawn fallback.");
+				ClientLog(LogLevel::Info, "Handshake sent on RPC_RequestSpawn fallback.");
 			}
 			return true;
 		}
@@ -2188,7 +2188,7 @@ void InitializeHooks()
 			if (actionID == CustomVehAction::CustomVehicleDefine) {
 				CustomVeh::Protocol::VehicleDefinition def;
 				if (!_customVehInstance.ReadVehicleDefinition(bs, def)) {
-					SendMsg(0xFF0000, "[Client] Failed to read vehicle definition from packet");
+					SendMsg(0xFF0000, "Failed to read vehicle definition from packet");
 					return false;
 				}
 				_customVehInstance.HandleCustomVehicleDef(def);
@@ -2196,7 +2196,7 @@ void InitializeHooks()
 			} else if (actionID == CustomVehAction::CustomVehicleDestroy) {
 				uint32_t customModelId;
 				if (!bs.Read(customModelId)) {
-					SendMsg(0xFF0000, "[Client] Failed to read vehicle modelId from packet");
+					SendMsg(0xFF0000, "Failed to read vehicle modelId from packet");
 					return false;
 				}
 				ModelTransferClient::Instance().CancelModelTransfers(customModelId);
@@ -2205,22 +2205,22 @@ void InitializeHooks()
 			}
 			return HandlingManager::ProcessAction(actionID, &bs);
 		} else if (packetId == ID_CONNECTION_REQUEST_ACCEPTED) {
-			ClientLog(LogLevel::Info, "[Client] Received ID_CONNECTION_REQUEST_ACCEPTED, sending init packet...");
+			ClientLog(LogLevel::Info, "Received ID_CONNECTION_REQUEST_ACCEPTED, sending init packet...");
 			ModelCache::Instance().ReloadManifest();
 			_customVehInstance.SetLocalPlayerSpawned(false);
 			g_windowVisible.store(false, std::memory_order_relaxed);
 			ModelTransferClient::Instance().ClearHistory();
 			_customVehInstance.RequestClearAllCustomModels();
 			if (!HandlingManager::ProcessAction(ACTION_RESET_ALL, nullptr)) {
-				ClientLog(LogLevel::Error, "[Client] HandlingManager::ProcessAction failed to process ACTION_RESET_ALL.");
+				ClientLog(LogLevel::Error, "HandlingManager::ProcessAction failed to process ACTION_RESET_ALL.");
 			}
 			if (!_customVehInstance.IsServerAuthorized() && rakhook::orig && rakhook::orig->IsConnected()) {
 				HandlingManager::ResetInitState();
 				HandlingManager::SendInitPacket();
-				ClientLog(LogLevel::Info, "[Client] Connection Request Accepted; handshake sent.");
+				ClientLog(LogLevel::Info, "Connection Request Accepted; handshake sent.");
 			}
 		} else if (packetId == ID_DISCONNECTION_NOTIFICATION || packetId == ID_CONNECTION_LOST || packetId == ID_CONNECTION_BANNED) {
-			ClientLog(LogLevel::Info, "[Client] Disconnected from server");
+			ClientLog(LogLevel::Info, "Disconnected from server");
 			ModelCache::Instance().SaveManifest();
 			_customVehInstance.SetLocalPlayerSpawned(false);
 			// Hide download window on disconnect
@@ -2253,9 +2253,9 @@ static void OnGameProcess()
 		try {
 			HandlingManager::ProcessPendingCommands();
 		} catch (const std::exception& e) {
-			ClientLog(LogLevel::Error, std::format("[Client] Exception in ProcessPendingCommands: {}", e.what()));
+			ClientLog(LogLevel::Error, std::format("Exception in ProcessPendingCommands: {}", e.what()));
 		} catch (...) {
-			ClientLog(LogLevel::Error, "[Client] Unknown exception in ProcessPendingCommands");
+			ClientLog(LogLevel::Error, "Unknown exception in ProcessPendingCommands");
 		}
 
 		if (!ASIinitialized) {
@@ -2269,7 +2269,7 @@ static void OnGameProcess()
 				s_lastAuthRetryTick = now;
 				HandlingManager::ResetInitState();
 				HandlingManager::SendInitPacket();
-				ClientLog(LogLevel::Debug, "[Client] Periodic handshake sent (awaiting authorization)...");
+				ClientLog(LogLevel::Debug, "Periodic handshake sent (awaiting authorization)...");
 			}
 		}
 
@@ -2798,9 +2798,9 @@ static void OnGameProcess()
 			}
 		}
 	} catch (const std::exception& e) {
-		ClientLog(LogLevel::Error, std::format("[Client] Exception in OnGameProcess: {}", e.what()));
+		ClientLog(LogLevel::Error, std::format("Exception in OnGameProcess: {}", e.what()));
 	} catch (...) {
-		ClientLog(LogLevel::Error, "[Client] Unknown exception in OnGameProcess");
+		ClientLog(LogLevel::Error, "Unknown exception in OnGameProcess");
 	}
 }
 
@@ -2825,168 +2825,168 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD dwReason, LPVOID lpReserved)
 		if (mhStatus == MH_OK) {
 			MH_STATUS enableStatus = MH_EnableHook(reinterpret_cast<void*>(0x53BEE0));
 			if (enableStatus == MH_OK) {
-				ClientLog(LogLevel::Info, "[Client] CGame::Process (0x53BEE0) hooked successfully via MinHook");
+				ClientLog(LogLevel::Info, "CGame::Process (0x53BEE0) hooked successfully via MinHook");
 			} else {
-				ClientLog(LogLevel::Error, std::format("[Client] Failed to enable CGame::Process hook: {}", MH_StatusToString(enableStatus)));
+				ClientLog(LogLevel::Error, std::format("Failed to enable CGame::Process hook: {}", MH_StatusToString(enableStatus)));
 			}
 		} else {
-			ClientLog(LogLevel::Error, std::format("[Client] Failed to hook CGame::Process (0x53BEE0): {}", MH_StatusToString(mhStatus)));
+			ClientLog(LogLevel::Error, std::format("Failed to hook CGame::Process (0x53BEE0): {}", MH_StatusToString(mhStatus)));
 		}
 
 		MH_STATUS whlStatus = MH_CreateHook(reinterpret_cast<void*>(0x6AA290), reinterpret_cast<void*>(&Hooked_UpdateWheelMatrix), reinterpret_cast<void**>(&g_origUpdateWheelMatrix));
 		if (whlStatus == MH_OK) {
 			MH_STATUS enableStatus = MH_EnableHook(reinterpret_cast<void*>(0x6AA290));
 			if (enableStatus == MH_OK) {
-				ClientLog(LogLevel::Info, "[Client] CAutomobile::UpdateWheelMatrix (0x6AA290) hooked successfully via MinHook");
+				ClientLog(LogLevel::Info, "CAutomobile::UpdateWheelMatrix (0x6AA290) hooked successfully via MinHook");
 			} else {
-				ClientLog(LogLevel::Error, std::format("[Client] Failed to enable CAutomobile::UpdateWheelMatrix hook: {}", MH_StatusToString(enableStatus)));
+				ClientLog(LogLevel::Error, std::format("Failed to enable CAutomobile::UpdateWheelMatrix hook: {}", MH_StatusToString(enableStatus)));
 			}
 		} else {
-			ClientLog(LogLevel::Error, std::format("[Client] Failed to hook CAutomobile::UpdateWheelMatrix (0x6AA290): {}", MH_StatusToString(whlStatus)));
+			ClientLog(LogLevel::Error, std::format("Failed to hook CAutomobile::UpdateWheelMatrix (0x6AA290): {}", MH_StatusToString(whlStatus)));
 		}
 
 		MH_STATUS hlStatus = MH_CreateHook(reinterpret_cast<void*>(0x6E0A50), reinterpret_cast<void*>(&Hooked_DoHeadLightEffect), reinterpret_cast<void**>(&g_origDoHeadLightEffect));
 		if (hlStatus == MH_OK) {
 			MH_STATUS enableStatus = MH_EnableHook(reinterpret_cast<void*>(0x6E0A50));
 			if (enableStatus == MH_OK) {
-				ClientLog(LogLevel::Info, "[Client] CVehicle::DoHeadLightEffect (0x6E0A50) hooked successfully via MinHook");
+				ClientLog(LogLevel::Info, "CVehicle::DoHeadLightEffect (0x6E0A50) hooked successfully via MinHook");
 			} else {
-				ClientLog(LogLevel::Error, std::format("[Client] Failed to enable CVehicle::DoHeadLightEffect hook: {}", MH_StatusToString(enableStatus)));
+				ClientLog(LogLevel::Error, std::format("Failed to enable CVehicle::DoHeadLightEffect hook: {}", MH_StatusToString(enableStatus)));
 			}
 		} else {
-			ClientLog(LogLevel::Error, std::format("[Client] Failed to hook CVehicle::DoHeadLightEffect (0x6E0A50): {}", MH_StatusToString(hlStatus)));
+			ClientLog(LogLevel::Error, std::format("Failed to hook CVehicle::DoHeadLightEffect (0x6E0A50): {}", MH_StatusToString(hlStatus)));
 		}
 
 		MH_STATUS tlStatus = MH_CreateHook(reinterpret_cast<void*>(0x6E1780), reinterpret_cast<void*>(&Hooked_DoTailLightEffect), reinterpret_cast<void**>(&g_origDoTailLightEffect));
 		if (tlStatus == MH_OK) {
 			MH_STATUS enableStatus = MH_EnableHook(reinterpret_cast<void*>(0x6E1780));
 			if (enableStatus == MH_OK) {
-				ClientLog(LogLevel::Info, "[Client] CVehicle::DoTailLightEffect (0x6E1780) hooked successfully via MinHook");
+				ClientLog(LogLevel::Info, "CVehicle::DoTailLightEffect (0x6E1780) hooked successfully via MinHook");
 			} else {
-				ClientLog(LogLevel::Error, std::format("[Client] Failed to enable CVehicle::DoTailLightEffect hook: {}", MH_StatusToString(enableStatus)));
+				ClientLog(LogLevel::Error, std::format("Failed to enable CVehicle::DoTailLightEffect hook: {}", MH_StatusToString(enableStatus)));
 			}
 		} else {
-			ClientLog(LogLevel::Error, std::format("[Client] Failed to hook CVehicle::DoTailLightEffect (0x6E1780): {}", MH_StatusToString(tlStatus)));
+			ClientLog(LogLevel::Error, std::format("Failed to hook CVehicle::DoTailLightEffect (0x6E1780): {}", MH_StatusToString(tlStatus)));
 		}
 
 		MH_STATUS exhStatus = MH_CreateHook(reinterpret_cast<void*>(0x6DE240), reinterpret_cast<void*>(&Hooked_AddExhaustParticles), reinterpret_cast<void**>(&g_origAddExhaustParticles));
 		if (exhStatus == MH_OK) {
 			MH_STATUS enableStatus = MH_EnableHook(reinterpret_cast<void*>(0x6DE240));
 			if (enableStatus == MH_OK) {
-				ClientLog(LogLevel::Info, "[Client] CVehicle::AddExhaustParticles (0x6DE240) hooked successfully via MinHook");
+				ClientLog(LogLevel::Info, "CVehicle::AddExhaustParticles (0x6DE240) hooked successfully via MinHook");
 			} else {
-				ClientLog(LogLevel::Error, std::format("[Client] Failed to enable CVehicle::AddExhaustParticles hook: {}", MH_StatusToString(enableStatus)));
+				ClientLog(LogLevel::Error, std::format("Failed to enable CVehicle::AddExhaustParticles hook: {}", MH_StatusToString(enableStatus)));
 			}
 		} else {
-			ClientLog(LogLevel::Error, std::format("[Client] Failed to hook CVehicle::AddExhaustParticles (0x6DE240): {}", MH_StatusToString(exhStatus)));
+			ClientLog(LogLevel::Error, std::format("Failed to hook CVehicle::AddExhaustParticles (0x6DE240): {}", MH_StatusToString(exhStatus)));
 		}
 
 		MH_STATUS rcTexStatus = MH_CreateHook(reinterpret_cast<void*>(0x6FC180), reinterpret_cast<void*>(&Hooked_RegisterCoronaTexture), reinterpret_cast<void**>(&g_origRegisterCoronaTexture));
 		if (rcTexStatus == MH_OK) {
 			MH_STATUS enableStatus = MH_EnableHook(reinterpret_cast<void*>(0x6FC180));
 			if (enableStatus == MH_OK) {
-				ClientLog(LogLevel::Info, "[Client] CCoronas::RegisterCorona[Texture] (0x6FC180) hooked successfully via MinHook");
+				ClientLog(LogLevel::Info, "CCoronas::RegisterCorona[Texture] (0x6FC180) hooked successfully via MinHook");
 			} else {
-				ClientLog(LogLevel::Error, std::format("[Client] Failed to enable CCoronas::RegisterCorona[Texture] hook: {}", MH_StatusToString(enableStatus)));
+				ClientLog(LogLevel::Error, std::format("Failed to enable CCoronas::RegisterCorona[Texture] hook: {}", MH_StatusToString(enableStatus)));
 			}
 		} else {
-			ClientLog(LogLevel::Error, std::format("[Client] Failed to hook CCoronas::RegisterCorona[Texture] (0x6FC180): {}", MH_StatusToString(rcTexStatus)));
+			ClientLog(LogLevel::Error, std::format("Failed to hook CCoronas::RegisterCorona[Texture] (0x6FC180): {}", MH_StatusToString(rcTexStatus)));
 		}
 
 		MH_STATUS rcTypeStatus = MH_CreateHook(reinterpret_cast<void*>(0x6FC580), reinterpret_cast<void*>(&Hooked_RegisterCoronaType), reinterpret_cast<void**>(&g_origRegisterCoronaType));
 		if (rcTypeStatus == MH_OK) {
 			MH_STATUS enableStatus = MH_EnableHook(reinterpret_cast<void*>(0x6FC580));
 			if (enableStatus == MH_OK) {
-				ClientLog(LogLevel::Info, "[Client] CCoronas::RegisterCorona[Type] (0x6FC580) hooked successfully via MinHook");
+				ClientLog(LogLevel::Info, "CCoronas::RegisterCorona[Type] (0x6FC580) hooked successfully via MinHook");
 			} else {
-				ClientLog(LogLevel::Error, std::format("[Client] Failed to enable CCoronas::RegisterCorona[Type] hook: {}", MH_StatusToString(enableStatus)));
+				ClientLog(LogLevel::Error, std::format("Failed to enable CCoronas::RegisterCorona[Type] hook: {}", MH_StatusToString(enableStatus)));
 			}
 		} else {
-			ClientLog(LogLevel::Error, std::format("[Client] Failed to hook CCoronas::RegisterCorona[Type] (0x6FC580): {}", MH_StatusToString(rcTypeStatus)));
+			ClientLog(LogLevel::Error, std::format("Failed to hook CCoronas::RegisterCorona[Type] (0x6FC580): {}", MH_StatusToString(rcTypeStatus)));
 		}
 
 		MH_STATUS clsStatus = MH_CreateHook(reinterpret_cast<void*>(0x70C500), reinterpret_cast<void*>(&Hooked_StoreCarLightShadow), reinterpret_cast<void**>(&g_origStoreCarLightShadow));
 		if (clsStatus == MH_OK) {
 			MH_STATUS enableStatus = MH_EnableHook(reinterpret_cast<void*>(0x70C500));
 			if (enableStatus == MH_OK) {
-				ClientLog(LogLevel::Info, "[Client] CShadows::StoreCarLightShadow (0x70C500) hooked successfully via MinHook");
+				ClientLog(LogLevel::Info, "CShadows::StoreCarLightShadow (0x70C500) hooked successfully via MinHook");
 			} else {
-				ClientLog(LogLevel::Error, std::format("[Client] Failed to enable CShadows::StoreCarLightShadow hook: {}", MH_StatusToString(enableStatus)));
+				ClientLog(LogLevel::Error, std::format("Failed to enable CShadows::StoreCarLightShadow hook: {}", MH_StatusToString(enableStatus)));
 			}
 		} else {
-			ClientLog(LogLevel::Error, std::format("[Client] Failed to hook CShadows::StoreCarLightShadow (0x70C500): {}", MH_StatusToString(clsStatus)));
+			ClientLog(LogLevel::Error, std::format("Failed to hook CShadows::StoreCarLightShadow (0x70C500): {}", MH_StatusToString(clsStatus)));
 		}
 
 		MH_STATUS remapStatus = MH_CreateHook(reinterpret_cast<void*>(0x6D0C00), reinterpret_cast<void*>(&Hooked_SetRemap), reinterpret_cast<void**>(&g_origSetRemap));
 		if (remapStatus == MH_OK) {
 			MH_STATUS enableStatus = MH_EnableHook(reinterpret_cast<void*>(0x6D0C00));
 			if (enableStatus == MH_OK) {
-				ClientLog(LogLevel::Info, "[Client] CVehicle::SetRemap (0x6D0C00) hooked successfully via MinHook");
+				ClientLog(LogLevel::Info, "CVehicle::SetRemap (0x6D0C00) hooked successfully via MinHook");
 			} else {
-				ClientLog(LogLevel::Error, std::format("[Client] Failed to enable CVehicle::SetRemap hook: {}", MH_StatusToString(enableStatus)));
+				ClientLog(LogLevel::Error, std::format("Failed to enable CVehicle::SetRemap hook: {}", MH_StatusToString(enableStatus)));
 			}
 		} else {
-			ClientLog(LogLevel::Error, std::format("[Client] Failed to hook CVehicle::SetRemap (0x6D0C00): {}", MH_StatusToString(remapStatus)));
+			ClientLog(LogLevel::Error, std::format("Failed to hook CVehicle::SetRemap (0x6D0C00): {}", MH_StatusToString(remapStatus)));
 		}
 
 		MH_STATUS addUpgStatus = MH_CreateHook(reinterpret_cast<void*>(0x6DFA20), reinterpret_cast<void*>(&Hooked_AddUpgrade), reinterpret_cast<void**>(&g_origAddUpgrade));
 		if (addUpgStatus == MH_OK) {
 			MH_STATUS enableStatus = MH_EnableHook(reinterpret_cast<void*>(0x6DFA20));
 			if (enableStatus == MH_OK) {
-				ClientLog(LogLevel::Info, "[Client] CVehicle::AddUpgrade (0x6DFA20) hooked successfully via MinHook");
+				ClientLog(LogLevel::Info, "CVehicle::AddUpgrade (0x6DFA20) hooked successfully via MinHook");
 			} else {
-				ClientLog(LogLevel::Error, std::format("[Client] Failed to enable CVehicle::AddUpgrade hook: {}", MH_StatusToString(enableStatus)));
+				ClientLog(LogLevel::Error, std::format("Failed to enable CVehicle::AddUpgrade hook: {}", MH_StatusToString(enableStatus)));
 			}
 		} else {
-			ClientLog(LogLevel::Error, std::format("[Client] Failed to hook CVehicle::AddUpgrade (0x6DFA20): {}", MH_StatusToString(addUpgStatus)));
+			ClientLog(LogLevel::Error, std::format("Failed to hook CVehicle::AddUpgrade (0x6DFA20): {}", MH_StatusToString(addUpgStatus)));
 		}
 
 		MH_STATUS remUpgStatus = MH_CreateHook(reinterpret_cast<void*>(0x6D3630), reinterpret_cast<void*>(&Hooked_RemoveUpgrade), reinterpret_cast<void**>(&g_origRemoveUpgrade));
 		if (remUpgStatus == MH_OK) {
 			MH_STATUS enableStatus = MH_EnableHook(reinterpret_cast<void*>(0x6D3630));
 			if (enableStatus == MH_OK) {
-				ClientLog(LogLevel::Info, "[Client] CVehicle::RemoveUpgrade (0x6D3630) hooked successfully via MinHook");
+				ClientLog(LogLevel::Info, "CVehicle::RemoveUpgrade (0x6D3630) hooked successfully via MinHook");
 			} else {
-				ClientLog(LogLevel::Error, std::format("[Client] Failed to enable CVehicle::RemoveUpgrade hook: {}", MH_StatusToString(enableStatus)));
+				ClientLog(LogLevel::Error, std::format("Failed to enable CVehicle::RemoveUpgrade hook: {}", MH_StatusToString(enableStatus)));
 			}
 		} else {
-			ClientLog(LogLevel::Error, std::format("[Client] Failed to hook CVehicle::RemoveUpgrade (0x6D3630): {}", MH_StatusToString(remUpgStatus)));
+			ClientLog(LogLevel::Error, std::format("Failed to hook CVehicle::RemoveUpgrade (0x6D3630): {}", MH_StatusToString(remUpgStatus)));
 		}
 
 		MH_STATUS sirenStatus = MH_CreateHook(reinterpret_cast<void*>(0x6D8470), reinterpret_cast<void*>(&Hooked_DoesVehicleUseSiren), reinterpret_cast<void**>(&g_origDoesVehicleUseSiren));
 		if (sirenStatus == MH_OK) {
 			MH_STATUS enableStatus = MH_EnableHook(reinterpret_cast<void*>(0x6D8470));
 			if (enableStatus == MH_OK) {
-				ClientLog(LogLevel::Info, "[Client] CVehicle::DoesVehicleUseSiren (0x6D8470) hooked successfully via MinHook");
+				ClientLog(LogLevel::Info, "CVehicle::DoesVehicleUseSiren (0x6D8470) hooked successfully via MinHook");
 			} else {
-				ClientLog(LogLevel::Error, std::format("[Client] Failed to enable CVehicle::DoesVehicleUseSiren hook: {}", MH_StatusToString(enableStatus)));
+				ClientLog(LogLevel::Error, std::format("Failed to enable CVehicle::DoesVehicleUseSiren hook: {}", MH_StatusToString(enableStatus)));
 			}
 		} else {
-			ClientLog(LogLevel::Error, std::format("[Client] Failed to hook CVehicle::DoesVehicleUseSiren (0x6D8470): {}", MH_StatusToString(sirenStatus)));
+			ClientLog(LogLevel::Error, std::format("Failed to hook CVehicle::DoesVehicleUseSiren (0x6D8470): {}", MH_StatusToString(sirenStatus)));
 		}
 
 		MH_STATUS sirenAudioStatus = MH_CreateHook(reinterpret_cast<void*>(0x4F62A0), reinterpret_cast<void*>(&Hooked_GetVehicleSirenType), reinterpret_cast<void**>(&g_origGetVehicleSirenType));
 		if (sirenAudioStatus == MH_OK) {
 			MH_STATUS enableStatus = MH_EnableHook(reinterpret_cast<void*>(0x4F62A0));
 			if (enableStatus == MH_OK) {
-				ClientLog(LogLevel::Info, "[Client] CAEVehicleAudioEntity::GetVehicleSirenType (0x4F62A0) hooked successfully via MinHook");
+				ClientLog(LogLevel::Info, "CAEVehicleAudioEntity::GetVehicleSirenType (0x4F62A0) hooked successfully via MinHook");
 			} else {
-				ClientLog(LogLevel::Error, std::format("[Client] Failed to enable CAEVehicleAudioEntity::GetVehicleSirenType hook: {}", MH_StatusToString(enableStatus)));
+				ClientLog(LogLevel::Error, std::format("Failed to enable CAEVehicleAudioEntity::GetVehicleSirenType hook: {}", MH_StatusToString(enableStatus)));
 			}
 		} else {
-			ClientLog(LogLevel::Error, std::format("[Client] Failed to hook CAEVehicleAudioEntity::GetVehicleSirenType (0x4F62A0): {}", MH_StatusToString(sirenAudioStatus)));
+			ClientLog(LogLevel::Error, std::format("Failed to hook CAEVehicleAudioEntity::GetVehicleSirenType (0x4F62A0): {}", MH_StatusToString(sirenAudioStatus)));
 		}
 
 		MH_STATUS frameIdStatus = MH_CreateHook(reinterpret_cast<void*>(0x4C53C0), reinterpret_cast<void*>(&Hooked_GetFrameFromId), reinterpret_cast<void**>(&g_origGetFrameFromId));
 		if (frameIdStatus == MH_OK) {
 			MH_STATUS enableStatus = MH_EnableHook(reinterpret_cast<void*>(0x4C53C0));
 			if (enableStatus == MH_OK) {
-				ClientLog(LogLevel::Info, "[Client] CClumpModelInfo::GetFrameFromId (0x4C53C0) hooked successfully via MinHook");
+				ClientLog(LogLevel::Info, "CClumpModelInfo::GetFrameFromId (0x4C53C0) hooked successfully via MinHook");
 			} else {
-				ClientLog(LogLevel::Error, std::format("[Client] Failed to enable CClumpModelInfo::GetFrameFromId hook: {}", MH_StatusToString(enableStatus)));
+				ClientLog(LogLevel::Error, std::format("Failed to enable CClumpModelInfo::GetFrameFromId hook: {}", MH_StatusToString(enableStatus)));
 			}
 		} else {
-			ClientLog(LogLevel::Error, std::format("[Client] Failed to hook CClumpModelInfo::GetFrameFromId (0x4C53C0): {}", MH_StatusToString(frameIdStatus)));
+			ClientLog(LogLevel::Error, std::format("Failed to hook CClumpModelInfo::GetFrameFromId (0x4C53C0): {}", MH_StatusToString(frameIdStatus)));
 		}
 
 		Plugn = std::make_unique<c_plugin>(hModule);

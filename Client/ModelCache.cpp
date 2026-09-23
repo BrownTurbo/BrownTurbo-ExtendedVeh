@@ -173,7 +173,7 @@ void ModelCache::EnsureServerInitialized()
 							}
 						}
 					}
-					ClientLog(LogLevel::Info, std::format("[Client] ModelCache: Loaded manifest for server {} ({}) with {} cached assets",
+					ClientLog(LogLevel::Info, std::format("ModelCache: Loaded manifest for server {} ({}) with {} cached assets",
 						currentAddr, currentHash, m_impl->assets.size()));
 				} catch (...) {
 					m_impl->manifestJson = nlohmann::json::object();
