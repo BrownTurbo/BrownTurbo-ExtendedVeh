@@ -2,33 +2,17 @@
 #include "../../Shared/CustomVehicleProtocol.hpp"
 #include <RakNet/bitstream.hpp>
 #include "PacketEnum.h"
+#include "Actions.h"
 
 namespace CustomVehicleTransport
 {
-namespace
-{
-	// Mirrors CHandlingActionPacket's shape (packet id + action byte header)
-	// but for CustomVeh::Protocol::Action instead of the v1 CHandlingAction enum -
-	// every future v2 send (AssetBegin/Chunk/etc.) can reuse this.
-	struct ScvActionPacket
-	{
-		NetworkBitStream data;
-
-		explicit ScvActionPacket(CustomVeh::Protocol::Action action)
-		{
-			data.Write(static_cast<uint8_t>(ExtendedVehPacketID::PKT_EXTVEH));
-			data.Write(static_cast<uint8_t>(action));
-		}
-	};
-}
-
 void SendVehicleBind(IPlayer& player, uint16_t sampVehicleId, uint32_t customModelId)
 {
 	CustomVeh::Protocol::VehicleBinding binding {};
 	binding.sampVehicleId = sampVehicleId;
 	binding.customModelId = customModelId;
 
-	ScvActionPacket pkt(CustomVeh::Protocol::Action::CustomVehicleBind);
+	CustomVehActionPacket pkt(CustomVeh::Protocol::Action::CustomVehicleBind);
 	pkt.data.Write(reinterpret_cast<const char*>(&binding), sizeof(binding));
 
 	player.sendPacket(Span<uint8_t>(reinterpret_cast<uint8_t*>(pkt.data.GetData()), pkt.data.GetNumberOfBitsUsed()), 0, true);
@@ -39,7 +23,7 @@ void SendVehicleUnbind(IPlayer& player, uint16_t sampVehicleId)
 	CustomVeh::Protocol::VehicleUnbinding unbinding {};
 	unbinding.sampVehicleId = sampVehicleId;
 
-	ScvActionPacket pkt(CustomVeh::Protocol::Action::CustomVehicleUnbind);
+	CustomVehActionPacket pkt(CustomVeh::Protocol::Action::CustomVehicleUnbind);
 	pkt.data.Write(reinterpret_cast<const char*>(&unbinding), sizeof(unbinding));
 
 	player.sendPacket(Span<uint8_t>(reinterpret_cast<uint8_t*>(pkt.data.GetData()), pkt.data.GetNumberOfBitsUsed()), 0, true);
@@ -47,7 +31,7 @@ void SendVehicleUnbind(IPlayer& player, uint16_t sampVehicleId)
 
 void SendVehicleStance(IPlayer& player, const CustomVeh::Protocol::VehicleStancePacket& stance)
 {
-	ScvActionPacket pkt(CustomVeh::Protocol::Action::SetVehicleStance);
+	CustomVehActionPacket pkt(CustomVeh::Protocol::Action::SetVehicleStance);
 	pkt.data.Write(reinterpret_cast<const char*>(&stance), sizeof(stance));
 
 	player.sendPacket(Span<uint8_t>(reinterpret_cast<uint8_t*>(pkt.data.GetData()), pkt.data.GetNumberOfBitsUsed()), 0, true);
@@ -55,7 +39,7 @@ void SendVehicleStance(IPlayer& player, const CustomVeh::Protocol::VehicleStance
 
 void SendVehicleExtras(IPlayer& player, const CustomVeh::Protocol::VehicleExtrasPacket& extras)
 {
-	ScvActionPacket pkt(CustomVeh::Protocol::Action::SetVehicleExtras);
+	CustomVehActionPacket pkt(CustomVeh::Protocol::Action::SetVehicleExtras);
 	pkt.data.Write(reinterpret_cast<const char*>(&extras), sizeof(extras));
 
 	player.sendPacket(Span<uint8_t>(reinterpret_cast<uint8_t*>(pkt.data.GetData()), pkt.data.GetNumberOfBitsUsed()), 0, true);
@@ -63,7 +47,7 @@ void SendVehicleExtras(IPlayer& player, const CustomVeh::Protocol::VehicleExtras
 
 void SendVehiclePaintjob(IPlayer& player, const CustomVeh::Protocol::VehiclePaintjobPacket& pj)
 {
-	ScvActionPacket pkt(CustomVeh::Protocol::Action::SetVehiclePaintjob);
+	CustomVehActionPacket pkt(CustomVeh::Protocol::Action::SetVehiclePaintjob);
 	pkt.data.Write(reinterpret_cast<const char*>(&pj), sizeof(pj));
 
 	player.sendPacket(Span<uint8_t>(reinterpret_cast<uint8_t*>(pkt.data.GetData()), pkt.data.GetNumberOfBitsUsed()), 0, true);
@@ -71,7 +55,7 @@ void SendVehiclePaintjob(IPlayer& player, const CustomVeh::Protocol::VehiclePain
 
 void SendVehicleNeon(IPlayer& player, const CustomVeh::Protocol::VehicleNeonPacket& neon)
 {
-	ScvActionPacket pkt(CustomVeh::Protocol::Action::SetVehicleNeon);
+	CustomVehActionPacket pkt(CustomVeh::Protocol::Action::SetVehicleNeon);
 	pkt.data.Write(reinterpret_cast<const char*>(&neon), sizeof(neon));
 
 	player.sendPacket(Span<uint8_t>(reinterpret_cast<uint8_t*>(pkt.data.GetData()), pkt.data.GetNumberOfBitsUsed()), 0, true);
@@ -79,7 +63,7 @@ void SendVehicleNeon(IPlayer& player, const CustomVeh::Protocol::VehicleNeonPack
 
 void SendVehicleWindowTint(IPlayer& player, const CustomVeh::Protocol::VehicleWindowTintPacket& tint)
 {
-	ScvActionPacket pkt(CustomVeh::Protocol::Action::SetVehicleWindowTint);
+	CustomVehActionPacket pkt(CustomVeh::Protocol::Action::SetVehicleWindowTint);
 	pkt.data.Write(reinterpret_cast<const char*>(&tint), sizeof(tint));
 
 	player.sendPacket(Span<uint8_t>(reinterpret_cast<uint8_t*>(pkt.data.GetData()), pkt.data.GetNumberOfBitsUsed()), 0, true);
@@ -87,7 +71,7 @@ void SendVehicleWindowTint(IPlayer& player, const CustomVeh::Protocol::VehicleWi
 
 void SendVehicleWheelColor(IPlayer& player, const CustomVeh::Protocol::VehicleWheelColorPacket& wc)
 {
-	ScvActionPacket pkt(CustomVeh::Protocol::Action::SetVehicleWheelColor);
+	CustomVehActionPacket pkt(CustomVeh::Protocol::Action::SetVehicleWheelColor);
 	pkt.data.Write(reinterpret_cast<const char*>(&wc), sizeof(wc));
 
 	player.sendPacket(Span<uint8_t>(reinterpret_cast<uint8_t*>(pkt.data.GetData()), pkt.data.GetNumberOfBitsUsed()), 0, true);
@@ -95,7 +79,7 @@ void SendVehicleWheelColor(IPlayer& player, const CustomVeh::Protocol::VehicleWh
 
 void SendVehicleBackfire(IPlayer& player, const CustomVeh::Protocol::VehicleBackfirePacket& bf)
 {
-	ScvActionPacket pkt(CustomVeh::Protocol::Action::SetVehicleBackfire);
+	CustomVehActionPacket pkt(CustomVeh::Protocol::Action::SetVehicleBackfire);
 	pkt.data.Write(reinterpret_cast<const char*>(&bf), sizeof(bf));
 
 	player.sendPacket(Span<uint8_t>(reinterpret_cast<uint8_t*>(pkt.data.GetData()), pkt.data.GetNumberOfBitsUsed()), 0, true);
@@ -103,7 +87,7 @@ void SendVehicleBackfire(IPlayer& player, const CustomVeh::Protocol::VehicleBack
 
 void SendVehicleHorn(IPlayer& player, const CustomVeh::Protocol::VehicleHornPacket& horn)
 {
-	ScvActionPacket pkt(CustomVeh::Protocol::Action::SetVehicleHorn);
+	CustomVehActionPacket pkt(CustomVeh::Protocol::Action::SetVehicleHorn);
 	pkt.data.Write(reinterpret_cast<const char*>(&horn), sizeof(horn));
 
 	player.sendPacket(Span<uint8_t>(reinterpret_cast<uint8_t*>(pkt.data.GetData()), pkt.data.GetNumberOfBitsUsed()), 0, true);
@@ -111,7 +95,7 @@ void SendVehicleHorn(IPlayer& player, const CustomVeh::Protocol::VehicleHornPack
 
 void SendVehicleSiren(IPlayer& player, const CustomVeh::Protocol::VehicleSirenPacket& siren)
 {
-	ScvActionPacket pkt(CustomVeh::Protocol::Action::SetVehicleSiren);
+	CustomVehActionPacket pkt(CustomVeh::Protocol::Action::SetVehicleSiren);
 	pkt.data.Write(reinterpret_cast<const char*>(&siren), sizeof(siren));
 
 	player.sendPacket(Span<uint8_t>(reinterpret_cast<uint8_t*>(pkt.data.GetData()), pkt.data.GetNumberOfBitsUsed()), 0, true);
@@ -119,8 +103,16 @@ void SendVehicleSiren(IPlayer& player, const CustomVeh::Protocol::VehicleSirenPa
 
 void SendVehicleLights(IPlayer& player, const CustomVeh::Protocol::VehicleLightsPacket& lights)
 {
-	ScvActionPacket pkt(CustomVeh::Protocol::Action::SetVehicleLights);
+	CustomVehActionPacket pkt(CustomVeh::Protocol::Action::SetVehicleLights);
 	pkt.data.Write(reinterpret_cast<const char*>(&lights), sizeof(lights));
+
+	player.sendPacket(Span<uint8_t>(reinterpret_cast<uint8_t*>(pkt.data.GetData()), pkt.data.GetNumberOfBitsUsed()), 0, true);
+}
+
+void SendVehicleWheel(IPlayer& player, const CustomVeh::Protocol::VehicleWheelPacket& wheel)
+{
+	CustomVehActionPacket pkt(CustomVeh::Protocol::Action::SetVehicleWheel);
+	pkt.data.Write(reinterpret_cast<const char*>(&wheel), sizeof(wheel));
 
 	player.sendPacket(Span<uint8_t>(reinterpret_cast<uint8_t*>(pkt.data.GetData()), pkt.data.GetNumberOfBitsUsed()), 0, true);
 }

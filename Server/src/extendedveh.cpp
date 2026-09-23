@@ -399,6 +399,12 @@ void ExtendedVehCompo::onVehicleStreamIn(IVehicle& vehicle, IPlayer& player)
 		{
 			CustomVehicleTransport::SendVehicleLights(player, *lightsOpt);
 		}
+
+		auto wheelOpt = CustomVehicleBindingRegistry::Instance().GetWheel(vId);
+		if (wheelOpt)
+		{
+			CustomVehicleTransport::SendVehicleWheel(player, *wheelOpt);
+		}
 	}
 }
 

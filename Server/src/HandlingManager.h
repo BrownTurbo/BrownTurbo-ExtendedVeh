@@ -102,6 +102,11 @@ void BeginCustomVehicleDef(uint32_t customModelId, uint32_t visualBase, uint32_t
 bool SetCustomVehicleDff(uint32_t customModelId);
 bool SetCustomVehicleTxd(uint32_t customModelId);
 bool SetCustomVehicleCol(uint32_t customModelId);
+bool SetCustomVehicleModelInfo(uint32_t customModelId, uint8_t vehicleClass, int16_t wheelModelId, float wheelScaleFront, float wheelScaleRear, uint16_t frequency, uint8_t level, uint8_t comprate, uint8_t numExtras, uint8_t wheelUpgradeClass = 0);
+bool SetCustomVehicleWheelModel(uint32_t customModelId, int16_t wheelModelId);
+bool SetCustomVehicleWheelScale(uint32_t customModelId, float wheelScaleFront, float wheelScaleRear);
+bool GetCustomVehicleWheelModel(uint32_t customModelId, int16_t& wheelModelId);
+bool GetCustomVehicleWheelScale(uint32_t customModelId, float& wheelScaleFront, float& wheelScaleRear);
 bool CommitCustomVehicleDef(uint32_t customModelId);
 bool IsCustomVehicle(uint32_t modelId);
 void SendCustomVehicleDefToPlayer(IPlayer& player, uint32_t modelId);

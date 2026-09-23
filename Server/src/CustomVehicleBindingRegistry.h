@@ -21,6 +21,7 @@ public:
 		CustomVeh::Protocol::VehicleHornPacket horn {};
 		CustomVeh::Protocol::VehicleSirenPacket siren {};
 		CustomVeh::Protocol::VehicleLightsPacket lights {};
+		CustomVeh::Protocol::VehicleWheelPacket wheel {};
 		bool hasCustomStance { false };
 		bool hasCustomExtras { false };
 		bool hasCustomPaintjob { false };
@@ -31,6 +32,7 @@ public:
 		bool hasCustomHorn { false };
 		bool hasCustomSiren { false };
 		bool hasCustomLights { false };
+		bool hasCustomWheel { false };
 	};
 
 	struct ModelAudioDefaults {
@@ -267,6 +269,24 @@ public:
 		auto it = m_states.find(sampVehicleId);
 		if (it != m_states.end() && it->second.hasCustomLights)
 			return it->second.lights;
+		return std::nullopt;
+	}
+
+	void SetWheel(uint16_t sampVehicleId, int16_t wheelModelId)
+	{
+		std::lock_guard<std::mutex> lock(m_mutex);
+		auto& state = m_states[sampVehicleId];
+		state.wheel.sampVehicleId = sampVehicleId;
+		state.wheel.wheelModelId = wheelModelId;
+		state.hasCustomWheel = true;
+	}
+
+	std::optional<CustomVeh::Protocol::VehicleWheelPacket> GetWheel(uint16_t sampVehicleId) const
+	{
+		std::lock_guard<std::mutex> lock(m_mutex);
+		auto it = m_states.find(sampVehicleId);
+		if (it != m_states.end() && it->second.hasCustomWheel)
+			return it->second.wheel;
 		return std::nullopt;
 	}
 

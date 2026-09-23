@@ -28,6 +28,7 @@ inline constexpr CustomVehAction ACTION_CUSTOM_VEHICLE_DEFINE = CustomVehAction:
 inline constexpr CustomVehAction ACTION_CUSTOM_VEHICLE_BIND = CustomVehAction::CustomVehicleBind;
 inline constexpr CustomVehAction ACTION_CUSTOM_VEHICLE_UNBIND = CustomVehAction::CustomVehicleUnbind;
 inline constexpr CustomVehAction ACTION_CUSTOM_VEHICLE_DESTROY = CustomVehAction::CustomVehicleDestroy;
+inline constexpr CustomVehAction ACTION_SET_VEHICLE_WHEEL = CustomVehAction::SetVehicleWheel;
 inline constexpr CustomVehAction ACTION_ASSET_MANIFEST = CustomVehAction::AssetManifest;
 inline constexpr CustomVehAction ACTION_ASSET_REQUEST = CustomVehAction::AssetRequest;
 inline constexpr CustomVehAction ACTION_ASSET_RESUME = CustomVehAction::AssetResume;

@@ -67,6 +67,9 @@ public:
 
 		int8_t customLightingCategory { -1 };
 		float customLightScaleMult { 1.0f };
+
+		bool hasCustomWheel { false };
+		int16_t customWheelModelId { -1 };
 	};
 
 	static CustomVehicleBindingManager& Instance()
@@ -125,11 +128,15 @@ public:
 
 	void SetVehicleLights(uint16_t vehicleId, int8_t lightingCategory, float scaleMult = 1.0f);
 
+	void SetVehicleWheel(uint16_t vehicleId, int16_t wheelModelId);
+
 	void ApplyPaintjobToVehicle(CVehicle* vehicle, int paintjobIndex);
 
 	void ApplyWindowTintToVehicle(CVehicle* vehicle, uint8_t alpha, uint8_t r, uint8_t g, uint8_t b);
 
 	void ApplyWheelColorToVehicle(CVehicle* vehicle, uint8_t r, uint8_t g, uint8_t b);
+
+	void ApplyWheelToVehicle(CVehicle* vehicle, int16_t wheelModelId);
 
 	void ApplyAudioSettingsToVehicle(CVehicle* vehicle);
 

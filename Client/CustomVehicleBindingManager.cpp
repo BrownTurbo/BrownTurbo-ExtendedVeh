@@ -440,6 +440,21 @@ void CustomVehicleBindingManager::Process()
 					}
 				}
 
+				if (binding.hasCustomWheel) {
+					ApplyWheelToVehicle(vehicle, binding.customWheelModelId);
+				} else if (model && model->m_nWheelModelIndex > 0) {
+					bool hasAnyWheelUpgrade = false;
+					for (int i = 0; i < 15; ++i) {
+						if (savedUpgrades[i] == 1025 || (savedUpgrades[i] >= 1073 && savedUpgrades[i] <= 1098)) {
+							hasAnyWheelUpgrade = true;
+							break;
+						}
+					}
+					if (!hasAnyWheelUpgrade) {
+						ApplyWheelToVehicle(vehicle, model->m_nWheelModelIndex);
+					}
+				}
+
 				CWorld::Add(vehicle);
 
 				// CVehicle doesn't expose m_pColModel directly (CEntity::GetColModel() is the API).
@@ -601,6 +616,59 @@ void CustomVehicleBindingManager::SetVehicleLights(uint16_t vehicleId, int8_t li
 		it->second.hasCustomLighting = true;
 		it->second.customLightingCategory = lightingCategory;
 		it->second.customLightScaleMult = (scaleMult > 0.05f) ? scaleMult : 1.0f;
+	}
+}
+
+void CustomVehicleBindingManager::SetVehicleWheel(uint16_t vehicleId, int16_t wheelModelId)
+{
+	std::lock_guard lock(m_mutex);
+	auto it = m_bindings.find(vehicleId);
+	if (it == m_bindings.end()) {
+		Binding b {};
+		b.sampVehicleId = vehicleId;
+		b.hasCustomWheel = true;
+		b.customWheelModelId = wheelModelId;
+		m_bindings[vehicleId] = b;
+		return;
+	}
+
+	it->second.hasCustomWheel = true;
+	it->second.customWheelModelId = wheelModelId;
+
+	if (it->second.appliedGameVehicle) {
+		ApplyWheelToVehicle(it->second.appliedGameVehicle, wheelModelId);
+	}
+}
+
+void CustomVehicleBindingManager::ApplyWheelToVehicle(CVehicle* vehicle, int16_t wheelModelId)
+{
+	if (!vehicle || !IsVehiclePointerValid(vehicle))
+		return;
+
+	if (wheelModelId <= 0) {
+		for (int i = 0; i < 15; ++i) {
+			short upg = vehicle->m_anUpgrades[i];
+			if (upg == 1025 || (upg >= 1073 && upg <= 1098)) {
+				vehicle->RemoveUpgrade(upg);
+				break;
+			}
+		}
+		return;
+	}
+
+	if (wheelModelId >= 1000 && wheelModelId <= 1193) {
+		if (!CStreaming::HasModelLoaded(wheelModelId)) {
+			CStreaming::RequestModel(wheelModelId, 0x16); // GAME_REQUIRED
+			CStreaming::LoadAllRequestedModels(false);
+		}
+
+		if (CStreaming::HasModelLoaded(wheelModelId)) {
+			vehicle->AddUpgrade(wheelModelId, -1);
+			auto* binding = FindByVehicle(vehicle);
+			if (binding && binding->hasWheelColor) {
+				ApplyWheelColorToVehicle(vehicle, binding->wheelColorR, binding->wheelColorG, binding->wheelColorB);
+			}
+		}
 	}
 }
 

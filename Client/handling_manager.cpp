@@ -1674,6 +1674,15 @@ bool HandlingManager::ProcessAction(CustomVehAction action, RakNet::BitStream* b
 		}
 		return true;
 	}
+	case static_cast<CustomVehAction>(CustomVeh::Protocol::Action::SetVehicleWheel): {
+		CustomVeh::Protocol::VehicleWheelPacket wheel {};
+		if (bs->Read(reinterpret_cast<char*>(&wheel), sizeof(wheel))) {
+			ClientLog(std::format("[Client] SetVehicleWheel: vehId={}, wheelModelId={}",
+				wheel.sampVehicleId, wheel.wheelModelId));
+			CustomVehicleBindingManager::Instance().SetVehicleWheel(wheel.sampVehicleId, wheel.wheelModelId);
+		}
+		return true;
+	}
 	default:
 		ClientLog(std::format("[Client] ProcessAction: Unknown or unhandled action {}", static_cast<int>(action)));
 		break;

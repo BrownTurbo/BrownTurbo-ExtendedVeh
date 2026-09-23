@@ -1430,6 +1430,20 @@ public:
 		if (!ReadAssetDescriptor(bs, def.col))
 			return false;
 
+		if (bs.GetNumberOfUnreadBits() >= 8) {
+			bs.Read(def.modelInfo.vehicleClass);
+			bs.Read(def.modelInfo.wheelModelId);
+			bs.Read(def.modelInfo.wheelScaleFront);
+			bs.Read(def.modelInfo.wheelScaleRear);
+			bs.Read(def.modelInfo.frequency);
+			bs.Read(def.modelInfo.level);
+			bs.Read(def.modelInfo.comprate);
+			bs.Read(def.modelInfo.numExtras);
+			if (bs.GetNumberOfUnreadBits() >= 8) {
+				bs.Read(def.modelInfo.wheelUpgradeClass);
+			}
+		}
+
 		return true;
 	}
 

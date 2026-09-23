@@ -173,6 +173,28 @@ public:
 			newModel->m_nHandlingId = reinterpret_cast<CVehicleModelInfo*>(handlingBase)->m_nHandlingId;
 		}
 
+		if (def.modelInfo.wheelScaleFront > 0.001f) {
+			newModel->m_fWheelSizeFront = def.modelInfo.wheelScaleFront;
+		}
+		if (def.modelInfo.wheelScaleRear > 0.001f) {
+			newModel->m_fWheelSizeRear = def.modelInfo.wheelScaleRear;
+		}
+		if (def.modelInfo.wheelModelId > 0) {
+			newModel->m_nWheelModelIndex = def.modelInfo.wheelModelId;
+		}
+		if (def.modelInfo.vehicleClass != 0xFF) {
+			newModel->m_nVehicleClass = def.modelInfo.vehicleClass;
+		}
+		if (def.modelInfo.frequency > 0) {
+			newModel->m_nFrq = def.modelInfo.frequency;
+		}
+		if (def.modelInfo.wheelUpgradeClass != 0xFF && def.modelInfo.wheelUpgradeClass != 0) {
+			newModel->m_nWheelUpgradeClass = def.modelInfo.wheelUpgradeClass;
+		}
+		if (def.modelInfo.comprate != 0) {
+			newModel->m_nCompRules = def.modelInfo.comprate;
+		}
+
 		GetModelInfoTable()[gtaSlot] = newModel;
 
 		entry->modelInfo = newModel;

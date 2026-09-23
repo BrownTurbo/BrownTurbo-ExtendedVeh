@@ -1486,6 +1486,79 @@ SCRIPT_API(SetCustomVehicleCol, bool(int customModelId))
 	return ret;
 }
 
+// native SetCustomVehicleModelInfo(customModelId, vehicleClass, wheelModelId, Float:wheelScaleFront, Float:wheelScaleRear, frequency, level, comprate, numExtras, wheelUpgradeClass = 0);
+SCRIPT_API(SetCustomVehicleModelInfo, bool(int customModelId, int vehicleClass, int wheelModelId, float wheelScaleFront, float wheelScaleRear, int frequency, int level, int comprate, int numExtras, int wheelUpgradeClass))
+{
+	ExtendedVehCompo* compo = ExtendedVehCompo::get();
+	ICore* core_ = compo ? compo->getCore() : nullptr;
+	if (customModelId < CVehicleMgr::CUSTOM_MODEL_START || customModelId > CVehicleMgr::MAX_NETWORK_VEHICLES)
+	{
+		if (core_)
+			core_->logLn(LogLevel::Warning, "[ExtendedVeh] SetCustomVehicleModelInfo: Invalid customModelId %d", customModelId);
+		return false;
+	}
+	return HandlingMgr::SetCustomVehicleModelInfo(
+		static_cast<uint32_t>(customModelId),
+		static_cast<uint8_t>(vehicleClass),
+		static_cast<int16_t>(wheelModelId),
+		wheelScaleFront,
+		wheelScaleRear,
+		static_cast<uint16_t>(frequency),
+		static_cast<uint8_t>(level),
+		static_cast<uint8_t>(comprate),
+		static_cast<uint8_t>(numExtras),
+		static_cast<uint8_t>(wheelUpgradeClass)
+	);
+}
+
+// native SetCustomVehicleWheelModel(customModelId, wheelModelId);
+SCRIPT_API(SetCustomVehicleWheelModel, bool(int customModelId, int wheelModelId))
+{
+	ExtendedVehCompo* compo = ExtendedVehCompo::get();
+	ICore* core_ = compo ? compo->getCore() : nullptr;
+	if (customModelId < CVehicleMgr::CUSTOM_MODEL_START || customModelId > CVehicleMgr::MAX_NETWORK_VEHICLES)
+	{
+		if (core_)
+			core_->logLn(LogLevel::Warning, "[ExtendedVeh] SetCustomVehicleWheelModel: Invalid customModelId %d", customModelId);
+		return false;
+	}
+	return HandlingMgr::SetCustomVehicleWheelModel(static_cast<uint32_t>(customModelId), static_cast<int16_t>(wheelModelId));
+}
+
+// native SetCustomVehicleWheelScale(customModelId, Float:wheelScaleFront, Float:wheelScaleRear);
+SCRIPT_API(SetCustomVehicleWheelScale, bool(int customModelId, float wheelScaleFront, float wheelScaleRear))
+{
+	ExtendedVehCompo* compo = ExtendedVehCompo::get();
+	ICore* core_ = compo ? compo->getCore() : nullptr;
+	if (customModelId < CVehicleMgr::CUSTOM_MODEL_START || customModelId > CVehicleMgr::MAX_NETWORK_VEHICLES)
+	{
+		if (core_)
+			core_->logLn(LogLevel::Warning, "[ExtendedVeh] SetCustomVehicleWheelScale: Invalid customModelId %d", customModelId);
+		return false;
+	}
+	return HandlingMgr::SetCustomVehicleWheelScale(static_cast<uint32_t>(customModelId), wheelScaleFront, wheelScaleRear);
+}
+
+// native GetCustomVehicleWheelModel(customModelId, &wheelModelId);
+SCRIPT_API(GetCustomVehicleWheelModel, bool(int customModelId, int& wheelModelId))
+{
+	if (customModelId < CVehicleMgr::CUSTOM_MODEL_START || customModelId > CVehicleMgr::MAX_NETWORK_VEHICLES)
+		return false;
+	int16_t model = -1;
+	if (!HandlingMgr::GetCustomVehicleWheelModel(static_cast<uint32_t>(customModelId), model))
+		return false;
+	wheelModelId = static_cast<int>(model);
+	return true;
+}
+
+// native GetCustomVehicleWheelScale(customModelId, &Float:wheelScaleFront, &Float:wheelScaleRear);
+SCRIPT_API(GetCustomVehicleWheelScale, bool(int customModelId, float& wheelScaleFront, float& wheelScaleRear))
+{
+	if (customModelId < CVehicleMgr::CUSTOM_MODEL_START || customModelId > CVehicleMgr::MAX_NETWORK_VEHICLES)
+		return false;
+	return HandlingMgr::GetCustomVehicleWheelScale(static_cast<uint32_t>(customModelId), wheelScaleFront, wheelScaleRear);
+}
+
 // native CommitCustomVehicleDef(customModelId);
 SCRIPT_API(CommitCustomVehicleDef, bool(int customModelId))
 {
@@ -2422,6 +2495,77 @@ SCRIPT_API(SetCustomVehicleModelSiren, bool(int customModelId, bool hasSiren, in
 SCRIPT_API(SetVehicleModelSiren, bool(int customModelId, bool hasSiren, int sirenType))
 {
 	return CustomVehicleNatives::SetCustomVehicleModelSiren(customModelId, hasSiren, sirenType);
+}
+
+namespace CustomVehicleNatives
+{
+inline bool SetCustomVehicleWheel(IVehicle& vehicle, int wheelModelId)
+{
+	int vehicleid = vehicle.getID();
+	if (!CVehicleMgr::VehicleRegistry::Get().IsValidVehicleID(vehicleid))
+		return false;
+
+	uint16_t vId = static_cast<uint16_t>(vehicleid);
+	int16_t wId = static_cast<int16_t>(wheelModelId);
+
+	CustomVehicleBindingRegistry::Instance().SetWheel(vId, wId);
+
+	CustomVeh::Protocol::VehicleWheelPacket pkt {};
+	pkt.sampVehicleId = vId;
+	pkt.wheelModelId = wId;
+
+	ExtendedVehCompo* compo = ExtendedVehCompo::get();
+	ICore* core_ = compo ? compo->getCore() : nullptr;
+	if (core_)
+	{
+		for (IPlayer* player : core_->getPlayers().players())
+		{
+			if (player && gPlayers.HasExtendedVeh(player->getID()))
+			{
+				CustomVehicleTransport::SendVehicleWheel(*player, pkt);
+			}
+		}
+	}
+	return true;
+}
+
+inline bool GetCustomVehicleWheel(IVehicle& vehicle, int& wheelModelId)
+{
+	int vehicleid = vehicle.getID();
+	if (!CVehicleMgr::VehicleRegistry::Get().IsValidVehicleID(vehicleid))
+		return false;
+
+	auto wheelOpt = CustomVehicleBindingRegistry::Instance().GetWheel(static_cast<uint16_t>(vehicleid));
+	if (!wheelOpt)
+		return false;
+
+	wheelModelId = static_cast<int>(wheelOpt->wheelModelId);
+	return true;
+}
+}
+
+// native SetCustomVehicleWheel(vehicleid, wheelModelId);
+SCRIPT_API(SetCustomVehicleWheel, bool(IVehicle& vehicle, int wheelModelId))
+{
+	return CustomVehicleNatives::SetCustomVehicleWheel(vehicle, wheelModelId);
+}
+
+// Legacy alias: SetVehicleWheel -> SetCustomVehicleWheel
+SCRIPT_API(SetVehicleWheel, bool(IVehicle& vehicle, int wheelModelId))
+{
+	return CustomVehicleNatives::SetCustomVehicleWheel(vehicle, wheelModelId);
+}
+
+// native GetCustomVehicleWheel(vehicleid, &wheelModelId);
+SCRIPT_API(GetCustomVehicleWheel, bool(IVehicle& vehicle, int& wheelModelId))
+{
+	return CustomVehicleNatives::GetCustomVehicleWheel(vehicle, wheelModelId);
+}
+
+// Legacy alias: GetVehicleWheel -> GetCustomVehicleWheel
+SCRIPT_API(GetVehicleWheel, bool(IVehicle& vehicle, int& wheelModelId))
+{
+	return CustomVehicleNatives::GetCustomVehicleWheel(vehicle, wheelModelId);
 }
 
 // native GetFileSha256(const filename[], outputHash[]);

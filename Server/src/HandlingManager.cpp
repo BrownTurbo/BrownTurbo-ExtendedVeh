@@ -1140,6 +1140,110 @@ bool SetCustomVehicleCol(uint32_t customModelId)
 	return SetCustomVehicleAsset(customModelId, colPath.string(), &CustomVeh::Protocol::VehicleDefinition::col);
 }
 
+bool SetCustomVehicleModelInfo(uint32_t customModelId, uint8_t vehicleClass, int16_t wheelModelId, float wheelScaleFront, float wheelScaleRear, uint16_t frequency, uint8_t level, uint8_t comprate, uint8_t numExtras, uint8_t wheelUpgradeClass)
+{
+	bool found = false;
+	auto itStaged = stagedCustomVehicleDefs.find(customModelId);
+	if (itStaged != stagedCustomVehicleDefs.end())
+	{
+		itStaged->second.modelInfo.vehicleClass = vehicleClass;
+		itStaged->second.modelInfo.wheelModelId = wheelModelId;
+		itStaged->second.modelInfo.wheelScaleFront = wheelScaleFront;
+		itStaged->second.modelInfo.wheelScaleRear = wheelScaleRear;
+		itStaged->second.modelInfo.frequency = frequency;
+		itStaged->second.modelInfo.level = level;
+		itStaged->second.modelInfo.comprate = comprate;
+		itStaged->second.modelInfo.numExtras = numExtras;
+		itStaged->second.modelInfo.wheelUpgradeClass = wheelUpgradeClass;
+		found = true;
+	}
+
+	auto itComm = customVehicleDefs.find(customModelId);
+	if (itComm != customVehicleDefs.end())
+	{
+		itComm->second.modelInfo.vehicleClass = vehicleClass;
+		itComm->second.modelInfo.wheelModelId = wheelModelId;
+		itComm->second.modelInfo.wheelScaleFront = wheelScaleFront;
+		itComm->second.modelInfo.wheelScaleRear = wheelScaleRear;
+		itComm->second.modelInfo.frequency = frequency;
+		itComm->second.modelInfo.level = level;
+		itComm->second.modelInfo.comprate = comprate;
+		itComm->second.modelInfo.numExtras = numExtras;
+		itComm->second.modelInfo.wheelUpgradeClass = wheelUpgradeClass;
+		found = true;
+		SendCustomVehicleDefToAll(customModelId);
+	}
+	return found;
+}
+
+bool SetCustomVehicleWheelModel(uint32_t customModelId, int16_t wheelModelId)
+{
+	bool found = false;
+	auto itStaged = stagedCustomVehicleDefs.find(customModelId);
+	if (itStaged != stagedCustomVehicleDefs.end()) {
+		itStaged->second.modelInfo.wheelModelId = wheelModelId;
+		found = true;
+	}
+	auto itComm = customVehicleDefs.find(customModelId);
+	if (itComm != customVehicleDefs.end()) {
+		itComm->second.modelInfo.wheelModelId = wheelModelId;
+		found = true;
+		SendCustomVehicleDefToAll(customModelId);
+	}
+	return found;
+}
+
+bool SetCustomVehicleWheelScale(uint32_t customModelId, float wheelScaleFront, float wheelScaleRear)
+{
+	bool found = false;
+	auto itStaged = stagedCustomVehicleDefs.find(customModelId);
+	if (itStaged != stagedCustomVehicleDefs.end()) {
+		itStaged->second.modelInfo.wheelScaleFront = wheelScaleFront;
+		itStaged->second.modelInfo.wheelScaleRear = wheelScaleRear;
+		found = true;
+	}
+	auto itComm = customVehicleDefs.find(customModelId);
+	if (itComm != customVehicleDefs.end()) {
+		itComm->second.modelInfo.wheelScaleFront = wheelScaleFront;
+		itComm->second.modelInfo.wheelScaleRear = wheelScaleRear;
+		found = true;
+		SendCustomVehicleDefToAll(customModelId);
+	}
+	return found;
+}
+
+bool GetCustomVehicleWheelModel(uint32_t customModelId, int16_t& wheelModelId)
+{
+	auto itStaged = stagedCustomVehicleDefs.find(customModelId);
+	if (itStaged != stagedCustomVehicleDefs.end()) {
+		wheelModelId = itStaged->second.modelInfo.wheelModelId;
+		return true;
+	}
+	auto itComm = customVehicleDefs.find(customModelId);
+	if (itComm != customVehicleDefs.end()) {
+		wheelModelId = itComm->second.modelInfo.wheelModelId;
+		return true;
+	}
+	return false;
+}
+
+bool GetCustomVehicleWheelScale(uint32_t customModelId, float& wheelScaleFront, float& wheelScaleRear)
+{
+	auto itStaged = stagedCustomVehicleDefs.find(customModelId);
+	if (itStaged != stagedCustomVehicleDefs.end()) {
+		wheelScaleFront = itStaged->second.modelInfo.wheelScaleFront;
+		wheelScaleRear = itStaged->second.modelInfo.wheelScaleRear;
+		return true;
+	}
+	auto itComm = customVehicleDefs.find(customModelId);
+	if (itComm != customVehicleDefs.end()) {
+		wheelScaleFront = itComm->second.modelInfo.wheelScaleFront;
+		wheelScaleRear = itComm->second.modelInfo.wheelScaleRear;
+		return true;
+	}
+	return false;
+}
+
 bool CommitCustomVehicleDef(uint32_t customModelId)
 {
 	ExtendedVehCompo* compo = ExtendedVehCompo::get();
@@ -1225,6 +1329,15 @@ void SendCustomVehicleDefToPlayer(IPlayer& player, uint32_t modelId)
 	writeAsset(def.dff);
 	writeAsset(def.txd);
 	writeAsset(def.col);
+	bs.Write(def.modelInfo.vehicleClass);
+	bs.Write(def.modelInfo.wheelModelId);
+	bs.Write(def.modelInfo.wheelScaleFront);
+	bs.Write(def.modelInfo.wheelScaleRear);
+	bs.Write(def.modelInfo.frequency);
+	bs.Write(def.modelInfo.level);
+	bs.Write(def.modelInfo.comprate);
+	bs.Write(def.modelInfo.numExtras);
+	bs.Write(def.modelInfo.wheelUpgradeClass);
 	player.sendPacket(Span<uint8_t>(pkt.data.GetData(), pkt.data.GetNumberOfBitsUsed()), 0, true);
 }
 

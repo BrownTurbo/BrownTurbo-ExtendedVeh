@@ -39,6 +39,7 @@ namespace CustomVeh::Protocol {
 		SetVehicleHorn = 67,
 		SetVehicleSiren = 68,
 		SetVehicleLights = 69,
+		SetVehicleWheel = 70,
 		AssetManifest = 50,
 		AssetRequest = 51,
 		AssetResume = 52,
@@ -101,6 +102,18 @@ namespace CustomVeh::Protocol {
 		int16_t decelerateSound = -1;
 	};
 
+	struct ModelInfo {
+		uint8_t vehicleClass = 0;
+		int16_t wheelModelId = -1;
+		float wheelScaleFront = 1.0f;
+		float wheelScaleRear = 1.0f;
+		uint16_t frequency = 10;
+		uint8_t level = 0;
+		uint8_t comprate = 0;
+		uint8_t numExtras = 0;
+		uint8_t wheelUpgradeClass = 0;
+	};
+
 	// Full custom vehicle definition sent server->client.
 	struct VehicleDefinition {
 		uint32_t customModelId = 0;
@@ -113,6 +126,7 @@ namespace CustomVeh::Protocol {
 		AssetDescriptor dff = {};
 		AssetDescriptor txd = {};
 		AssetDescriptor col = {};
+		ModelInfo modelInfo = {};
 	};
 
 	struct VehicleBinding {
@@ -122,6 +136,11 @@ namespace CustomVeh::Protocol {
 
 	struct VehicleUnbinding {
 		uint16_t sampVehicleId = 0;
+	};
+
+	struct VehicleWheelPacket {
+		uint16_t sampVehicleId = 0;
+		int16_t wheelModelId = -1;
 	};
 
 	struct VehicleStancePacket {

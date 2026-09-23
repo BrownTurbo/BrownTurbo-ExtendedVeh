@@ -233,6 +233,11 @@ native bool:BeginCustomVehicleDef(customModelId, visualBase, audioBase, handling
 native bool:SetCustomVehicleDff(customModelId);
 native bool:SetCustomVehicleTxd(customModelId);
 native bool:SetCustomVehicleCol(customModelId);
+native bool:SetCustomVehicleModelInfo(customModelId, vehicleClass, wheelModelId, Float:wheelScaleFront, Float:wheelScaleRear, frequency, level, comprate, numExtras, wheelUpgradeClass = 0);
+native bool:SetCustomVehicleWheelModel(customModelId, wheelModelId);
+native bool:SetCustomVehicleWheelScale(customModelId, Float:wheelScaleFront, Float:wheelScaleRear);
+native bool:GetCustomVehicleWheelModel(customModelId, &wheelModelId);
+native bool:GetCustomVehicleWheelScale(customModelId, &Float:wheelScaleFront, &Float:wheelScaleRear);
 native bool:CommitCustomVehicleDef(customModelId);
 native bool:DestroyCustomVehicle(customModelId);
 native bool:IsCustomVehicleModel(customModelId);
@@ -265,6 +270,9 @@ native bool:GetCustomVehicleWindowTint(vehicleid, &alpha, &r, &g, &b);
 
 native bool:SetCustomVehicleWheelColor(vehicleid, r, g, b);
 native bool:GetCustomVehicleWheelColor(vehicleid, &r, &g, &b);
+
+native bool:SetCustomVehicleWheel(vehicleid, wheelModelId);
+native bool:GetCustomVehicleWheel(vehicleid, &wheelModelId);
 
 native bool:SetCustomVehicleBackfire(vehicleid, bool:enabled);
 native bool:GetCustomVehicleBackfire(vehicleid, &bool:enabled);
@@ -320,6 +328,8 @@ native bool:SetCustomVehicleAllDoorsMissing(vehicleid, bool:missing);
 #define GetVehicleWindowTint        GetCustomVehicleWindowTint
 #define SetVehicleWheelColor        SetCustomVehicleWheelColor
 #define GetVehicleWheelColor        GetCustomVehicleWheelColor
+#define SetVehicleWheel             SetCustomVehicleWheel
+#define GetVehicleWheel             GetCustomVehicleWheel
 #define SetVehicleBackfire          SetCustomVehicleBackfire
 #define GetVehicleBackfire          GetCustomVehicleBackfire
 #define SetVehicleHorn              SetCustomVehicleHorn
