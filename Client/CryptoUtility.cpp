@@ -300,9 +300,10 @@ bool CryptoUtility::ComputeMD5(const std::uint8_t* data, std::size_t length, std
 
 bool CryptoUtility::ComputeMD5(const std::string& input, std::string& outHashStr)
 {
+	outHashStr.clear();
+
 	MD5 md5;
 	md5.add(input.data(), input.size());
 	outHashStr = md5.getHash();
 	return outHashStr.size() == 32;
 }
-

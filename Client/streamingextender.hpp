@@ -320,6 +320,27 @@ public:
 		pInfo->SetAtomicRenderCallbacks();
 		ClientLog(LogLevel::Debug, "FinalizeClump -> AFTER SetAtomicRenderCallbacks");
 
+		// If the DFF contains an unmanaged "tuning" frame containing optional bodykit variations
+		// (fenders_f0, spoiler1, spoiler2, splitter0, etc.), GTA:SA's visibility plugins do not manage them,
+		// causing multiple conflicting bodykit parts to render simultaneously on top of the factory chassis.
+		// Hide the tuning frame hierarchy by default.
+		RwFrame* tuningFrame = CClumpModelInfo::GetFrameFromName(pClump, "tuning");
+		if (tuningFrame) {
+			struct TuningHideContext {
+				RwFrame* root;
+			} ctx { tuningFrame };
+			RpClumpForAllAtomics(pClump, [](RpAtomic* atomic, void* data) -> RpAtomic* {
+				auto* c = reinterpret_cast<TuningHideContext*>(data);
+				for (RwFrame* f = RpAtomicGetFrame(atomic); f != nullptr; f = RwFrameGetParent(f)) {
+					if (f == c->root) {
+						RpAtomicSetFlags(atomic, 0);
+						break;
+					}
+				}
+				return atomic;
+			}, &ctx);
+		}
+
 		// ExtractDummiesFromClump is a fallback only: it fills any dummy slot that
 		// PreprocessHierarchy left as (0,0,0), using the RpClump frame hierarchy.
 		if (pInfo->m_pVehicleStruct) {
@@ -328,6 +349,12 @@ public:
 			if (pBaseInfo && pBaseInfo->m_pVehicleStruct) {
 				// Fallback any (0,0,0) dummy positions from base vehicle
 				for (int i = 0; i < 15; ++i) {
+					// DO NOT fallback auxiliary/secondary lights (slot 2: LIGHT_FRONT_SECONDARY, slot 3: LIGHT_REAR_SECONDARY).
+					// If the custom model does not have secondary lights in its DFF, inheriting them from the base vehicle
+					// causes phantom/duplicate headlights (e.g. Turismo's secondary driving lights) to render floating!
+					if (i == 2 || i == 3)
+						continue;
+
 					if (pInfo->m_pVehicleStruct->m_avDummyPos[i].Magnitude() < 0.001f) {
 						pInfo->m_pVehicleStruct->m_avDummyPos[i] = pBaseInfo->m_pVehicleStruct->m_avDummyPos[i];
 					}

@@ -267,6 +267,9 @@ native bool:GetCustomVehicleDefaultColors(customModelId, &primary, &secondary, &
 native GetCustomVehicleAllowedUpgradesCount(customModelId);
 native GetCustomVehicleAllowedUpgrade(customModelId, index);
 
+native bool:SetCustomVehicleLightingOffset(customModelId, Float:hlOffsetX, Float:hlOffsetY, Float:hlOffsetZ, Float:tlOffsetX = 0.0, Float:tlOffsetY = 0.0, Float:tlOffsetZ = 0.0);
+native bool:GetCustomVehicleLightingOffset(customModelId, &Float:hlOffsetX, &Float:hlOffsetY, &Float:hlOffsetZ, &Float:tlOffsetX, &Float:tlOffsetY, &Float:tlOffsetZ);
+
 /*
  * Custom Vehicle Instance Customization Natives
  *
@@ -362,6 +365,12 @@ native bool:SetCustomVehicleAllDoorsMissing(vehicleid, bool:missing);
 #define GetVehicleSiren             GetCustomVehicleSiren
 #define SetVehicleLighting          SetCustomVehicleLighting
 #define GetVehicleLighting          GetCustomVehicleLighting
+#define SetVehicleLightingOffset    SetCustomVehicleLightingOffset
+#define GetVehicleLightingOffset    GetCustomVehicleLightingOffset
+#define SetCustomVehicleModelLightingOffset SetCustomVehicleLightingOffset
+#define GetCustomVehicleModelLightingOffset GetCustomVehicleLightingOffset
+#define SetVehicleModelLightingOffset       SetCustomVehicleLightingOffset
+#define GetVehicleModelLightingOffset       GetCustomVehicleLightingOffset
 #define SetVehicleModelHorn         SetCustomVehicleModelHorn
 #define SetVehicleModelSiren        SetCustomVehicleModelSiren
 #define SetVehicleDoorMissing       SetCustomVehicleDoorMissing

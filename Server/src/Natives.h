@@ -1759,6 +1759,70 @@ SCRIPT_API(GetCustomVehicleAllowedUpgrade, int(int customModelId, int index))
 	return HandlingMgr::GetCustomVehicleAllowedUpgrade(static_cast<uint32_t>(customModelId), index);
 }
 
+// native bool:SetCustomVehicleLightingOffset(customModelId, Float:hlOffsetX, Float:hlOffsetY, Float:hlOffsetZ, Float:tlOffsetX = 0.0, Float:tlOffsetY = 0.0, Float:tlOffsetZ = 0.0);
+SCRIPT_API(SetCustomVehicleLightingOffset, bool(int customModelId, float hlOffsetX, float hlOffsetY, float hlOffsetZ, float tlOffsetX, float tlOffsetY, float tlOffsetZ))
+{
+	if (customModelId < CVehicleMgr::CUSTOM_MODEL_START || customModelId > CVehicleMgr::MAX_NETWORK_VEHICLES)
+		return false;
+	return HandlingMgr::SetCustomVehicleLightingOffset(static_cast<uint32_t>(customModelId), hlOffsetX, hlOffsetY, hlOffsetZ, tlOffsetX, tlOffsetY, tlOffsetZ);
+}
+
+// Legacy alias: SetVehicleLightingOffset -> SetCustomVehicleLightingOffset
+SCRIPT_API(SetVehicleLightingOffset, bool(int customModelId, float hlOffsetX, float hlOffsetY, float hlOffsetZ, float tlOffsetX, float tlOffsetY, float tlOffsetZ))
+{
+	if (customModelId < CVehicleMgr::CUSTOM_MODEL_START || customModelId > CVehicleMgr::MAX_NETWORK_VEHICLES)
+		return false;
+	return HandlingMgr::SetCustomVehicleLightingOffset(static_cast<uint32_t>(customModelId), hlOffsetX, hlOffsetY, hlOffsetZ, tlOffsetX, tlOffsetY, tlOffsetZ);
+}
+
+// Model alias: SetCustomVehicleModelLightingOffset -> SetCustomVehicleLightingOffset
+SCRIPT_API(SetCustomVehicleModelLightingOffset, bool(int customModelId, float hlOffsetX, float hlOffsetY, float hlOffsetZ, float tlOffsetX, float tlOffsetY, float tlOffsetZ))
+{
+	if (customModelId < CVehicleMgr::CUSTOM_MODEL_START || customModelId > CVehicleMgr::MAX_NETWORK_VEHICLES)
+		return false;
+	return HandlingMgr::SetCustomVehicleLightingOffset(static_cast<uint32_t>(customModelId), hlOffsetX, hlOffsetY, hlOffsetZ, tlOffsetX, tlOffsetY, tlOffsetZ);
+}
+
+// Model alias: SetVehicleModelLightingOffset -> SetCustomVehicleLightingOffset
+SCRIPT_API(SetVehicleModelLightingOffset, bool(int customModelId, float hlOffsetX, float hlOffsetY, float hlOffsetZ, float tlOffsetX, float tlOffsetY, float tlOffsetZ))
+{
+	if (customModelId < CVehicleMgr::CUSTOM_MODEL_START || customModelId > CVehicleMgr::MAX_NETWORK_VEHICLES)
+		return false;
+	return HandlingMgr::SetCustomVehicleLightingOffset(static_cast<uint32_t>(customModelId), hlOffsetX, hlOffsetY, hlOffsetZ, tlOffsetX, tlOffsetY, tlOffsetZ);
+}
+
+// native bool:GetCustomVehicleLightingOffset(customModelId, &Float:hlOffsetX, &Float:hlOffsetY, &Float:hlOffsetZ, &Float:tlOffsetX, &Float:tlOffsetY, &Float:tlOffsetZ);
+SCRIPT_API(GetCustomVehicleLightingOffset, bool(int customModelId, float& hlOffsetX, float& hlOffsetY, float& hlOffsetZ, float& tlOffsetX, float& tlOffsetY, float& tlOffsetZ))
+{
+	if (customModelId < CVehicleMgr::CUSTOM_MODEL_START || customModelId > CVehicleMgr::MAX_NETWORK_VEHICLES)
+		return false;
+	return HandlingMgr::GetCustomVehicleLightingOffset(static_cast<uint32_t>(customModelId), hlOffsetX, hlOffsetY, hlOffsetZ, tlOffsetX, tlOffsetY, tlOffsetZ);
+}
+
+// Legacy alias: GetVehicleLightingOffset -> GetCustomVehicleLightingOffset
+SCRIPT_API(GetVehicleLightingOffset, bool(int customModelId, float& hlOffsetX, float& hlOffsetY, float& hlOffsetZ, float& tlOffsetX, float& tlOffsetY, float& tlOffsetZ))
+{
+	if (customModelId < CVehicleMgr::CUSTOM_MODEL_START || customModelId > CVehicleMgr::MAX_NETWORK_VEHICLES)
+		return false;
+	return HandlingMgr::GetCustomVehicleLightingOffset(static_cast<uint32_t>(customModelId), hlOffsetX, hlOffsetY, hlOffsetZ, tlOffsetX, tlOffsetY, tlOffsetZ);
+}
+
+// Model alias: GetCustomVehicleModelLightingOffset -> GetCustomVehicleLightingOffset
+SCRIPT_API(GetCustomVehicleModelLightingOffset, bool(int customModelId, float& hlOffsetX, float& hlOffsetY, float& hlOffsetZ, float& tlOffsetX, float& tlOffsetY, float& tlOffsetZ))
+{
+	if (customModelId < CVehicleMgr::CUSTOM_MODEL_START || customModelId > CVehicleMgr::MAX_NETWORK_VEHICLES)
+		return false;
+	return HandlingMgr::GetCustomVehicleLightingOffset(static_cast<uint32_t>(customModelId), hlOffsetX, hlOffsetY, hlOffsetZ, tlOffsetX, tlOffsetY, tlOffsetZ);
+}
+
+// Model alias: GetVehicleModelLightingOffset -> GetCustomVehicleLightingOffset
+SCRIPT_API(GetVehicleModelLightingOffset, bool(int customModelId, float& hlOffsetX, float& hlOffsetY, float& hlOffsetZ, float& tlOffsetX, float& tlOffsetY, float& tlOffsetZ))
+{
+	if (customModelId < CVehicleMgr::CUSTOM_MODEL_START || customModelId > CVehicleMgr::MAX_NETWORK_VEHICLES)
+		return false;
+	return HandlingMgr::GetCustomVehicleLightingOffset(static_cast<uint32_t>(customModelId), hlOffsetX, hlOffsetY, hlOffsetZ, tlOffsetX, tlOffsetY, tlOffsetZ);
+}
+
 namespace CustomVehicleNatives
 {
 inline bool BindCustomVehicle(IVehicle& vehicle, int customModelId)

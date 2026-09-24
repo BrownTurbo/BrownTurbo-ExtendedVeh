@@ -508,9 +508,10 @@ bool ModelConfigParser::ParseString(const std::string& content, ModelConfig& out
 			} else if (lowerKey == "handlingflags") {
 				outConfig.handlingData.m_nHandlingFlags = static_cast<eVehicleHandlingFlags>(ParseUInt(val));
 				recordMod(HANDL_HANDLINGFLAGS, TYPE_FLAG, static_cast<unsigned int>(outConfig.handlingData.m_nHandlingFlags));
-			}
-			// NOTE: frontlights is intentionally skipped to preserve the fixed front lights rule!
-			else if (lowerKey == "rearlights") {
+			} else if (lowerKey == "frontlights" || lowerKey == "frontlight") {
+				outConfig.handlingData.m_nFrontLights = static_cast<eVehicleLightsSize>(ParseUInt(val));
+				recordMod(HANDL_FRONTLIGHTS, TYPE_BYTE, static_cast<uint8_t>(outConfig.handlingData.m_nFrontLights));
+			} else if (lowerKey == "rearlights" || lowerKey == "rearlight") {
 				outConfig.handlingData.m_nRearLights = static_cast<eVehicleLightsSize>(ParseUInt(val));
 				recordMod(HANDL_REARLIGHTS, TYPE_BYTE, static_cast<uint8_t>(outConfig.handlingData.m_nRearLights));
 			} else if (lowerKey == "animgroup") {
@@ -597,6 +598,35 @@ bool ModelConfigParser::ParseString(const std::string& content, ModelConfig& out
 				outConfig.lightingCategory = static_cast<int8_t>(std::stoi(val));
 			} else if (lowerKey == "lightscale") {
 				outConfig.lightScale = ParseFloat(val);
+			}
+		}
+		else if (currentSection == "lighting")
+		{
+			outConfig.hasLighting = true;
+			if (lowerKey == "headlightoffsetx") {
+				outConfig.headlightOffsetX = ParseFloat(val);
+			} else if (lowerKey == "headlightoffsety") {
+				outConfig.headlightOffsetY = ParseFloat(val);
+			} else if (lowerKey == "headlightoffsetz") {
+				outConfig.headlightOffsetZ = ParseFloat(val);
+			} else if (lowerKey == "taillightoffsetx") {
+				outConfig.taillightOffsetX = ParseFloat(val);
+			} else if (lowerKey == "taillightoffsety") {
+				outConfig.taillightOffsetY = ParseFloat(val);
+			} else if (lowerKey == "taillightoffsetz") {
+				outConfig.taillightOffsetZ = ParseFloat(val);
+			} else if (lowerKey == "headlightx") {
+				outConfig.headlightCustomX = ParseFloat(val);
+			} else if (lowerKey == "headlighty") {
+				outConfig.headlightCustomY = ParseFloat(val);
+			} else if (lowerKey == "headlightz") {
+				outConfig.headlightCustomZ = ParseFloat(val);
+			} else if (lowerKey == "taillightx") {
+				outConfig.taillightCustomX = ParseFloat(val);
+			} else if (lowerKey == "taillighty") {
+				outConfig.taillightCustomY = ParseFloat(val);
+			} else if (lowerKey == "taillightz") {
+				outConfig.taillightCustomZ = ParseFloat(val);
 			}
 		}
 		else if (currentSection == "audio")

@@ -127,4 +127,7 @@ bool GetCustomVehicleColorVariation(uint32_t customModelId, int index, int& p, i
 bool GetCustomVehicleDefaultColors(uint32_t customModelId, int& p, int& s, int& t, int& q);
 int GetCustomVehicleAllowedUpgradesCount(uint32_t customModelId);
 int GetCustomVehicleAllowedUpgrade(uint32_t customModelId, int index);
+
+bool SetCustomVehicleLightingOffset(uint32_t customModelId, float hlX, float hlY, float hlZ, float tlX = 0.0f, float tlY = 0.0f, float tlZ = 0.0f);
+bool GetCustomVehicleLightingOffset(uint32_t customModelId, float& hlX, float& hlY, float& hlZ, float& tlX, float& tlY, float& tlZ);
 }

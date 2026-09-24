@@ -1344,6 +1344,19 @@ void SendCustomVehicleDefToPlayer(IPlayer& player, uint32_t modelId)
 	bs.Write(def.modelInfo.numExtras);
 	bs.Write(def.modelInfo.wheelUpgradeClass);
 
+	bs.Write(def.lighting.headlightOffsetX);
+	bs.Write(def.lighting.headlightOffsetY);
+	bs.Write(def.lighting.headlightOffsetZ);
+	bs.Write(def.lighting.taillightOffsetX);
+	bs.Write(def.lighting.taillightOffsetY);
+	bs.Write(def.lighting.taillightOffsetZ);
+	bs.Write(def.lighting.headlightCustomX);
+	bs.Write(def.lighting.headlightCustomY);
+	bs.Write(def.lighting.headlightCustomZ);
+	bs.Write(def.lighting.taillightCustomX);
+	bs.Write(def.lighting.taillightCustomY);
+	bs.Write(def.lighting.taillightCustomZ);
+
 	if (def.flags & CustomVeh::Protocol::HasAnyAudio)
 	{
 		bs.Write(def.customAudio.volume);
@@ -1471,19 +1484,23 @@ bool LoadCustomVehicleConfig(uint32_t customModelId)
 			config.wheelUpgradeClass);
 	}
 
-	// Apply handling attributes (preserving front lights!)
+	// Apply handling attributes
 	if (config.hasHandling)
 	{
 		stHandlingEntry& entry = gCustomModelHandlings[customModelId];
 		eVehicleLightsSize originalFrontLights = entry.handlingData.m_nFrontLights;
 
 		entry.handlingData = config.handlingData;
-		entry.handlingData.m_nFrontLights = originalFrontLights; // Front lights are 100% fixed!
+
+		bool hasExplicitFrontLights = (config.handlingMods.find(HANDL_FRONTLIGHTS) != config.handlingMods.end());
+		if (!hasExplicitFrontLights)
+		{
+			// Retain the base vehicle's front light size if not explicitly configured in model.ini
+			entry.handlingData.m_nFrontLights = originalFrontLights;
+		}
 
 		for (const auto& [attrib, mod] : config.handlingMods)
 		{
-			if (attrib == HANDL_FRONTLIGHTS)
-				continue; // DO NOT touch front lights!
 			entry.handlingModMap[attrib] = mod;
 		}
 
@@ -1546,6 +1563,31 @@ bool LoadCustomVehicleConfig(uint32_t customModelId)
 		auto itComm = customVehicleDefs.find(customModelId);
 		if (itComm != customVehicleDefs.end())
 			applyAudioConfig(itComm->second);
+	}
+
+	// Apply custom lighting dummy configuration to staged or committed definition
+	if (config.hasLighting)
+	{
+		auto applyLightingConfig = [&](CustomVeh::Protocol::VehicleDefinition& def) {
+			def.lighting.headlightOffsetX = config.headlightOffsetX;
+			def.lighting.headlightOffsetY = config.headlightOffsetY;
+			def.lighting.headlightOffsetZ = config.headlightOffsetZ;
+			def.lighting.taillightOffsetX = config.taillightOffsetX;
+			def.lighting.taillightOffsetY = config.taillightOffsetY;
+			def.lighting.taillightOffsetZ = config.taillightOffsetZ;
+			def.lighting.headlightCustomX = config.headlightCustomX;
+			def.lighting.headlightCustomY = config.headlightCustomY;
+			def.lighting.headlightCustomZ = config.headlightCustomZ;
+			def.lighting.taillightCustomX = config.taillightCustomX;
+			def.lighting.taillightCustomY = config.taillightCustomY;
+			def.lighting.taillightCustomZ = config.taillightCustomZ;
+		};
+
+		if (itStaged != stagedCustomVehicleDefs.end())
+			applyLightingConfig(itStaged->second);
+		auto itComm = customVehicleDefs.find(customModelId);
+		if (itComm != customVehicleDefs.end())
+			applyLightingConfig(itComm->second);
 	}
 
 	if (core_)
@@ -1824,5 +1866,58 @@ int GetCustomVehicleAllowedUpgrade(uint32_t customModelId, int index)
 		}
 	}
 	return -1;
+}
+
+bool SetCustomVehicleLightingOffset(uint32_t customModelId, float hlX, float hlY, float hlZ, float tlX, float tlY, float tlZ)
+{
+	auto itStaged = stagedCustomVehicleDefs.find(customModelId);
+	if (itStaged != stagedCustomVehicleDefs.end())
+	{
+		itStaged->second.lighting.headlightOffsetX = hlX;
+		itStaged->second.lighting.headlightOffsetY = hlY;
+		itStaged->second.lighting.headlightOffsetZ = hlZ;
+		itStaged->second.lighting.taillightOffsetX = tlX;
+		itStaged->second.lighting.taillightOffsetY = tlY;
+		itStaged->second.lighting.taillightOffsetZ = tlZ;
+	}
+	auto itComm = customVehicleDefs.find(customModelId);
+	if (itComm != customVehicleDefs.end())
+	{
+		itComm->second.lighting.headlightOffsetX = hlX;
+		itComm->second.lighting.headlightOffsetY = hlY;
+		itComm->second.lighting.headlightOffsetZ = hlZ;
+		itComm->second.lighting.taillightOffsetX = tlX;
+		itComm->second.lighting.taillightOffsetY = tlY;
+		itComm->second.lighting.taillightOffsetZ = tlZ;
+		SendCustomVehicleDefToAll(customModelId);
+	}
+	return itStaged != stagedCustomVehicleDefs.end() || itComm != customVehicleDefs.end();
+}
+
+bool GetCustomVehicleLightingOffset(uint32_t customModelId, float& hlX, float& hlY, float& hlZ, float& tlX, float& tlY, float& tlZ)
+{
+	auto itComm = customVehicleDefs.find(customModelId);
+	if (itComm != customVehicleDefs.end())
+	{
+		hlX = itComm->second.lighting.headlightOffsetX;
+		hlY = itComm->second.lighting.headlightOffsetY;
+		hlZ = itComm->second.lighting.headlightOffsetZ;
+		tlX = itComm->second.lighting.taillightOffsetX;
+		tlY = itComm->second.lighting.taillightOffsetY;
+		tlZ = itComm->second.lighting.taillightOffsetZ;
+		return true;
+	}
+	auto itStaged = stagedCustomVehicleDefs.find(customModelId);
+	if (itStaged != stagedCustomVehicleDefs.end())
+	{
+		hlX = itStaged->second.lighting.headlightOffsetX;
+		hlY = itStaged->second.lighting.headlightOffsetY;
+		hlZ = itStaged->second.lighting.headlightOffsetZ;
+		tlX = itStaged->second.lighting.taillightOffsetX;
+		tlY = itStaged->second.lighting.taillightOffsetY;
+		tlZ = itStaged->second.lighting.taillightOffsetZ;
+		return true;
+	}
+	return false;
 }
 }

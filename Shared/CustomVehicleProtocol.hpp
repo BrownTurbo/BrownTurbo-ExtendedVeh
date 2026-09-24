@@ -149,6 +149,21 @@ namespace CustomVeh::Protocol {
 		uint8_t muteNative = 1;
 	};
 
+	struct LightingOffsets {
+		float headlightOffsetX = 0.0f;
+		float headlightOffsetY = 0.0f;
+		float headlightOffsetZ = 0.0f;
+		float taillightOffsetX = 0.0f;
+		float taillightOffsetY = 0.0f;
+		float taillightOffsetZ = 0.0f;
+		float headlightCustomX = 0.0f;
+		float headlightCustomY = 0.0f;
+		float headlightCustomZ = 0.0f;
+		float taillightCustomX = 0.0f;
+		float taillightCustomY = 0.0f;
+		float taillightCustomZ = 0.0f;
+	};
+
 	// Full custom vehicle definition sent server->client.
 	struct VehicleDefinition {
 		uint32_t customModelId = 0;
@@ -168,6 +183,7 @@ namespace CustomVeh::Protocol {
 		AssetDescriptor audioDecel = {};
 		AssetDescriptor audioBrake = {};
 		AssetDescriptor audioCrash = {};
+		LightingOffsets lighting = {};
 	};
 
 	struct VehicleBinding {

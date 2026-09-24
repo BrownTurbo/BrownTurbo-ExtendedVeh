@@ -69,6 +69,21 @@ struct ModelConfig
 	int8_t lightingCategory = -1;
 	float lightScale = 1.0f;
 
+	// [lighting]
+	bool hasLighting = false;
+	float headlightOffsetX = 0.0f;
+	float headlightOffsetY = 0.0f;
+	float headlightOffsetZ = 0.0f;
+	float taillightOffsetX = 0.0f;
+	float taillightOffsetY = 0.0f;
+	float taillightOffsetZ = 0.0f;
+	float headlightCustomX = 0.0f;
+	float headlightCustomY = 0.0f;
+	float headlightCustomZ = 0.0f;
+	float taillightCustomX = 0.0f;
+	float taillightCustomY = 0.0f;
+	float taillightCustomZ = 0.0f;
+
 	// [audio]
 	bool hasAudio = false;
 	std::string engineFile;
