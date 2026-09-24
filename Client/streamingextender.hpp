@@ -275,7 +275,7 @@ public:
 		if (!pInfo || !pClump)
 			return false;
 
-		ClientLog(LogLevel::Debug, std::format(" FinalizeClump -> pInfo=0x{:08X} pClump=0x{:08X}", reinterpret_cast<std::uintptr_t>(pInfo), reinterpret_cast<std::uintptr_t>(pClump)));
+		ClientLog(LogLevel::Debug, std::format("FinalizeClump -> pInfo=0x{:08X} pClump=0x{:08X}", reinterpret_cast<std::uintptr_t>(pInfo), reinterpret_cast<std::uintptr_t>(pClump)));
 
 		if (pInfo->m_pRwClump) {
 			ClientLog(LogLevel::Debug, "FinalizeClump -> deleting old RW clump");
@@ -289,7 +289,7 @@ public:
 		// causes CPool depletion (at most 70 entries on SA 1.0 US).
 		// Verified: MTA:SA CRenderWareSA.cpp:406-417 uses destructor 0x4C7410 + release 0x4C9580.
 		if (pInfo->m_pVehicleStruct) {
-			ClientLog(LogLevel::Debug, std::format(" FinalizeClump -> releasing vehicle struct=0x{:08X}", reinterpret_cast<std::uintptr_t>(pInfo->m_pVehicleStruct)));
+			ClientLog(LogLevel::Debug, std::format("FinalizeClump -> releasing vehicle struct=0x{:08X}", reinterpret_cast<std::uintptr_t>(pInfo->m_pVehicleStruct)));
 			auto CVehicleStructure_Destructor = reinterpret_cast<void(__thiscall*)(CVehicleModelInfo::CVehicleStructure*)>(0x4C7410);
 			auto CVehicleStructure_Release = reinterpret_cast<void(__cdecl*)(CVehicleModelInfo::CVehicleStructure*)>(0x4C9580);
 			CVehicleStructure_Destructor(pInfo->m_pVehicleStruct);
