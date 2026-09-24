@@ -1,7 +1,7 @@
 #include "CustomVehicleBindingManager.h"
 #include "CollisionLoader.h"
-#include "streamingextender.hpp"
 #include "handling_manager.hpp"
+#include "streamingextender.hpp"
 #include "utils.h"
 
 #include <game_sa/CAutomobile.h>
@@ -77,7 +77,8 @@ static void ApplyExtrasToClump(RpClump* clump, uint8_t mask)
 				}
 			}
 			return atomic;
-		}, &ctx);
+		},
+			&ctx);
 	}
 }
 
@@ -106,8 +107,7 @@ void CustomVehicleBindingManager::Bind(uint16_t vehicleId, uint32_t customModelI
 	auto existing = m_bindings.find(vehicleId);
 	if (existing != m_bindings.end()) {
 		Binding& binding = existing->second;
-		if (binding.customModelId == customModelId)
-		{
+		if (binding.customModelId == customModelId) {
 			{
 				std::lock_guard baseLock(s_baseModelMutex);
 				auto baseIt = s_baseModelIds.find(customModelId);
@@ -198,7 +198,7 @@ void CustomVehicleBindingManager::Unbind(uint16_t vehicleId)
 				if (origClump) {
 					CVisibilityPlugins::SetupVehicleVariables(origClump);
 					origModel->SetVehicleColour(vehicle->m_nPrimaryColor, vehicle->m_nSecondaryColor, vehicle->m_nTertiaryColor, vehicle->m_nQuaternaryColor);
-					origModel->SetEditableMaterials(origClump);   // non-static: must call on model instance
+					origModel->SetEditableMaterials(origClump); // non-static: must call on model instance
 
 					char plateText[32] = {};
 					if (GetVehiclePlateText(vehicleId, plateText, sizeof(plateText))) {
@@ -363,7 +363,7 @@ void CustomVehicleBindingManager::Process()
 			if (newClump) {
 				CVisibilityPlugins::SetupVehicleVariables(newClump);
 				model->SetVehicleColour(vehicle->m_nPrimaryColor, vehicle->m_nSecondaryColor, vehicle->m_nTertiaryColor, vehicle->m_nQuaternaryColor);
-				model->SetEditableMaterials(newClump);   // non-static: must call on model instance
+				model->SetEditableMaterials(newClump); // non-static: must call on model instance
 
 				char plateText[32] = {};
 				if (GetVehiclePlateText(vehicleId, plateText, sizeof(plateText))) {
@@ -391,11 +391,7 @@ void CustomVehicleBindingManager::Process()
 
 				CWorld::Remove(vehicle);
 
-				ClientLog(LogLevel::Debug, std::format("Replacing RW object: vehicle={} oldRw=0x{:X} newRw=0x{:X} pos=({:.2f}, {:.2f}, {:.2f})",
-					vehicleId,
-					reinterpret_cast<std::uintptr_t>(vehicle->m_pRwObject),
-					reinterpret_cast<std::uintptr_t>(newClump),
-					savedRwMatrix.pos.x, savedRwMatrix.pos.y, savedRwMatrix.pos.z));
+				ClientLog(LogLevel::Debug, std::format("Replacing RW object: vehicle={} oldRw=0x{:X} newRw=0x{:X} pos=({:.2f}, {:.2f}, {:.2f})", vehicleId, reinterpret_cast<std::uintptr_t>(vehicle->m_pRwObject), reinterpret_cast<std::uintptr_t>(newClump), savedRwMatrix.pos.x, savedRwMatrix.pos.y, savedRwMatrix.pos.z));
 
 				vehicle->DeleteRwObject();
 				if (!vehicle->m_pRwObject) {
@@ -483,11 +479,7 @@ void CustomVehicleBindingManager::Process()
 			}
 		} else {
 			// Model is already applied - check if vehicle colors changed (e.g. ChangeVehicleColor or Respray)
-			if (vehicle->m_nPrimaryColor != binding.lastPrimaryColor ||
-				vehicle->m_nSecondaryColor != binding.lastSecondaryColor ||
-				vehicle->m_nTertiaryColor != binding.lastTertiaryColor ||
-				vehicle->m_nQuaternaryColor != binding.lastQuaternaryColor)
-			{
+			if (vehicle->m_nPrimaryColor != binding.lastPrimaryColor || vehicle->m_nSecondaryColor != binding.lastSecondaryColor || vehicle->m_nTertiaryColor != binding.lastTertiaryColor || vehicle->m_nQuaternaryColor != binding.lastQuaternaryColor) {
 				binding.lastPrimaryColor = vehicle->m_nPrimaryColor;
 				binding.lastSecondaryColor = vehicle->m_nSecondaryColor;
 				binding.lastTertiaryColor = vehicle->m_nTertiaryColor;
@@ -727,7 +719,7 @@ void CustomVehicleBindingManager::ApplyPaintjobToVehicle(CVehicle* vehicle, int 
 
 	if (paintjobIndex < 0) {
 		CVehicleModelInfo::ms_pRemapTexture = nullptr;
-		customModel->SetEditableMaterials(clump);   // non-static: call on model instance
+		customModel->SetEditableMaterials(clump); // non-static: call on model instance
 		customModel->SetVehicleColour(vehicle->m_nPrimaryColor, vehicle->m_nSecondaryColor, vehicle->m_nTertiaryColor, vehicle->m_nQuaternaryColor);
 		customModel->SetEditableMaterials(clump);
 		return;
@@ -790,7 +782,8 @@ void CustomVehicleBindingManager::ApplyPaintjobToVehicle(CVehicle* vehicle, int 
 					RwTexDictionaryForAllTextures(pDict, [](RwTexture* tex, void* data) -> RwTexture* {
 						*reinterpret_cast<RwTexture**>(data) = tex;
 						return nullptr;
-					}, &liveryTex);
+					},
+						&liveryTex);
 				}
 			}
 			CTxdStore::PopCurrentTxd();
@@ -799,7 +792,7 @@ void CustomVehicleBindingManager::ApplyPaintjobToVehicle(CVehicle* vehicle, int 
 
 	if (liveryTex) {
 		CVehicleModelInfo::ms_pRemapTexture = liveryTex;
-		customModel->SetEditableMaterials(clump);   // non-static: call on model instance
+		customModel->SetEditableMaterials(clump); // non-static: call on model instance
 
 		struct PaintjobContext {
 			RwTexture* tex;
@@ -817,21 +810,21 @@ void CustomVehicleBindingManager::ApplyPaintjobToVehicle(CVehicle* vehicle, int 
 						if (texName) {
 							std::string nameLower = texName;
 							std::transform(nameLower.begin(), nameLower.end(), nameLower.begin(), ::tolower);
-							if (nameLower.find("remap") != std::string::npos ||
-								nameLower.find("paintjob") != std::string::npos ||
-								nameLower.find("livery") != std::string::npos) {
+							if (nameLower.find("remap") != std::string::npos || nameLower.find("paintjob") != std::string::npos || nameLower.find("livery") != std::string::npos) {
 								RpMaterialSetTexture(mat, c->tex);
 							}
 						}
 					}
 					return mat;
-				}, c);
+				},
+					c);
 			}
 			return atomic;
-		}, &ctx);
+		},
+			&ctx);
 
 		customModel->SetVehicleColour(vehicle->m_nPrimaryColor, vehicle->m_nSecondaryColor, vehicle->m_nTertiaryColor, vehicle->m_nQuaternaryColor);
-		customModel->SetEditableMaterials(clump);   // non-static: call on model instance
+		customModel->SetEditableMaterials(clump); // non-static: call on model instance
 	}
 }
 
@@ -866,19 +859,10 @@ void CustomVehicleBindingManager::ApplyWindowTintToVehicle(CVehicle* vehicle, ui
 				if (texName) {
 					std::string nameLower = texName;
 					std::transform(nameLower.begin(), nameLower.end(), nameLower.begin(), ::tolower);
-					if (nameLower.find("light") != std::string::npos ||
-						nameLower.find("lamp") != std::string::npos ||
-						nameLower.find("shad") != std::string::npos ||
-						nameLower.find("wheel") != std::string::npos ||
-						nameLower.find("tyre") != std::string::npos ||
-						nameLower.find("tire") != std::string::npos ||
-						nameLower.find("badge") != std::string::npos ||
-						nameLower.find("logo") != std::string::npos) {
+					if (nameLower.find("light") != std::string::npos || nameLower.find("lamp") != std::string::npos || nameLower.find("shad") != std::string::npos || nameLower.find("wheel") != std::string::npos || nameLower.find("tyre") != std::string::npos || nameLower.find("tire") != std::string::npos || nameLower.find("badge") != std::string::npos || nameLower.find("logo") != std::string::npos) {
 						return mat;
 					}
-					if (nameLower.find("glass") != std::string::npos ||
-						nameLower.find("window") != std::string::npos ||
-						nameLower.find("windscreen") != std::string::npos) {
+					if (nameLower.find("glass") != std::string::npos || nameLower.find("window") != std::string::npos || nameLower.find("windscreen") != std::string::npos) {
 						isWindow = true;
 					}
 				}
@@ -898,10 +882,12 @@ void CustomVehicleBindingManager::ApplyWindowTintToVehicle(CVehicle* vehicle, ui
 				RpMaterialSetColor(mat, &newCol);
 			}
 			return mat;
-		}, c);
+		},
+			c);
 
 		return atomic;
-	}, &ctx);
+	},
+		&ctx);
 }
 
 void CustomVehicleBindingManager::ApplyWheelColorToVehicle(CVehicle* vehicle, uint8_t r, uint8_t g, uint8_t b)
@@ -975,13 +961,7 @@ void CustomVehicleBindingManager::ApplyWheelColorToVehicle(CVehicle* vehicle, ui
 				if (texName) {
 					std::string nameLower = texName;
 					std::transform(nameLower.begin(), nameLower.end(), nameLower.begin(), ::tolower);
-					if (nameLower.find("tyre") != std::string::npos ||
-						nameLower.find("tire") != std::string::npos ||
-						nameLower.find("rubber") != std::string::npos ||
-						nameLower.find("disc") != std::string::npos ||
-						nameLower.find("rotor") != std::string::npos ||
-						nameLower.find("brake") != std::string::npos ||
-						nameLower.find("caliper") != std::string::npos) {
+					if (nameLower.find("tyre") != std::string::npos || nameLower.find("tire") != std::string::npos || nameLower.find("rubber") != std::string::npos || nameLower.find("disc") != std::string::npos || nameLower.find("rotor") != std::string::npos || nameLower.find("brake") != std::string::npos || nameLower.find("caliper") != std::string::npos) {
 						return mat;
 					}
 				}
@@ -994,8 +974,10 @@ void CustomVehicleBindingManager::ApplyWheelColorToVehicle(CVehicle* vehicle, ui
 			newCol.alpha = 255;
 			RpMaterialSetColor(mat, &newCol);
 			return mat;
-		}, c);
+		},
+			c);
 
 		return atomic;
-	}, &ctx);
+	},
+		&ctx);
 }

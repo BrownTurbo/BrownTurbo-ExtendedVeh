@@ -12,9 +12,9 @@
 #endif
 
 #include "ModelTransferClient.h"
+#include "ImGuiOverlay.h"
 #include "MainThreadQueue.h"
 #include "ModelCache.h"
-#include "ImGuiOverlay.h"
 
 #include <windows.h>
 #include <RakNet/BitStream.h>

@@ -1,7 +1,7 @@
 # cmake -B build -A Win32
 # cmake --build build --config Release
 cmake_minimum_required(VERSION 3.23)
-project("brownturbo-chandling" LANGUAGES C CXX VERSION 0.0.1)
+project("brownturbo-extendedveh" LANGUAGES C CXX VERSION 0.0.2)
 
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL" CACHE STRING "" FORCE)
 set(POLYHOOK_STATIC_RUNTIME OFF CACHE BOOL "" FORCE)

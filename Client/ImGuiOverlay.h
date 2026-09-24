@@ -1,15 +1,15 @@
 #pragma once
 
 #include <windows.h>
-#include <MinHook.h>
-#include <atomic>
-#include <chrono>
-#include <thread>
-#include <system_error>
 #include <d3d9.h>
 #include <imgui.h>
 #include <imgui_impl_dx9.h>
 #include <imgui_impl_win32.h>
+#include <MinHook.h>
+#include <atomic>
+#include <chrono>
+#include <system_error>
+#include <thread>
 
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 

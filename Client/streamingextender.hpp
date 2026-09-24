@@ -49,8 +49,8 @@ private:
 	{
 		auto** table = GetModelInfoTable();
 		for (int slot = CUSTOM_GTA_MODEL_BASE;
-			slot < TOTAL_GTA_MODEL_COUNT;
-			++slot) {
+			 slot < TOTAL_GTA_MODEL_COUNT;
+			 ++slot) {
 			if (table[slot] != nullptr)
 				continue;
 			bool alreadyClaimed = false;
@@ -119,16 +119,12 @@ public:
 
 		CBaseModelInfo* visualBase = GetEngineModelInfo(static_cast<int>(def.visualBaseModel));
 		if (!visualBase) {
-			ClientLog(LogLevel::Error, std::format(
-				"Streaming ERROR: visual base model {} not found.",
-				def.visualBaseModel));
+			ClientLog(LogLevel::Error, std::format("Streaming ERROR: visual base model {} not found.", def.visualBaseModel));
 			return nullptr;
 		}
 
 		if (visualBase->GetModelType() != MODEL_INFO_VEHICLE) {
-			ClientLog(LogLevel::Error, std::format(
-				"[Streaming] ERROR: visual base model {} is not a vehicle model.",
-				def.visualBaseModel));
+			ClientLog(LogLevel::Error, std::format("[Streaming] ERROR: visual base model {} is not a vehicle model.", def.visualBaseModel));
 			return nullptr;
 		}
 
@@ -136,9 +132,7 @@ public:
 
 		const int gtaSlot = AllocateGtaModelSlot();
 		if (!IsValidGtaModelSlot(gtaSlot)) {
-			ClientLog(LogLevel::Error, std::format(
-				"[Streaming] ERROR: no free GTA model-info slot available for custom model {}.",
-				def.customModelId));
+			ClientLog(LogLevel::Error, std::format("[Streaming] ERROR: no free GTA model-info slot available for custom model {}.", def.customModelId));
 			return nullptr;
 		}
 
@@ -151,9 +145,7 @@ public:
 
 		CVehicleModelInfo* newModel = new CVehicleModelInfo();
 		if (!newModel) {
-			ClientLog(LogLevel::Error, std::format(
-				"[Streaming] ERROR: failed to allocate CVehicleModelInfo for custom model {}.",
-				def.customModelId));
+			ClientLog(LogLevel::Error, std::format("[Streaming] ERROR: failed to allocate CVehicleModelInfo for custom model {}.", def.customModelId));
 			s_customModels.erase(def.customModelId);
 			delete entry;
 			return nullptr;
@@ -235,17 +227,16 @@ public:
 		//  10   | HAND_REST                | 0x78
 		//  11   | EXHAUST_SECONDARY        | 0x84
 		static const DummyMapping s_dummyMap[] = {
-			{ 0,  { "headlights",  "headlights_dummy",  "headlight"  } },   // LIGHT_FRONT_MAIN
-			{ 1,  { "taillights",  "taillights_dummy",  "taillight"  } },   // LIGHT_REAR_MAIN
-			{ 4,  { "seat_f",      "seat_front"                       } },   // SEAT_FRONT (driver!)
-			{ 5,  { "seat_r",      "seat_rear"                        } },   // SEAT_REAR
-			{ 6,  { "exhaust",     "exhaust_dummy"                    } },   // EXHAUST
-			{ 7,  { "engine",      "engine_dummy"                     } },   // ENGINE
-			{ 8,  { "petrolcap",   "petrolcap_dummy",   "gascap"      } },   // GAS_CAP
-			{ 9,  { "trailer_attach", "trailer"                       } },   // TRAILER_ATTACH
-			{ 10, { "handgrip",    "hand_rest",         "handrest"    } },   // HAND_REST
-			{ 11, { "exhaust_2",   "exhaust2",          "secexhaust",
-			        "exhaust_secondary"                                } },   // EXHAUST_SECONDARY
+			{ 0, { "headlights", "headlights_dummy", "headlight" } }, // LIGHT_FRONT_MAIN
+			{ 1, { "taillights", "taillights_dummy", "taillight" } }, // LIGHT_REAR_MAIN
+			{ 4, { "seat_f", "seat_front" } }, // SEAT_FRONT (driver!)
+			{ 5, { "seat_r", "seat_rear" } }, // SEAT_REAR
+			{ 6, { "exhaust", "exhaust_dummy" } }, // EXHAUST
+			{ 7, { "engine", "engine_dummy" } }, // ENGINE
+			{ 8, { "petrolcap", "petrolcap_dummy", "gascap" } }, // GAS_CAP
+			{ 9, { "trailer_attach", "trailer" } }, // TRAILER_ATTACH
+			{ 10, { "handgrip", "hand_rest", "handrest" } }, // HAND_REST
+			{ 11, { "exhaust_2", "exhaust2", "secexhaust", "exhaust_secondary" } }, // EXHAUST_SECONDARY
 		};
 
 		RwFrame* rootFrame = RpClumpGetFrame(pClump);
@@ -279,8 +270,6 @@ public:
 		}
 	}
 
-
-
 	static bool FinalizeClump(CVehicleModelInfo* pInfo, RpClump* pClump, CVehicleModelInfo* pBaseInfo = nullptr)
 	{
 		if (!pInfo || !pClump)
@@ -302,7 +291,7 @@ public:
 		if (pInfo->m_pVehicleStruct) {
 			ClientLog(LogLevel::Debug, std::format(" FinalizeClump -> releasing vehicle struct=0x{:08X}", reinterpret_cast<std::uintptr_t>(pInfo->m_pVehicleStruct)));
 			auto CVehicleStructure_Destructor = reinterpret_cast<void(__thiscall*)(CVehicleModelInfo::CVehicleStructure*)>(0x4C7410);
-			auto CVehicleStructure_Release    = reinterpret_cast<void(__cdecl*)(CVehicleModelInfo::CVehicleStructure*)>(0x4C9580);
+			auto CVehicleStructure_Release = reinterpret_cast<void(__cdecl*)(CVehicleModelInfo::CVehicleStructure*)>(0x4C9580);
 			CVehicleStructure_Destructor(pInfo->m_pVehicleStruct);
 			CVehicleStructure_Release(pInfo->m_pVehicleStruct);
 			pInfo->m_pVehicleStruct = nullptr;
@@ -313,7 +302,7 @@ public:
 		ClientLog(LogLevel::Debug, "FinalizeClump -> AFTER SetupVehicleVariables");
 
 		ClientLog(LogLevel::Debug, "FinalizeClump -> BEFORE SetClump");
-		pInfo->SetClump(pClump);   // SetClump allocates m_pVehicleStruct from pool + fills dummies
+		pInfo->SetClump(pClump); // SetClump allocates m_pVehicleStruct from pool + fills dummies
 		ClientLog(LogLevel::Debug, "FinalizeClump -> AFTER SetClump");
 
 		ClientLog(LogLevel::Debug, "FinalizeClump -> BEFORE SetAtomicRenderCallbacks");
@@ -338,7 +327,8 @@ public:
 					}
 				}
 				return atomic;
-			}, &ctx);
+			},
+				&ctx);
 		}
 
 		// ExtractDummiesFromClump is a fallback only: it fills any dummy slot that
@@ -437,7 +427,8 @@ public:
 	static void ClearAllCustomModels()
 	{
 		for (auto& [id, entry] : s_customModels) {
-			if (!entry) continue;
+			if (!entry)
+				continue;
 			CVehicleModelInfo* pInfo = entry->modelInfo;
 			if (pInfo) {
 				if (entry->gtaModelSlot >= 0 && entry->gtaModelSlot < TOTAL_GTA_MODEL_COUNT)

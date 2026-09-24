@@ -228,7 +228,8 @@ bool Actions::Process(CustomVehAction id, NetworkBitStream& bs, IPlayer& player)
 				core_->logLn(LogLevel::Warning, "[ExtendedVeh] ACTION_ASSET_REQUEST: Invalid file kind %u from player %d", kindByte, playerid);
 			return false;
 		}
-		if (!gPlayers.HasExtendedVeh(playerid)) {
+		if (!gPlayers.HasExtendedVeh(playerid))
+		{
 			if (core_)
 				core_->logLn(LogLevel::Warning, "[ExtendedVeh] ACTION_ASSET_REQUEST: Unauthorized player %d", playerid);
 			return false;

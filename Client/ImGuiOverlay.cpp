@@ -418,9 +418,7 @@ HRESULT __stdcall hkEndScene(IDirect3DDevice9* pDevice)
 					LogImGuiStage("Original WndProc restored.", LogLevel::Info);
 				}
 				return false;
-			}
-			else
-			{
+			} else {
 				const LONG_PTR installedWndProc = GetWindowLongPtrA(hWnd, GWLP_WNDPROC);
 				LogImGuiStage(std::format("WndProc hooked successfully. HWND=0x{:X}, oldWndProc=0x{:X}, newWndProc=0x{:X}", reinterpret_cast<std::uintptr_t>(hWnd), static_cast<std::uintptr_t>(reinterpret_cast<uintptr_t>(oWndProc)), static_cast<uintptr_t>(installedWndProc)).c_str(), LogLevel::Info);
 			}
@@ -480,7 +478,7 @@ void BackgroundInitializationWorker()
 
 		MH_STATUS statusES = MH_CreateHook(g_targetEndScene, reinterpret_cast<void*>(&hkEndScene), reinterpret_cast<void**>(&oEndScene));
 		if (statusES == MH_OK) {
-			MH_STATUS enableStatus =MH_EnableHook(g_targetEndScene);
+			MH_STATUS enableStatus = MH_EnableHook(g_targetEndScene);
 			if (enableStatus == MH_OK) {
 				ClientLog(LogLevel::Info, "Direct3D 9 hkEndScene hooked successfully via MinHook");
 			} else {

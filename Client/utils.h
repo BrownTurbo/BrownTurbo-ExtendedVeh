@@ -20,8 +20,7 @@
 
 namespace fs = std::filesystem;
 
-enum class LogLevel : uint8_t
-{
+enum class LogLevel : uint8_t {
 	None = 0,
 	Trace,
 	Debug,

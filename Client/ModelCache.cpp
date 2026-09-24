@@ -39,30 +39,48 @@ ModelCache::~ModelCache()
 std::string ModelCache::GetKindKey(uint8_t fileKind)
 {
 	switch (fileKind) {
-	case 0: return "dff";
-	case 1: return "txd";
-	case 2: return "col";
-	case 3: return "engine";
-	case 4: return "acceleration";
-	case 5: return "deacceleration";
-	case 6: return "brake";
-	case 7: return "crash";
-	default: return "kind_" + std::to_string(fileKind);
+	case 0:
+		return "dff";
+	case 1:
+		return "txd";
+	case 2:
+		return "col";
+	case 3:
+		return "engine";
+	case 4:
+		return "acceleration";
+	case 5:
+		return "deacceleration";
+	case 6:
+		return "brake";
+	case 7:
+		return "crash";
+	default:
+		return "kind_" + std::to_string(fileKind);
 	}
 }
 
 std::string ModelCache::GetAssetFileName(uint8_t fileKind, bool isWav)
 {
 	switch (fileKind) {
-	case 0: return "model.dff";
-	case 1: return "model.txd";
-	case 2: return "model.col";
-	case 3: return isWav ? "engine.wav" : "engine.ogg";
-	case 4: return isWav ? "acceleration.wav" : "acceleration.ogg";
-	case 5: return isWav ? "deacceleration.wav" : "deacceleration.ogg";
-	case 6: return isWav ? "brake.wav" : "brake.ogg";
-	case 7: return isWav ? "crash.wav" : "crash.ogg";
-	default: return "asset_" + std::to_string(fileKind) + ".bin";
+	case 0:
+		return "model.dff";
+	case 1:
+		return "model.txd";
+	case 2:
+		return "model.col";
+	case 3:
+		return isWav ? "engine.wav" : "engine.ogg";
+	case 4:
+		return isWav ? "acceleration.wav" : "acceleration.ogg";
+	case 5:
+		return isWav ? "deacceleration.wav" : "deacceleration.ogg";
+	case 6:
+		return isWav ? "brake.wav" : "brake.ogg";
+	case 7:
+		return isWav ? "crash.wav" : "crash.ogg";
+	default:
+		return "asset_" + std::to_string(fileKind) + ".bin";
 	}
 }
 
@@ -138,7 +156,8 @@ void ModelCache::EnsureServerInitialized()
 					m_impl->manifestJson = j;
 					if (j.contains("models") && j["models"].is_object()) {
 						for (auto& [modelStr, kindsObj] : j["models"].items()) {
-							if (!kindsObj.is_object()) continue;
+							if (!kindsObj.is_object())
+								continue;
 							uint32_t modelId = 0;
 							try {
 								modelId = static_cast<uint32_t>(std::stoul(modelStr));
@@ -146,17 +165,27 @@ void ModelCache::EnsureServerInitialized()
 								continue;
 							}
 							for (auto& [kindStr, infoObj] : kindsObj.items()) {
-								if (!infoObj.is_object()) continue;
+								if (!infoObj.is_object())
+									continue;
 								uint8_t kind = 0xFF;
-								if (kindStr == "dff") kind = 0;
-								else if (kindStr == "txd") kind = 1;
-								else if (kindStr == "col") kind = 2;
-								else if (kindStr == "engine") kind = 3;
-								else if (kindStr == "acceleration") kind = 4;
-								else if (kindStr == "deacceleration") kind = 5;
-								else if (kindStr == "brake") kind = 6;
-								else if (kindStr == "crash") kind = 7;
-								else continue;
+								if (kindStr == "dff")
+									kind = 0;
+								else if (kindStr == "txd")
+									kind = 1;
+								else if (kindStr == "col")
+									kind = 2;
+								else if (kindStr == "engine")
+									kind = 3;
+								else if (kindStr == "acceleration")
+									kind = 4;
+								else if (kindStr == "deacceleration")
+									kind = 5;
+								else if (kindStr == "brake")
+									kind = 6;
+								else if (kindStr == "crash")
+									kind = 7;
+								else
+									continue;
 
 								AssetRecord rec;
 								if (infoObj.contains("sha256") && infoObj["sha256"].is_string())
@@ -173,8 +202,7 @@ void ModelCache::EnsureServerInitialized()
 							}
 						}
 					}
-					ClientLog(LogLevel::Info, std::format("ModelCache: Loaded manifest for server {} ({}) with {} cached assets",
-						currentAddr, currentHash, m_impl->assets.size()));
+					ClientLog(LogLevel::Info, std::format("ModelCache: Loaded manifest for server {} ({}) with {} cached assets", currentAddr, currentHash, m_impl->assets.size()));
 				} catch (...) {
 					m_impl->manifestJson = nlohmann::json::object();
 				}
@@ -363,8 +391,7 @@ bool ModelCache::Store(uint32_t modelId, uint8_t fileKind,
 
 	bool isWav = false;
 	if (fileKind >= 3 && fileKind <= 7 && decompressedBytes.size() >= 4) {
-		if (decompressedBytes[0] == 'R' && decompressedBytes[1] == 'I' &&
-			decompressedBytes[2] == 'F' && decompressedBytes[3] == 'F') {
+		if (decompressedBytes[0] == 'R' && decompressedBytes[1] == 'I' && decompressedBytes[2] == 'F' && decompressedBytes[3] == 'F') {
 			isWav = true;
 		}
 	}

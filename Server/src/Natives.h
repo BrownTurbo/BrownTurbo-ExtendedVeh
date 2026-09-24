@@ -1507,8 +1507,7 @@ SCRIPT_API(SetCustomVehicleModelInfo, bool(int customModelId, int vehicleClass, 
 		static_cast<uint8_t>(level),
 		static_cast<uint8_t>(comprate),
 		static_cast<uint8_t>(numExtras),
-		static_cast<uint8_t>(wheelUpgradeClass)
-	);
+		static_cast<uint8_t>(wheelUpgradeClass));
 }
 
 // native SetCustomVehicleWheelModel(customModelId, wheelModelId);
@@ -1627,16 +1626,16 @@ SCRIPT_API(IsCustomVehicleModel, bool(int modelid))
 SCRIPT_API(IsVehicleCustom, bool(IVehicle& vehicle))
 {
 	int vehicleid = vehicle.getID();
-    if (!CVehicleMgr::VehicleRegistry::Get().IsValidVehicleID(vehicleid))
-        return false;
+	if (!CVehicleMgr::VehicleRegistry::Get().IsValidVehicleID(vehicleid))
+		return false;
 
-    std::optional<uint32_t> customModelId = 0;
+	std::optional<uint32_t> customModelId = 0;
 	customModelId = CustomVehicleBindingRegistry::Instance().Get(static_cast<uint16_t>(vehicleid)).has_value();
 	if (customModelId != std::nullopt)
 	{
-        return HandlingMgr::IsCustomVehicle(customModelId.value());
+		return HandlingMgr::IsCustomVehicle(customModelId.value());
 	}
-    return false;
+	return false;
 }
 
 // native bool:LoadCustomVehicleConfig(customModelId);

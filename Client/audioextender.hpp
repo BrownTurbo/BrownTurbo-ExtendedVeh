@@ -20,8 +20,8 @@
 #include <vector>
 
 #include "../Shared/CustomVehicleProtocol.hpp"
-#include "defs.h"
 #include "CustomVehicleBindingManager.h"
+#include "defs.h"
 #include "utils.h"
 
 namespace fs = std::filesystem;
@@ -430,9 +430,7 @@ public:
 		def.audioFiles.brakeFile = brakePath.string();
 		def.audioFiles.crashFile = crashPath.string();
 
-		ClientLog(LogLevel::Info, std::format("Registered custom audio for model {}: vol={:.2f}, minD={:.1f}, maxD={:.1f}, pitchM={:.2f}, accelP={:.2f}, muteNative={}",
-			customModelId, instructions.volume, instructions.minDistance, instructions.maxDistance,
-			instructions.pitchMultiplier, instructions.accelPitchFactor, instructions.muteNative));
+		ClientLog(LogLevel::Info, std::format("Registered custom audio for model {}: vol={:.2f}, minD={:.1f}, maxD={:.1f}, pitchM={:.2f}, accelP={:.2f}, muteNative={}", customModelId, instructions.volume, instructions.minDistance, instructions.maxDistance, instructions.pitchMultiplier, instructions.accelPitchFactor, instructions.muteNative));
 	}
 
 	static void ProcessVehicleAudio()
@@ -490,11 +488,14 @@ public:
 				rt.lastHealth = pVeh->m_fHealth;
 
 				auto createStream = [](const std::string& path, bool loop, float minD, float maxD, float vol, float& outBaseFreq) -> HSTREAM {
-					if (path.empty()) return 0;
+					if (path.empty())
+						return 0;
 					std::error_code ec;
-					if (!fs::exists(path, ec)) return 0;
+					if (!fs::exists(path, ec))
+						return 0;
 					DWORD flags = BASS_SAMPLE_3D | BASS_SAMPLE_MONO;
-					if (loop) flags |= BASS_SAMPLE_LOOP;
+					if (loop)
+						flags |= BASS_SAMPLE_LOOP;
 					HSTREAM h = BASS_StreamCreateFile(FALSE, path.c_str(), 0, 0, flags);
 					if (h) {
 						BASS_ChannelSet3DAttributes(h, BASS_3DMODE_NORMAL, minD, maxD, -1, -1, -1);
@@ -528,11 +529,16 @@ public:
 			BASS_3DVECTOR bvPos(vPos.x, vPos.z, vPos.y);
 			BASS_3DVECTOR bvVel(vVel.x, vVel.z, vVel.y);
 
-			if (rt.hEngine) BASS_ChannelSet3DPosition(rt.hEngine, &bvPos, nullptr, &bvVel);
-			if (rt.hAccel) BASS_ChannelSet3DPosition(rt.hAccel, &bvPos, nullptr, &bvVel);
-			if (rt.hDecel) BASS_ChannelSet3DPosition(rt.hDecel, &bvPos, nullptr, &bvVel);
-			if (rt.hBrake) BASS_ChannelSet3DPosition(rt.hBrake, &bvPos, nullptr, &bvVel);
-			if (rt.hCrash) BASS_ChannelSet3DPosition(rt.hCrash, &bvPos, nullptr, &bvVel);
+			if (rt.hEngine)
+				BASS_ChannelSet3DPosition(rt.hEngine, &bvPos, nullptr, &bvVel);
+			if (rt.hAccel)
+				BASS_ChannelSet3DPosition(rt.hAccel, &bvPos, nullptr, &bvVel);
+			if (rt.hDecel)
+				BASS_ChannelSet3DPosition(rt.hDecel, &bvPos, nullptr, &bvVel);
+			if (rt.hBrake)
+				BASS_ChannelSet3DPosition(rt.hBrake, &bvPos, nullptr, &bvVel);
+			if (rt.hCrash)
+				BASS_ChannelSet3DPosition(rt.hCrash, &bvPos, nullptr, &bvVel);
 
 			float speed = pVeh->m_vecMoveSpeed.Magnitude();
 			float gas = std::abs(pVeh->m_fGasPedal);
@@ -570,21 +576,41 @@ public:
 			// Realistic vehicle transmission and RPM simulation
 			int gear = static_cast<int>(pVeh->m_nCurrentGear);
 			if (gear <= 0 || gear > 5) {
-				if (speed < 0.22f) gear = 1;
-				else if (speed < 0.44f) gear = 2;
-				else if (speed < 0.68f) gear = 3;
-				else if (speed < 0.92f) gear = 4;
-				else gear = 5;
+				if (speed < 0.22f)
+					gear = 1;
+				else if (speed < 0.44f)
+					gear = 2;
+				else if (speed < 0.68f)
+					gear = 3;
+				else if (speed < 0.92f)
+					gear = 4;
+				else
+					gear = 5;
 			}
 
 			// Realistic gear speed bands
 			float minSpd = 0.0f, maxSpd = 0.26f;
 			switch (gear) {
-			case 1: minSpd = 0.00f; maxSpd = 0.26f; break;
-			case 2: minSpd = 0.18f; maxSpd = 0.48f; break;
-			case 3: minSpd = 0.38f; maxSpd = 0.72f; break;
-			case 4: minSpd = 0.62f; maxSpd = 0.96f; break;
-			default: minSpd = 0.84f; maxSpd = 1.35f; break;
+			case 1:
+				minSpd = 0.00f;
+				maxSpd = 0.26f;
+				break;
+			case 2:
+				minSpd = 0.18f;
+				maxSpd = 0.48f;
+				break;
+			case 3:
+				minSpd = 0.38f;
+				maxSpd = 0.72f;
+				break;
+			case 4:
+				minSpd = 0.62f;
+				maxSpd = 0.96f;
+				break;
+			default:
+				minSpd = 0.84f;
+				maxSpd = 1.35f;
+				break;
 			}
 
 			float gearProgress = (maxSpd > minSpd) ? std::clamp((speed - minSpd) / (maxSpd - minSpd), 0.0f, 1.0f) : 0.0f;
@@ -691,7 +717,7 @@ public:
 		// Clean up runtimes for vehicles no longer bound or active
 		{
 			std::lock_guard<std::mutex> lock(s_audioMutex);
-			for (auto it = s_vehicleBassRuntimes.begin(); it != s_vehicleBassRuntimes.end(); ) {
+			for (auto it = s_vehicleBassRuntimes.begin(); it != s_vehicleBassRuntimes.end();) {
 				if (std::find(activeRefs.begin(), activeRefs.end(), it->first) == activeRefs.end()) {
 					FreeVehicleStreams(it->second);
 					it = s_vehicleBassRuntimes.erase(it);

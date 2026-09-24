@@ -6,8 +6,7 @@
 
 static const char* LogLevelToString(LogLevel level)
 {
-	switch (level)
-	{
+	switch (level) {
 	case LogLevel::Trace:
 		return "TRACE";
 	case LogLevel::Debug:
@@ -28,8 +27,7 @@ void ClientLog(const std::string& msg, LogLevel level)
 	static std::mutex logMutex;
 	std::lock_guard<std::mutex> lock(logMutex);
 
-	if (level == LogLevel::None)
-	{
+	if (level == LogLevel::None) {
 		level = LogLevel::Info;
 	}
 

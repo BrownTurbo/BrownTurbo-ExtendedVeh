@@ -35,7 +35,8 @@ public:
 		bool hasCustomWheel { false };
 	};
 
-	struct ModelAudioDefaults {
+	struct ModelAudioDefaults
+	{
 		bool hasHorn { false };
 		int8_t hornSoundId { 0 };
 		float hornPitch { 1.0f };
@@ -66,14 +67,17 @@ public:
 		VehicleCustomState state = m_states[sampVehicleId];
 		state.customModelId = customModelId;
 		auto modelIt = m_modelAudio.find(customModelId);
-		if (modelIt != m_modelAudio.end()) {
-			if (modelIt->second.hasHorn && !state.hasCustomHorn) {
+		if (modelIt != m_modelAudio.end())
+		{
+			if (modelIt->second.hasHorn && !state.hasCustomHorn)
+			{
 				state.horn.sampVehicleId = sampVehicleId;
 				state.horn.hornSoundId = modelIt->second.hornSoundId;
 				state.horn.hornPitch = modelIt->second.hornPitch;
 				state.hasCustomHorn = true;
 			}
-			if (modelIt->second.hasSiren && !state.hasCustomSiren) {
+			if (modelIt->second.hasSiren && !state.hasCustomSiren)
+			{
 				state.siren.sampVehicleId = sampVehicleId;
 				state.siren.enabled = modelIt->second.sirenEnabled ? 1 : 0;
 				state.siren.sirenType = modelIt->second.sirenType;

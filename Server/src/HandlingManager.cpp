@@ -1185,12 +1185,14 @@ bool SetCustomVehicleWheelModel(uint32_t customModelId, int16_t wheelModelId)
 {
 	bool found = false;
 	auto itStaged = stagedCustomVehicleDefs.find(customModelId);
-	if (itStaged != stagedCustomVehicleDefs.end()) {
+	if (itStaged != stagedCustomVehicleDefs.end())
+	{
 		itStaged->second.modelInfo.wheelModelId = wheelModelId;
 		found = true;
 	}
 	auto itComm = customVehicleDefs.find(customModelId);
-	if (itComm != customVehicleDefs.end()) {
+	if (itComm != customVehicleDefs.end())
+	{
 		itComm->second.modelInfo.wheelModelId = wheelModelId;
 		found = true;
 		SendCustomVehicleDefToAll(customModelId);
@@ -1202,13 +1204,15 @@ bool SetCustomVehicleWheelScale(uint32_t customModelId, float wheelScaleFront, f
 {
 	bool found = false;
 	auto itStaged = stagedCustomVehicleDefs.find(customModelId);
-	if (itStaged != stagedCustomVehicleDefs.end()) {
+	if (itStaged != stagedCustomVehicleDefs.end())
+	{
 		itStaged->second.modelInfo.wheelScaleFront = wheelScaleFront;
 		itStaged->second.modelInfo.wheelScaleRear = wheelScaleRear;
 		found = true;
 	}
 	auto itComm = customVehicleDefs.find(customModelId);
-	if (itComm != customVehicleDefs.end()) {
+	if (itComm != customVehicleDefs.end())
+	{
 		itComm->second.modelInfo.wheelScaleFront = wheelScaleFront;
 		itComm->second.modelInfo.wheelScaleRear = wheelScaleRear;
 		found = true;
@@ -1220,12 +1224,14 @@ bool SetCustomVehicleWheelScale(uint32_t customModelId, float wheelScaleFront, f
 bool GetCustomVehicleWheelModel(uint32_t customModelId, int16_t& wheelModelId)
 {
 	auto itStaged = stagedCustomVehicleDefs.find(customModelId);
-	if (itStaged != stagedCustomVehicleDefs.end()) {
+	if (itStaged != stagedCustomVehicleDefs.end())
+	{
 		wheelModelId = itStaged->second.modelInfo.wheelModelId;
 		return true;
 	}
 	auto itComm = customVehicleDefs.find(customModelId);
-	if (itComm != customVehicleDefs.end()) {
+	if (itComm != customVehicleDefs.end())
+	{
 		wheelModelId = itComm->second.modelInfo.wheelModelId;
 		return true;
 	}
@@ -1235,13 +1241,15 @@ bool GetCustomVehicleWheelModel(uint32_t customModelId, int16_t& wheelModelId)
 bool GetCustomVehicleWheelScale(uint32_t customModelId, float& wheelScaleFront, float& wheelScaleRear)
 {
 	auto itStaged = stagedCustomVehicleDefs.find(customModelId);
-	if (itStaged != stagedCustomVehicleDefs.end()) {
+	if (itStaged != stagedCustomVehicleDefs.end())
+	{
 		wheelScaleFront = itStaged->second.modelInfo.wheelScaleFront;
 		wheelScaleRear = itStaged->second.modelInfo.wheelScaleRear;
 		return true;
 	}
 	auto itComm = customVehicleDefs.find(customModelId);
-	if (itComm != customVehicleDefs.end()) {
+	if (itComm != customVehicleDefs.end())
+	{
 		wheelScaleFront = itComm->second.modelInfo.wheelScaleFront;
 		wheelScaleRear = itComm->second.modelInfo.wheelScaleRear;
 		return true;
@@ -1516,7 +1524,8 @@ bool LoadCustomVehicleConfig(uint32_t customModelId)
 	// Apply custom audio configuration to staged or committed definition
 	if (config.hasAudio)
 	{
-		auto applyAudioConfig = [&](CustomVeh::Protocol::VehicleDefinition& def) {
+		auto applyAudioConfig = [&](CustomVeh::Protocol::VehicleDefinition& def)
+		{
 			def.customAudio.volume = config.audioVolume;
 			def.customAudio.minDistance = config.audioMinDistance;
 			def.customAudio.maxDistance = config.audioMaxDistance;
@@ -1525,24 +1534,30 @@ bool LoadCustomVehicleConfig(uint32_t customModelId)
 			def.customAudio.muteNative = config.audioMuteNative;
 
 			auto setupSlot = [&](const std::string& filename, CustomVeh::Protocol::AssetType type,
-				CustomVeh::Protocol::AssetFlags flag, CustomVeh::Protocol::AssetDescriptor& desc) {
-				if (filename.empty()) return;
+								 CustomVeh::Protocol::AssetFlags flag, CustomVeh::Protocol::AssetDescriptor& desc)
+			{
+				if (filename.empty())
+					return;
 				fs::path p = fs::path(g_modelsDir) / std::to_string(customModelId) / filename;
-				if (!fs::exists(p)) {
-					if (core_) core_->logLn(LogLevel::Warning, "[ExtendedVeh] Audio file '%s' does not exist for model %u", p.string().c_str(), customModelId);
+				if (!fs::exists(p))
+				{
+					if (core_)
+						core_->logLn(LogLevel::Warning, "[ExtendedVeh] Audio file '%s' does not exist for model %u", p.string().c_str(), customModelId);
 					return;
 				}
 				desc.type = type;
 				strncpy(desc.filename, filename.c_str(), sizeof(desc.filename) - 1);
 				desc.filename[sizeof(desc.filename) - 1] = '\0';
 				std::string shaHex;
-				if (ComputeFileSha256(p.string(), shaHex)) {
+				if (ComputeFileSha256(p.string(), shaHex))
+				{
 					strncpy(desc.sha256, shaHex.c_str(), sizeof(desc.sha256) - 1);
 					desc.sha256[sizeof(desc.sha256) - 1] = '\0';
 				}
 				std::error_code ec;
 				desc.size = fs::file_size(p, ec);
-				if (ec) desc.size = 0;
+				if (ec)
+					desc.size = 0;
 				def.flags |= flag;
 			};
 
@@ -1568,7 +1583,8 @@ bool LoadCustomVehicleConfig(uint32_t customModelId)
 	// Apply custom lighting dummy configuration to staged or committed definition
 	if (config.hasLighting)
 	{
-		auto applyLightingConfig = [&](CustomVeh::Protocol::VehicleDefinition& def) {
+		auto applyLightingConfig = [&](CustomVeh::Protocol::VehicleDefinition& def)
+		{
 			def.lighting.headlightOffsetX = config.headlightOffsetX;
 			def.lighting.headlightOffsetY = config.headlightOffsetY;
 			def.lighting.headlightOffsetZ = config.headlightOffsetZ;
@@ -1621,7 +1637,7 @@ bool DefineCustomVehicleFromConfig(uint32_t customModelId, uint32_t defaultVisua
 	uint32_t audioBase = (config.audioBase > 0) ? config.audioBase : visualBase;
 	uint32_t handlingBase = (config.handlingBase > 0) ? config.handlingBase : visualBase;
 
-	CustomVeh::Protocol::EngineSound engineSound{};
+	CustomVeh::Protocol::EngineSound engineSound {};
 	engineSound.OnSound = config.engineOnSound;
 	engineSound.OffSound = config.engineOffSound;
 
@@ -1693,7 +1709,9 @@ int LoadAllCustomVehicles(uint32_t defaultVisualBase)
 				}
 			}
 		}
-		catch (...) {}
+		catch (...)
+		{
+		}
 	}
 
 	if (core_)
@@ -1753,7 +1771,9 @@ bool GetCustomVehicleConfigInt(uint32_t customModelId, const std::string& key, i
 			outValue = std::stoi(s);
 			return true;
 		}
-		catch (...) {}
+		catch (...)
+		{
+		}
 	}
 	return false;
 }
@@ -1773,7 +1793,9 @@ bool GetCustomVehicleConfigFloat(uint32_t customModelId, const std::string& key,
 			outValue = std::stof(s);
 			return true;
 		}
-		catch (...) {}
+		catch (...)
+		{
+		}
 	}
 	return false;
 }

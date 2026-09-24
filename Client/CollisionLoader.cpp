@@ -508,8 +508,7 @@ bool CollisionLoader::LoadCollisionFromMemory(uint8_t* data, size_t size, CVehic
 	FileBuffer fileBuf;
 	try {
 		fileBuf.bytes.assign(data, data + size);
-	}
-	catch (...) {
+	} catch (...) {
 		return false;
 	}
 

@@ -1,23 +1,23 @@
 // SDK
 #include <plugin_sa.h>
 
-#include <game_sa/CAutomobile.h>
 #include <game_sa/CAudioEngine.h>
+#include <game_sa/CAutomobile.h>
 #include <game_sa/CBike.h>
 #include <game_sa/CCamera.h>
 #include <game_sa/CCheat.h>
 #include <game_sa/CCoronas.h>
 #include <game_sa/CHandlingDataMgr.h>
-#include <game_sa/Fx_c.h>
 #include <game_sa/CModelInfo.h>
 #include <game_sa/CPad.h>
+#include <game_sa/CPlayerPed.h>
 #include <game_sa/CShadows.h>
 #include <game_sa/CTimer.h>
 #include <game_sa/CTxdStore.h>
 #include <game_sa/CVehicle.h>
 #include <game_sa/CVisibilityPlugins.h>
-#include <game_sa/CPlayerPed.h>
 #include <game_sa/CWaterLevel.h>
+#include <game_sa/Fx_c.h>
 #include <game_sa/rw/rpworld.h>
 #include <MinHook.h>
 #include <algorithm>
@@ -27,17 +27,18 @@
 #include <string>
 #include <unordered_set>
 
-#include "utils.h"
 #include "CustomVehicleBindingManager.h"
-#include "streamingextender.hpp"
 #include "ModelCache.h"
+#include "streamingextender.hpp"
+#include "utils.h"
 
 struct DummySwapGuard {
 	CVehicleModelInfo* m_baseModel;
 	CVehicleModelInfo::CVehicleStructure* m_savedStruct;
 
 	DummySwapGuard(CVehicleModelInfo* baseModel, CVehicleModelInfo* customModel)
-		: m_baseModel(baseModel), m_savedStruct(nullptr)
+		: m_baseModel(baseModel)
+		, m_savedStruct(nullptr)
 	{
 		if (m_baseModel && customModel && customModel->m_pVehicleStruct) {
 			m_savedStruct = m_baseModel->m_pVehicleStruct;
@@ -185,14 +186,14 @@ static CVehicle* s_pCurrentHeadLightVehicle = nullptr;
 static CVehicle* s_pCurrentTailLightVehicle = nullptr;
 
 enum class eVehicleLightingCategory : uint8_t {
-	Automobile,   // Sedans, coupes, sports cars, station wagons, SUVs
-	TwoWheeler,   // Motorcycles, dirt bikes, mopeds, bicycles, quad bikes
+	Automobile, // Sedans, coupes, sports cars, station wagons, SUVs
+	TwoWheeler, // Motorcycles, dirt bikes, mopeds, bicycles, quad bikes
 	HeavyVehicle, // Monster trucks, big rigs, flatbeds, buses, coaches, heavy machinery
-	Aircraft,     // Airplanes, jets, helicopters
-	Boat,         // Speedboats, yachts, tugboats, dinghies
-	Hovercraft,   // Vortex hovercraft, or vehicle in active flight/hover mode
-	RCVehicle,    // Miniature remote controlled vehicles (RC Bandit, Baron, Raider, Goblin, Tiger, Cam)
-	Trailer       // Towed trailers (rear markers/taillights only)
+	Aircraft, // Airplanes, jets, helicopters
+	Boat, // Speedboats, yachts, tugboats, dinghies
+	Hovercraft, // Vortex hovercraft, or vehicle in active flight/hover mode
+	RCVehicle, // Miniature remote controlled vehicles (RC Bandit, Baron, Raider, Goblin, Tiger, Cam)
+	Trailer // Towed trailers (rear markers/taillights only)
 };
 
 static inline eVehicleLightingCategory GetVehicleLightingCategory(const CVehicle* pVeh, float* pOutCustomScaleMult = nullptr)
@@ -226,18 +227,13 @@ static inline eVehicleLightingCategory GetVehicleLightingCategory(const CVehicle
 	if (binding && binding->customModelId > 0) {
 		auto* customModel = StreamingExtender::GetCustomModel(binding->customModelId);
 		if (customModel) {
-			if (customModel->m_nVehicleType == VEHICLE_BIKE ||
-			    customModel->m_nVehicleType == VEHICLE_BMX ||
-			    customModel->m_nVehicleType == VEHICLE_QUAD) {
+			if (customModel->m_nVehicleType == VEHICLE_BIKE || customModel->m_nVehicleType == VEHICLE_BMX || customModel->m_nVehicleType == VEHICLE_QUAD) {
 				return eVehicleLightingCategory::TwoWheeler;
 			}
 			if (customModel->m_nVehicleType == VEHICLE_MTRUCK) {
 				return eVehicleLightingCategory::HeavyVehicle;
 			}
-			if (customModel->m_nVehicleType == VEHICLE_PLANE ||
-			    customModel->m_nVehicleType == VEHICLE_HELI ||
-			    customModel->m_nVehicleType == VEHICLE_FPLANE ||
-			    customModel->m_nVehicleType == VEHICLE_FHELI) {
+			if (customModel->m_nVehicleType == VEHICLE_PLANE || customModel->m_nVehicleType == VEHICLE_HELI || customModel->m_nVehicleType == VEHICLE_FPLANE || customModel->m_nVehicleType == VEHICLE_FHELI) {
 				return eVehicleLightingCategory::Aircraft;
 			}
 			if (customModel->m_nVehicleType == VEHICLE_BOAT) {
@@ -312,7 +308,7 @@ struct LightScaleConfig {
 	float shadowFrontScale;
 	float shadowSideScale;
 	float offsetSpacingMult; // Multiplier for clustering width/height spacing
-	bool allowClustering;    // Whether multi-corona clustering is permitted
+	bool allowClustering; // Whether multi-corona clustering is permitted
 };
 
 static inline LightScaleConfig GetVehicleLightScaleConfig(
@@ -328,19 +324,39 @@ static inline LightScaleConfig GetVehicleLightScaleConfig(
 		// Miniature RC Models (RC Bandit, Baron, Raider, Goblin, Tiger, Cam)
 		if (isRear) {
 			switch (lightSize) {
-			case 1: cfg = { 0.15f, 0.35f, 0.35f, 0.20f, false }; break; // LIGHTS_SMALL: tiny micro LED dot
-			case 0: cfg = { 0.22f, 0.45f, 0.55f, 0.20f, false }; break; // LIGHTS_LONG: micro horizontal LED bar
-			case 2: cfg = { 0.30f, 0.60f, 0.60f, 0.25f, false }; break; // LIGHTS_BIG: bright RC beacon
-			case 3: cfg = { 0.22f, 0.50f, 0.45f, 0.20f, false }; break; // LIGHTS_TALL: micro vertical tail strip
-			default: cfg = { 0.20f, 0.40f, 0.40f, 0.20f, false }; break;
+			case 1:
+				cfg = { 0.15f, 0.35f, 0.35f, 0.20f, false };
+				break; // LIGHTS_SMALL: tiny micro LED dot
+			case 0:
+				cfg = { 0.22f, 0.45f, 0.55f, 0.20f, false };
+				break; // LIGHTS_LONG: micro horizontal LED bar
+			case 2:
+				cfg = { 0.30f, 0.60f, 0.60f, 0.25f, false };
+				break; // LIGHTS_BIG: bright RC beacon
+			case 3:
+				cfg = { 0.22f, 0.50f, 0.45f, 0.20f, false };
+				break; // LIGHTS_TALL: micro vertical tail strip
+			default:
+				cfg = { 0.20f, 0.40f, 0.40f, 0.20f, false };
+				break;
 			}
 		} else {
 			switch (lightSize) {
-			case 1: cfg = { 0.18f, 0.35f, 0.30f, 0.20f, false }; break; // LIGHTS_SMALL: micro flashlight projector
-			case 0: cfg = { 0.28f, 0.40f, 0.50f, 0.20f, false }; break; // LIGHTS_LONG: miniature horizontal headlight bar
-			case 2: cfg = { 0.45f, 0.55f, 0.50f, 0.25f, false }; break; // LIGHTS_BIG: high-intensity RC crawler pod
-			case 3: cfg = { 0.30f, 0.50f, 0.35f, 0.20f, false }; break; // LIGHTS_TALL: micro vertical projector
-			default: cfg = { 0.25f, 0.40f, 0.35f, 0.20f, false }; break;
+			case 1:
+				cfg = { 0.18f, 0.35f, 0.30f, 0.20f, false };
+				break; // LIGHTS_SMALL: micro flashlight projector
+			case 0:
+				cfg = { 0.28f, 0.40f, 0.50f, 0.20f, false };
+				break; // LIGHTS_LONG: miniature horizontal headlight bar
+			case 2:
+				cfg = { 0.45f, 0.55f, 0.50f, 0.25f, false };
+				break; // LIGHTS_BIG: high-intensity RC crawler pod
+			case 3:
+				cfg = { 0.30f, 0.50f, 0.35f, 0.20f, false };
+				break; // LIGHTS_TALL: micro vertical projector
+			default:
+				cfg = { 0.25f, 0.40f, 0.35f, 0.20f, false };
+				break;
 			}
 		}
 		break;
@@ -350,19 +366,39 @@ static inline LightScaleConfig GetVehicleLightScaleConfig(
 		// Hovercraft (Vortex 539) & Flight-capable hovering vehicles
 		if (isRear) {
 			switch (lightSize) {
-			case 1: cfg = { 0.80f, 1.00f, 1.00f, 0.80f, false }; break; // LIGHTS_SMALL: compact shroud LED
-			case 0: cfg = { 0.95f, 1.10f, 1.25f, 0.85f, true };  break; // LIGHTS_LONG: wide rear skirt glow
-			case 2: cfg = { 1.25f, 1.25f, 1.20f, 0.90f, false }; break; // LIGHTS_BIG: fan housing lamp
-			case 3: cfg = { 0.95f, 1.20f, 1.00f, 0.85f, false }; break; // LIGHTS_TALL: rudder beacon
-			default: cfg = { 1.00f, 1.00f, 1.10f, 0.85f, false }; break;
+			case 1:
+				cfg = { 0.80f, 1.00f, 1.00f, 0.80f, false };
+				break; // LIGHTS_SMALL: compact shroud LED
+			case 0:
+				cfg = { 0.95f, 1.10f, 1.25f, 0.85f, true };
+				break; // LIGHTS_LONG: wide rear skirt glow
+			case 2:
+				cfg = { 1.25f, 1.25f, 1.20f, 0.90f, false };
+				break; // LIGHTS_BIG: fan housing lamp
+			case 3:
+				cfg = { 0.95f, 1.20f, 1.00f, 0.85f, false };
+				break; // LIGHTS_TALL: rudder beacon
+			default:
+				cfg = { 1.00f, 1.00f, 1.10f, 0.85f, false };
+				break;
 			}
 		} else {
 			switch (lightSize) {
-			case 1: cfg = { 0.75f, 1.00f, 0.85f, 0.70f, false }; break; // LIGHTS_SMALL: laser surface projector
-			case 0: cfg = { 1.10f, 1.10f, 1.35f, 0.90f, true };  break; // LIGHTS_LONG: skirt searchlight bar
-			case 2: cfg = { 1.35f, 1.25f, 1.25f, 0.90f, false }; break; // LIGHTS_BIG: marine floodlight
-			case 3: cfg = { 1.05f, 1.25f, 0.95f, 0.70f, false }; break; // LIGHTS_TALL: cockpit forward beacon
-			default: cfg = { 1.00f, 1.05f, 1.05f, 0.70f, false }; break;
+			case 1:
+				cfg = { 0.75f, 1.00f, 0.85f, 0.70f, false };
+				break; // LIGHTS_SMALL: laser surface projector
+			case 0:
+				cfg = { 1.10f, 1.10f, 1.35f, 0.90f, true };
+				break; // LIGHTS_LONG: skirt searchlight bar
+			case 2:
+				cfg = { 1.35f, 1.25f, 1.25f, 0.90f, false };
+				break; // LIGHTS_BIG: marine floodlight
+			case 3:
+				cfg = { 1.05f, 1.25f, 0.95f, 0.70f, false };
+				break; // LIGHTS_TALL: cockpit forward beacon
+			default:
+				cfg = { 1.00f, 1.05f, 1.05f, 0.70f, false };
+				break;
 			}
 		}
 		break;
@@ -372,19 +408,39 @@ static inline LightScaleConfig GetVehicleLightScaleConfig(
 		// Motorcycles, Dirt Bikes, BMX, Quads
 		if (isRear) {
 			switch (lightSize) {
-			case 1: cfg = { 0.65f, 0.90f, 0.85f, 0.50f, false }; break; // LIGHTS_SMALL: compact sharp LED tail dot
-			case 0: cfg = { 0.75f, 1.00f, 1.05f, 0.50f, false }; break; // LIGHTS_LONG: sleek contained tail glow
-			case 2: cfg = { 1.05f, 1.15f, 1.10f, 0.50f, false }; break; // LIGHTS_BIG: classic round cafe/chopper tail lamp
-			case 3: cfg = { 0.75f, 1.15f, 0.90f, 0.50f, false }; break; // LIGHTS_TALL: vertical fender LED strip
-			default: cfg = { 0.85f, 1.00f, 1.00f, 0.50f, false }; break;
+			case 1:
+				cfg = { 0.65f, 0.90f, 0.85f, 0.50f, false };
+				break; // LIGHTS_SMALL: compact sharp LED tail dot
+			case 0:
+				cfg = { 0.75f, 1.00f, 1.05f, 0.50f, false };
+				break; // LIGHTS_LONG: sleek contained tail glow
+			case 2:
+				cfg = { 1.05f, 1.15f, 1.10f, 0.50f, false };
+				break; // LIGHTS_BIG: classic round cafe/chopper tail lamp
+			case 3:
+				cfg = { 0.75f, 1.15f, 0.90f, 0.50f, false };
+				break; // LIGHTS_TALL: vertical fender LED strip
+			default:
+				cfg = { 0.85f, 1.00f, 1.00f, 0.50f, false };
+				break;
 			}
 		} else {
 			switch (lightSize) {
-			case 1: cfg = { 0.70f, 0.90f, 0.80f, 0.50f, false }; break; // LIGHTS_SMALL: pinpoint projector LED dot
-			case 0: cfg = { 0.90f, 1.05f, 1.10f, 0.50f, false }; break; // LIGHTS_LONG: sports bike horizontal slit
-			case 2: cfg = { 1.20f, 1.20f, 1.10f, 0.50f, false }; break; // LIGHTS_BIG: classic 7" chopper headlight
-			case 3: cfg = { 0.95f, 1.20f, 0.85f, 0.50f, false }; break; // LIGHTS_TALL: vertical streetfighter projector
-			default: cfg = { 0.85f, 1.00f, 0.85f, 0.50f, false }; break;
+			case 1:
+				cfg = { 0.70f, 0.90f, 0.80f, 0.50f, false };
+				break; // LIGHTS_SMALL: pinpoint projector LED dot
+			case 0:
+				cfg = { 0.90f, 1.05f, 1.10f, 0.50f, false };
+				break; // LIGHTS_LONG: sports bike horizontal slit
+			case 2:
+				cfg = { 1.20f, 1.20f, 1.10f, 0.50f, false };
+				break; // LIGHTS_BIG: classic 7" chopper headlight
+			case 3:
+				cfg = { 0.95f, 1.20f, 0.85f, 0.50f, false };
+				break; // LIGHTS_TALL: vertical streetfighter projector
+			default:
+				cfg = { 0.85f, 1.00f, 0.85f, 0.50f, false };
+				break;
 			}
 		}
 		break;
@@ -394,19 +450,39 @@ static inline LightScaleConfig GetVehicleLightScaleConfig(
 		// Monster Trucks, Semi Trucks, Buses, Heavy Machinery
 		if (isRear) {
 			switch (lightSize) {
-			case 1: cfg = { 0.85f, 1.05f, 1.05f, 0.80f, false }; break; // LIGHTS_SMALL: commercial LED clearance dot
-			case 0: cfg = { 1.00f, 1.15f, 1.30f, 0.90f, true };  break; // LIGHTS_LONG: wide heavy-duty bumper bar
-			case 2: cfg = { 1.35f, 1.30f, 1.25f, 1.00f, false }; break; // LIGHTS_BIG: heavy-duty rear lamp
-			case 3: cfg = { 1.00f, 1.30f, 1.10f, 0.90f, true };  break; // LIGHTS_TALL: vertical corner clearance pillars
-			default: cfg = { 1.10f, 1.10f, 1.10f, 1.00f, false }; break;
+			case 1:
+				cfg = { 0.85f, 1.05f, 1.05f, 0.80f, false };
+				break; // LIGHTS_SMALL: commercial LED clearance dot
+			case 0:
+				cfg = { 1.00f, 1.15f, 1.30f, 0.90f, true };
+				break; // LIGHTS_LONG: wide heavy-duty bumper bar
+			case 2:
+				cfg = { 1.35f, 1.30f, 1.25f, 1.00f, false };
+				break; // LIGHTS_BIG: heavy-duty rear lamp
+			case 3:
+				cfg = { 1.00f, 1.30f, 1.10f, 0.90f, true };
+				break; // LIGHTS_TALL: vertical corner clearance pillars
+			default:
+				cfg = { 1.10f, 1.10f, 1.10f, 1.00f, false };
+				break;
 			}
 		} else {
 			switch (lightSize) {
-			case 1: cfg = { 0.80f, 0.95f, 0.85f, 0.70f, false }; break; // LIGHTS_SMALL: heavy cab clearance projector
-			case 0: cfg = { 1.15f, 1.15f, 1.35f, 0.90f, true };  break; // LIGHTS_LONG: cross-grille light bar
-			case 2: cfg = { 1.40f, 1.35f, 1.30f, 0.90f, false }; break; // LIGHTS_BIG: 24V industrial floodlights
-			case 3: cfg = { 1.15f, 1.30f, 1.00f, 0.90f, true };  break; // LIGHTS_TALL: vertical heavy-truck grille columns
-			default: cfg = { 1.10f, 1.10f, 1.10f, 0.90f, false }; break;
+			case 1:
+				cfg = { 0.80f, 0.95f, 0.85f, 0.70f, false };
+				break; // LIGHTS_SMALL: heavy cab clearance projector
+			case 0:
+				cfg = { 1.15f, 1.15f, 1.35f, 0.90f, true };
+				break; // LIGHTS_LONG: cross-grille light bar
+			case 2:
+				cfg = { 1.40f, 1.35f, 1.30f, 0.90f, false };
+				break; // LIGHTS_BIG: 24V industrial floodlights
+			case 3:
+				cfg = { 1.15f, 1.30f, 1.00f, 0.90f, true };
+				break; // LIGHTS_TALL: vertical heavy-truck grille columns
+			default:
+				cfg = { 1.10f, 1.10f, 1.10f, 0.90f, false };
+				break;
 			}
 		}
 		break;
@@ -416,19 +492,39 @@ static inline LightScaleConfig GetVehicleLightScaleConfig(
 		// Airplanes, Jets, Helicopters
 		if (isRear) {
 			switch (lightSize) {
-			case 1: cfg = { 0.80f, 1.00f, 1.00f, 0.80f, false }; break; // LIGHTS_SMALL: wingtip position light
-			case 0: cfg = { 0.95f, 1.10f, 1.25f, 0.80f, false }; break; // LIGHTS_LONG: wing trailing edge glow
-			case 2: cfg = { 1.30f, 1.25f, 1.20f, 0.80f, false }; break; // LIGHTS_BIG: anti-collision tail strobe
-			case 3: cfg = { 0.95f, 1.25f, 1.00f, 0.80f, false }; break; // LIGHTS_TALL: vertical rudder beacon
-			default: cfg = { 1.00f, 1.00f, 1.00f, 0.80f, false }; break;
+			case 1:
+				cfg = { 0.80f, 1.00f, 1.00f, 0.80f, false };
+				break; // LIGHTS_SMALL: wingtip position light
+			case 0:
+				cfg = { 0.95f, 1.10f, 1.25f, 0.80f, false };
+				break; // LIGHTS_LONG: wing trailing edge glow
+			case 2:
+				cfg = { 1.30f, 1.25f, 1.20f, 0.80f, false };
+				break; // LIGHTS_BIG: anti-collision tail strobe
+			case 3:
+				cfg = { 0.95f, 1.25f, 1.00f, 0.80f, false };
+				break; // LIGHTS_TALL: vertical rudder beacon
+			default:
+				cfg = { 1.00f, 1.00f, 1.00f, 0.80f, false };
+				break;
 			}
 		} else {
 			switch (lightSize) {
-			case 1: cfg = { 0.80f, 1.15f, 0.85f, 0.70f, false }; break; // LIGHTS_SMALL: nosegear taxi projector
-			case 0: cfg = { 1.15f, 1.20f, 1.35f, 0.70f, false }; break; // LIGHTS_LONG: runway turnoff lights
-			case 2: cfg = { 1.50f, 1.50f, 1.35f, 0.70f, false }; break; // LIGHTS_BIG: runway landing lights
-			case 3: cfg = { 1.15f, 1.40f, 0.95f, 0.70f, false }; break; // LIGHTS_TALL: searchlight
-			default: cfg = { 1.10f, 1.15f, 1.10f, 0.70f, false }; break;
+			case 1:
+				cfg = { 0.80f, 1.15f, 0.85f, 0.70f, false };
+				break; // LIGHTS_SMALL: nosegear taxi projector
+			case 0:
+				cfg = { 1.15f, 1.20f, 1.35f, 0.70f, false };
+				break; // LIGHTS_LONG: runway turnoff lights
+			case 2:
+				cfg = { 1.50f, 1.50f, 1.35f, 0.70f, false };
+				break; // LIGHTS_BIG: runway landing lights
+			case 3:
+				cfg = { 1.15f, 1.40f, 0.95f, 0.70f, false };
+				break; // LIGHTS_TALL: searchlight
+			default:
+				cfg = { 1.10f, 1.15f, 1.10f, 0.70f, false };
+				break;
 			}
 		}
 		break;
@@ -438,19 +534,39 @@ static inline LightScaleConfig GetVehicleLightScaleConfig(
 		// Boats, Speedboats, Yachts
 		if (isRear) {
 			switch (lightSize) {
-			case 1: cfg = { 0.75f, 0.90f, 0.90f, 0.80f, false }; break; // LIGHTS_SMALL: compact transom light
-			case 0: cfg = { 0.90f, 1.00f, 1.20f, 0.80f, false }; break; // LIGHTS_LONG: swim platform LED bar
-			case 2: cfg = { 1.20f, 1.15f, 1.15f, 0.80f, false }; break; // LIGHTS_BIG: stern floodlight
-			case 3: cfg = { 0.90f, 1.15f, 0.95f, 0.80f, false }; break; // LIGHTS_TALL: masthead white anchor light
-			default: cfg = { 0.95f, 0.95f, 0.95f, 0.80f, false }; break;
+			case 1:
+				cfg = { 0.75f, 0.90f, 0.90f, 0.80f, false };
+				break; // LIGHTS_SMALL: compact transom light
+			case 0:
+				cfg = { 0.90f, 1.00f, 1.20f, 0.80f, false };
+				break; // LIGHTS_LONG: swim platform LED bar
+			case 2:
+				cfg = { 1.20f, 1.15f, 1.15f, 0.80f, false };
+				break; // LIGHTS_BIG: stern floodlight
+			case 3:
+				cfg = { 0.90f, 1.15f, 0.95f, 0.80f, false };
+				break; // LIGHTS_TALL: masthead white anchor light
+			default:
+				cfg = { 0.95f, 0.95f, 0.95f, 0.80f, false };
+				break;
 			}
 		} else {
 			switch (lightSize) {
-			case 1: cfg = { 0.75f, 1.00f, 0.80f, 0.70f, false }; break; // LIGHTS_SMALL: bow navigation light
-			case 0: cfg = { 1.10f, 1.15f, 1.30f, 0.70f, false }; break; // LIGHTS_LONG: bow docking floodlight bar
-			case 2: cfg = { 1.30f, 1.25f, 1.20f, 0.70f, false }; break; // LIGHTS_BIG: marine bow searchlight
-			case 3: cfg = { 1.05f, 1.25f, 0.95f, 0.70f, false }; break; // LIGHTS_TALL: radar arch floodlight
-			default: cfg = { 1.00f, 1.05f, 1.05f, 0.70f, false }; break;
+			case 1:
+				cfg = { 0.75f, 1.00f, 0.80f, 0.70f, false };
+				break; // LIGHTS_SMALL: bow navigation light
+			case 0:
+				cfg = { 1.10f, 1.15f, 1.30f, 0.70f, false };
+				break; // LIGHTS_LONG: bow docking floodlight bar
+			case 2:
+				cfg = { 1.30f, 1.25f, 1.20f, 0.70f, false };
+				break; // LIGHTS_BIG: marine bow searchlight
+			case 3:
+				cfg = { 1.05f, 1.25f, 0.95f, 0.70f, false };
+				break; // LIGHTS_TALL: radar arch floodlight
+			default:
+				cfg = { 1.00f, 1.05f, 1.05f, 0.70f, false };
+				break;
 			}
 		}
 		break;
@@ -460,11 +576,21 @@ static inline LightScaleConfig GetVehicleLightScaleConfig(
 		// Trailers & Semi-trailers
 		if (isRear) {
 			switch (lightSize) {
-			case 1: cfg = { 0.80f, 1.00f, 1.00f, 0.85f, false }; break; // LIGHTS_SMALL: LED clearance marker dot
-			case 0: cfg = { 0.95f, 1.10f, 1.25f, 0.90f, true };  break; // LIGHTS_LONG: full-width trailer tail bar
-			case 2: cfg = { 1.25f, 1.25f, 1.20f, 0.90f, false }; break; // LIGHTS_BIG: trailer tail lamp
-			case 3: cfg = { 0.95f, 1.25f, 1.05f, 0.90f, true };  break; // LIGHTS_TALL: vertical rear corner clearance lights
-			default: cfg = { 1.00f, 1.00f, 1.00f, 0.90f, false }; break;
+			case 1:
+				cfg = { 0.80f, 1.00f, 1.00f, 0.85f, false };
+				break; // LIGHTS_SMALL: LED clearance marker dot
+			case 0:
+				cfg = { 0.95f, 1.10f, 1.25f, 0.90f, true };
+				break; // LIGHTS_LONG: full-width trailer tail bar
+			case 2:
+				cfg = { 1.25f, 1.25f, 1.20f, 0.90f, false };
+				break; // LIGHTS_BIG: trailer tail lamp
+			case 3:
+				cfg = { 0.95f, 1.25f, 1.05f, 0.90f, true };
+				break; // LIGHTS_TALL: vertical rear corner clearance lights
+			default:
+				cfg = { 1.00f, 1.00f, 1.00f, 0.90f, false };
+				break;
 			}
 		} else {
 			cfg = { 0.75f, 0.75f, 0.75f, 0.70f, false }; // Front amber corner markers
@@ -477,19 +603,39 @@ static inline LightScaleConfig GetVehicleLightScaleConfig(
 		// Standard Automobiles (Sedans, Coupes, Sports, Wagons, SUVs)
 		if (isRear) {
 			switch (lightSize) {
-			case 1: cfg = { 0.75f, 1.00f, 1.00f, 0.70f, false }; break; // LIGHTS_SMALL: compact crisp LED tail dot
-			case 0: cfg = { 0.82f, 1.10f, 1.25f, 0.85f, true };  break; // LIGHTS_LONG: sleek horizontal light bar
-			case 2: cfg = { 1.25f, 1.25f, 1.20f, 1.00f, false }; break; // LIGHTS_BIG: bold circular tail lamp
-			case 3: cfg = { 0.82f, 1.25f, 1.05f, 0.85f, true };  break; // LIGHTS_TALL: vertical pillar tail strip
-			default: cfg = { 1.00f, 1.00f, 1.00f, 1.00f, false }; break;
+			case 1:
+				cfg = { 0.75f, 1.00f, 1.00f, 0.70f, false };
+				break; // LIGHTS_SMALL: compact crisp LED tail dot
+			case 0:
+				cfg = { 0.82f, 1.10f, 1.25f, 0.85f, true };
+				break; // LIGHTS_LONG: sleek horizontal light bar
+			case 2:
+				cfg = { 1.25f, 1.25f, 1.20f, 1.00f, false };
+				break; // LIGHTS_BIG: bold circular tail lamp
+			case 3:
+				cfg = { 0.82f, 1.25f, 1.05f, 0.85f, true };
+				break; // LIGHTS_TALL: vertical pillar tail strip
+			default:
+				cfg = { 1.00f, 1.00f, 1.00f, 1.00f, false };
+				break;
 			}
 		} else {
 			switch (lightSize) {
-			case 1: cfg = { 0.75f, 0.90f, 0.80f, 0.60f, false }; break; // LIGHTS_SMALL: compact crisp LED projector dot
-			case 0: cfg = { 1.05f, 1.05f, 1.30f, 0.85f, true };  break; // LIGHTS_LONG: wide horizontal headlight bar
-			case 2: cfg = { 1.28f, 1.25f, 1.20f, 1.00f, false }; break; // LIGHTS_BIG: bold round headlight
-			case 3: cfg = { 1.05f, 1.25f, 0.90f, 0.85f, true };  break; // LIGHTS_TALL: vertical projector column
-			default: cfg = { 1.00f, 1.00f, 1.00f, 1.00f, false }; break;
+			case 1:
+				cfg = { 0.75f, 0.90f, 0.80f, 0.60f, false };
+				break; // LIGHTS_SMALL: compact crisp LED projector dot
+			case 0:
+				cfg = { 1.05f, 1.05f, 1.30f, 0.85f, true };
+				break; // LIGHTS_LONG: wide horizontal headlight bar
+			case 2:
+				cfg = { 1.28f, 1.25f, 1.20f, 1.00f, false };
+				break; // LIGHTS_BIG: bold round headlight
+			case 3:
+				cfg = { 1.05f, 1.25f, 0.90f, 0.85f, true };
+				break; // LIGHTS_TALL: vertical projector column
+			default:
+				cfg = { 1.00f, 1.00f, 1.00f, 1.00f, false };
+				break;
 			}
 		}
 		break;
@@ -610,8 +756,7 @@ static void __fastcall Hooked_AddExhaustParticles(CVehicle* thisVehicle, void* e
 						35.0f,
 						CORONATYPE_SHINYSTAR,
 						FLARETYPE_NONE,
-						false, false, 0, 0.0f, false, 0.05f, 0, 15.0f, false, false
-					);
+						false, false, 0, 0.0f, false, 0.05f, 0, 15.0f, false, false);
 
 					CVector rightDir = thisVehicle->GetMatrix().GetRight();
 					g_fx.AddSparks(exhaustWorld, backwardDir, 3.5f, 15, rightDir, 0, 0.25f, 0.2f);
@@ -663,10 +808,10 @@ static RwFrame* __cdecl Hooked_GetFrameFromId(RpClump* clump, int id)
 
 	// Ignore callers that legitimately expect and handle NULL (e.g., optional window frames)
 	uintptr_t caller = reinterpret_cast<uintptr_t>(_ReturnAddress());
-	if (caller == 0x6D308F      // CVehicle::SetWindowOpenFlag
-		|| caller == 0x6D30BF   // CVehicle::ClearWindowOpenFlag
-		|| caller == 0x4C7DDE   // CVehicleModelInfo::GetOriginalCompPosition
-		|| caller == 0x4C96BD)  // CVehicleModelInfo::CreateInstance
+	if (caller == 0x6D308F // CVehicle::SetWindowOpenFlag
+		|| caller == 0x6D30BF // CVehicle::ClearWindowOpenFlag
+		|| caller == 0x4C7DDE // CVehicleModelInfo::GetOriginalCompPosition
+		|| caller == 0x4C96BD) // CVehicleModelInfo::CreateInstance
 	{
 		return nullptr;
 	}
@@ -776,26 +921,32 @@ static GetVehicleSirenType_t g_origGetVehicleSirenType = nullptr;
 static void __fastcall Hooked_GetVehicleSirenType(CAEVehicleAudioEntity* thisEntity, void* edx, bool* pSirenActive, bool* pSirenType, cVehicleParams* pParams)
 {
 	if (!thisEntity || !pParams || !pParams->m_pVehicle) {
-		if (pSirenActive) *pSirenActive = false;
-		if (pSirenType) *pSirenType = false;
+		if (pSirenActive)
+			*pSirenActive = false;
+		if (pSirenType)
+			*pSirenType = false;
 		return;
 	}
 
 	CVehicle* pVehicle = pParams->m_pVehicle;
 
 	if (thisEntity->m_bSoundsStopped) {
-		if (pSirenActive) *pSirenActive = false;
+		if (pSirenActive)
+			*pSirenActive = false;
 		return;
 	}
 
 	auto* binding = CustomVehicleBindingManager::Instance().FindByVehicle(pVehicle);
 	if (binding && binding->hasCustomSiren) {
 		if (!binding->sirenEnabled || binding->sirenType == 0) {
-			if (pSirenActive) *pSirenActive = false;
+			if (pSirenActive)
+				*pSirenActive = false;
 			return;
 		}
-		if (pSirenActive) *pSirenActive = true;
-		if (pSirenType) *pSirenType = (binding->sirenType == 2);
+		if (pSirenActive)
+			*pSirenActive = true;
+		if (pSirenType)
+			*pSirenType = (binding->sirenType == 2);
 		return;
 	}
 
@@ -803,11 +954,14 @@ static void __fastcall Hooked_GetVehicleSirenType(CAEVehicleAudioEntity* thisEnt
 	auto audioDef = AudioExtender::GetVehicleAudio(modelIdForAudio);
 	if (audioDef && audioDef->sirenType >= 0) {
 		if (audioDef->sirenType == 0 || !pVehicle->bSirenOrAlarm) {
-			if (pSirenActive) *pSirenActive = false;
+			if (pSirenActive)
+				*pSirenActive = false;
 			return;
 		}
-		if (pSirenActive) *pSirenActive = true;
-		if (pSirenType) *pSirenType = (audioDef->sirenType == 2);
+		if (pSirenActive)
+			*pSirenActive = true;
+		if (pSirenType)
+			*pSirenType = (audioDef->sirenType == 2);
 		return;
 	}
 
@@ -831,7 +985,11 @@ static void __cdecl Hooked_RegisterCoronaTexture(
 	}
 	struct CoronaHookScopeGuard {
 		bool& flag;
-		CoronaHookScopeGuard(bool& f) : flag(f) { flag = true; }
+		CoronaHookScopeGuard(bool& f)
+			: flag(f)
+		{
+			flag = true;
+		}
 		~CoronaHookScopeGuard() { flag = false; }
 	} guard(s_bInRegisterCoronaHook);
 
@@ -875,8 +1033,7 @@ static void __cdecl Hooked_RegisterCoronaTexture(
 		uint32_t now = GetTickCount();
 		if (scale != 1.0f && (now - s_lastLog > 2000)) {
 			s_lastLog = now;
-			ClientLog(LogLevel::Debug, std::format("Corona scaled: cat={}, isFront={}, isRear={}, size={}, scale={:.2f}, radius={:.2f}->{:.2f}",
-				static_cast<int>(category), isFront, isRear, static_cast<int>(lightSize), scale, radius, radius * scale));
+			ClientLog(LogLevel::Debug, std::format("Corona scaled: cat={}, isFront={}, isRear={}, size={}, scale={:.2f}, radius={:.2f}->{:.2f}", static_cast<int>(category), isFront, isRear, static_cast<int>(lightSize), scale, radius, radius * scale));
 		}
 	}
 
@@ -936,9 +1093,12 @@ static void __cdecl Hooked_RegisterCoronaTexture(
 		}
 
 		// Deep, vibrant crimson red color
-		if (red < 200) red = 230;
-		if (green > 35) green = 25;
-		if (blue > 35) blue = 25;
+		if (red < 200)
+			red = 230;
+		if (green > 35)
+			green = 25;
+		if (blue > 35)
+			blue = 25;
 
 		farClip *= 1.15f;
 	} else if (isFront) {
@@ -1065,8 +1225,7 @@ static void __cdecl Hooked_StoreCarLightShadow(
 		uint32_t now = GetTickCount();
 		if ((cfg.shadowFrontScale != 1.0f || cfg.shadowSideScale != 1.0f) && (now - s_lastShadowLog > 2000)) {
 			s_lastShadowLog = now;
-			ClientLog(LogLevel::Debug, std::format("CarLightShadow scaled: cat={}, isFront={}, size={}, frontScale={:.2f}, sideScale={:.2f}",
-				static_cast<int>(category), isFront, static_cast<int>(lightSize), cfg.shadowFrontScale, cfg.shadowSideScale));
+			ClientLog(LogLevel::Debug, std::format("CarLightShadow scaled: cat={}, isFront={}, size={}, frontScale={:.2f}, sideScale={:.2f}", static_cast<int>(category), isFront, static_cast<int>(lightSize), cfg.shadowFrontScale, cfg.shadowSideScale));
 		}
 	}
 
@@ -1134,8 +1293,7 @@ static RpClump* SafeRpClumpStreamRead(RwStream* stream, uint32_t* outExceptionCo
 {
 	__try {
 		return RpClumpStreamRead(stream);
-	}
-	__except (EXCEPTION_EXECUTE_HANDLER) {
+	} __except (EXCEPTION_EXECUTE_HANDLER) {
 		if (outExceptionCode) {
 			*outExceptionCode = GetExceptionCode();
 		}
@@ -1175,8 +1333,8 @@ private:
 	std::queue<std::shared_ptr<PendingCustomVehicle>> m_completedQueue;
 	std::mutex m_queueMutex;
 	std::mutex m_pendingDefMutex;
-	std::queue<std::shared_ptr<PendingCustomVehicle>> m_pendingDefQueue;     // raw defs awaiting CreateModelAndBeginTransfers
-	std::unordered_set<uint32_t> m_activeModelIds;                           // model IDs with active/completed transfer; guards against duplicate defs
+	std::queue<std::shared_ptr<PendingCustomVehicle>> m_pendingDefQueue; // raw defs awaiting CreateModelAndBeginTransfers
+	std::unordered_set<uint32_t> m_activeModelIds; // model IDs with active/completed transfer; guards against duplicate defs
 	std::mutex m_pendingFinalizeMutex;
 	std::queue<std::shared_ptr<PendingCustomVehicle>> m_pendingFinalizeQueue; // downloaded, awaiting player-spawn to finalize
 	std::atomic<bool> m_pendingClearAll { false };
@@ -1293,27 +1451,38 @@ public:
 		}
 
 		if (def.flags & CustomVeh::Protocol::HasAnyAudio) {
-			if (!bs.Read(def.customAudio.volume)) return false;
-			if (!bs.Read(def.customAudio.minDistance)) return false;
-			if (!bs.Read(def.customAudio.maxDistance)) return false;
-			if (!bs.Read(def.customAudio.pitchMultiplier)) return false;
-			if (!bs.Read(def.customAudio.accelPitchFactor)) return false;
-			if (!bs.Read(def.customAudio.muteNative)) return false;
+			if (!bs.Read(def.customAudio.volume))
+				return false;
+			if (!bs.Read(def.customAudio.minDistance))
+				return false;
+			if (!bs.Read(def.customAudio.maxDistance))
+				return false;
+			if (!bs.Read(def.customAudio.pitchMultiplier))
+				return false;
+			if (!bs.Read(def.customAudio.accelPitchFactor))
+				return false;
+			if (!bs.Read(def.customAudio.muteNative))
+				return false;
 
 			if (def.flags & CustomVeh::Protocol::HasAudioEngine) {
-				if (!ReadAssetDescriptor(bs, def.audioEngine)) return false;
+				if (!ReadAssetDescriptor(bs, def.audioEngine))
+					return false;
 			}
 			if (def.flags & CustomVeh::Protocol::HasAudioAccel) {
-				if (!ReadAssetDescriptor(bs, def.audioAccel)) return false;
+				if (!ReadAssetDescriptor(bs, def.audioAccel))
+					return false;
 			}
 			if (def.flags & CustomVeh::Protocol::HasAudioDecel) {
-				if (!ReadAssetDescriptor(bs, def.audioDecel)) return false;
+				if (!ReadAssetDescriptor(bs, def.audioDecel))
+					return false;
 			}
 			if (def.flags & CustomVeh::Protocol::HasAudioBrake) {
-				if (!ReadAssetDescriptor(bs, def.audioBrake)) return false;
+				if (!ReadAssetDescriptor(bs, def.audioBrake))
+					return false;
 			}
 			if (def.flags & CustomVeh::Protocol::HasAudioCrash) {
-				if (!ReadAssetDescriptor(bs, def.audioCrash)) return false;
+				if (!ReadAssetDescriptor(bs, def.audioCrash))
+					return false;
 			}
 		}
 
@@ -1544,7 +1713,7 @@ private:
 				}
 			}
 		}
-		ClientLog(LogLevel::Debug, std::format( "TXD buffer ready: model={} bytes={} path='{}'", pending->def.customModelId, pending->txd.size(), pending->txdPath.string()));
+		ClientLog(LogLevel::Debug, std::format("TXD buffer ready: model={} bytes={} path='{}'", pending->def.customModelId, pending->txd.size(), pending->txdPath.string()));
 
 		if (pending->txd.empty()) {
 			ClientLog(LogLevel::Error, std::format("FinalizeCustomVehicle: ABORT model={} - txd empty after read attempt (txdPath='{}')", pending->def.customModelId, pending->txdPath.string()));
@@ -1637,9 +1806,12 @@ private:
 						const auto& ltg = pending->def.lighting;
 						// Headlight dummy (slot 0):
 						if (ltg.headlightCustomX != 0.0f || ltg.headlightCustomY != 0.0f || ltg.headlightCustomZ != 0.0f) {
-							if (ltg.headlightCustomX != 0.0f) newModel->m_pVehicleStruct->m_avDummyPos[0].x = fabsf(ltg.headlightCustomX);
-							if (ltg.headlightCustomY != 0.0f) newModel->m_pVehicleStruct->m_avDummyPos[0].y = ltg.headlightCustomY;
-							if (ltg.headlightCustomZ != 0.0f) newModel->m_pVehicleStruct->m_avDummyPos[0].z = ltg.headlightCustomZ;
+							if (ltg.headlightCustomX != 0.0f)
+								newModel->m_pVehicleStruct->m_avDummyPos[0].x = fabsf(ltg.headlightCustomX);
+							if (ltg.headlightCustomY != 0.0f)
+								newModel->m_pVehicleStruct->m_avDummyPos[0].y = ltg.headlightCustomY;
+							if (ltg.headlightCustomZ != 0.0f)
+								newModel->m_pVehicleStruct->m_avDummyPos[0].z = ltg.headlightCustomZ;
 						}
 						newModel->m_pVehicleStruct->m_avDummyPos[0].x += ltg.headlightOffsetX;
 						newModel->m_pVehicleStruct->m_avDummyPos[0].y += ltg.headlightOffsetY;
@@ -1647,18 +1819,18 @@ private:
 
 						// Taillight dummy (slot 1):
 						if (ltg.taillightCustomX != 0.0f || ltg.taillightCustomY != 0.0f || ltg.taillightCustomZ != 0.0f) {
-							if (ltg.taillightCustomX != 0.0f) newModel->m_pVehicleStruct->m_avDummyPos[1].x = fabsf(ltg.taillightCustomX);
-							if (ltg.taillightCustomY != 0.0f) newModel->m_pVehicleStruct->m_avDummyPos[1].y = ltg.taillightCustomY;
-							if (ltg.taillightCustomZ != 0.0f) newModel->m_pVehicleStruct->m_avDummyPos[1].z = ltg.taillightCustomZ;
+							if (ltg.taillightCustomX != 0.0f)
+								newModel->m_pVehicleStruct->m_avDummyPos[1].x = fabsf(ltg.taillightCustomX);
+							if (ltg.taillightCustomY != 0.0f)
+								newModel->m_pVehicleStruct->m_avDummyPos[1].y = ltg.taillightCustomY;
+							if (ltg.taillightCustomZ != 0.0f)
+								newModel->m_pVehicleStruct->m_avDummyPos[1].z = ltg.taillightCustomZ;
 						}
 						newModel->m_pVehicleStruct->m_avDummyPos[1].x += ltg.taillightOffsetX;
 						newModel->m_pVehicleStruct->m_avDummyPos[1].y += ltg.taillightOffsetY;
 						newModel->m_pVehicleStruct->m_avDummyPos[1].z += ltg.taillightOffsetZ;
 
-						ClientLog(LogLevel::Info, std::format("Applied lighting dummy config for model {}: headlights=({:.3f}, {:.3f}, {:.3f}), taillights=({:.3f}, {:.3f}, {:.3f})",
-							pending->def.customModelId,
-							newModel->m_pVehicleStruct->m_avDummyPos[0].x, newModel->m_pVehicleStruct->m_avDummyPos[0].y, newModel->m_pVehicleStruct->m_avDummyPos[0].z,
-							newModel->m_pVehicleStruct->m_avDummyPos[1].x, newModel->m_pVehicleStruct->m_avDummyPos[1].y, newModel->m_pVehicleStruct->m_avDummyPos[1].z));
+						ClientLog(LogLevel::Info, std::format("Applied lighting dummy config for model {}: headlights=({:.3f}, {:.3f}, {:.3f}), taillights=({:.3f}, {:.3f}, {:.3f})", pending->def.customModelId, newModel->m_pVehicleStruct->m_avDummyPos[0].x, newModel->m_pVehicleStruct->m_avDummyPos[0].y, newModel->m_pVehicleStruct->m_avDummyPos[0].z, newModel->m_pVehicleStruct->m_avDummyPos[1].x, newModel->m_pVehicleStruct->m_avDummyPos[1].y, newModel->m_pVehicleStruct->m_avDummyPos[1].z));
 					}
 					if (pending->colState == AssetState::Ready && (pending->def.flags & CustomVeh::Protocol::HasCol) != 0) {
 						if (pending->col.empty() && !pending->colPath.empty()) {
@@ -1697,8 +1869,7 @@ private:
 					SendMsg(0xFF0000, std::format("Failed to parse DFF for model {}", pending->def.customModelId).c_str());
 					return;
 				}
-			}
-			else {
+			} else {
 				RwStreamClose(dffStream, nullptr);
 				CTxdStore::PopCurrentTxd();
 				StreamingExtender::DestroyCustomModel(pending->def.customModelId);
@@ -1725,8 +1896,7 @@ private:
 				pending->audioAccelPath,
 				pending->audioDecelPath,
 				pending->audioBrakePath,
-				pending->audioCrashPath
-			);
+				pending->audioCrashPath);
 		}
 	}
 
@@ -1907,16 +2077,19 @@ public:
 			// Drop all queued model work before destroying streaming data
 			{
 				std::lock_guard<std::mutex> lock(m_pendingDefMutex);
-				while (!m_pendingDefQueue.empty()) m_pendingDefQueue.pop();
+				while (!m_pendingDefQueue.empty())
+					m_pendingDefQueue.pop();
 				m_activeModelIds.clear(); // allow fresh VehicleDefinitions after reconnect
 			}
 			{
 				std::lock_guard<std::mutex> lock(m_pendingFinalizeMutex);
-				while (!m_pendingFinalizeQueue.empty()) m_pendingFinalizeQueue.pop();
+				while (!m_pendingFinalizeQueue.empty())
+					m_pendingFinalizeQueue.pop();
 			}
 			{
 				std::lock_guard<std::mutex> lock(m_queueMutex);
-				while (!m_completedQueue.empty()) m_completedQueue.pop();
+				while (!m_completedQueue.empty())
+					m_completedQueue.pop();
 			}
 			StreamingExtender::ClearAllCustomModels();
 		}
@@ -1968,16 +2141,14 @@ void InitializeHooks()
 			g_windowVisible.store(false, std::memory_order_relaxed);
 			ModelTransferClient::Instance().ClearHistory();
 			_customVehInstance.RequestClearAllCustomModels();
-			if (!HandlingManager::ProcessAction(ACTION_RESET_ALL, nullptr))
-			{
+			if (!HandlingManager::ProcessAction(ACTION_RESET_ALL, nullptr)) {
 				ClientLog(LogLevel::Error, "HandlingManager::ProcessAction failed to process ACTION_RESET_ALL.");
 			}
 			if (!_customVehInstance.IsServerAuthorized()) {
 				HandlingManager::ResetInitState();
 				HandlingManager::SendInitPacket();
 				ClientLog(LogLevel::Info, "Game session initialized; handshake sent.");
-			}
-			else {
+			} else {
 				ClientLog(LogLevel::Debug, "localPlayer seems to be already authorized...");
 			}
 		} else if (id == RPC_WorldPlayerAdd) {
@@ -2007,8 +2178,7 @@ void InitializeHooks()
 			ModelTransferClient::Instance().CancelAll("gamemode restart");
 			ModelTransferClient::Instance().ClearHistory();
 			_customVehInstance.RequestClearAllCustomModels();
-			if (!HandlingManager::ProcessAction(ACTION_RESET_ALL, nullptr))
-			{
+			if (!HandlingManager::ProcessAction(ACTION_RESET_ALL, nullptr)) {
 				ClientLog(LogLevel::Error, "HandlingManager::ProcessAction failed to process ACTION_RESET_ALL.");
 			}
 			HandlingManager::ResetInitState();
@@ -2165,8 +2335,8 @@ static void OnGameProcess()
 			if (b.hasNeon && b.neonEnabled) {
 				// CMatrix has no TransformPoint(); use operator*(CMatrix, CVector) from CMatrix.h:95
 				// which performs: mat.pos + mat.right*v.x + mat.forward*v.y + mat.up*v.z
-				CVector worldLeft  = mat * CVector(-0.85f, 0.0f, -0.35f);
-				CVector worldRight = mat * CVector( 0.85f, 0.0f, -0.35f);
+				CVector worldLeft = mat * CVector(-0.85f, 0.0f, -0.35f);
+				CVector worldRight = mat * CVector(0.85f, 0.0f, -0.35f);
 
 				// Left chassis neon corona
 				CCoronas::RegisterCorona(
@@ -2178,8 +2348,7 @@ static void OnGameProcess()
 					45.0f,
 					CORONATYPE_SHINYSTAR,
 					FLARETYPE_NONE,
-					false, false, 0, 0.0f, false, 0.15f, 0, 15.0f, false, false
-				);
+					false, false, 0, 0.0f, false, 0.15f, 0, 15.0f, false, false);
 
 				// Right chassis neon corona
 				CCoronas::RegisterCorona(
@@ -2191,12 +2360,11 @@ static void OnGameProcess()
 					45.0f,
 					CORONATYPE_SHINYSTAR,
 					FLARETYPE_NONE,
-					false, false, 0, 0.0f, false, 0.15f, 0, 15.0f, false, false
-				);
+					false, false, 0, 0.0f, false, 0.15f, 0, 15.0f, false, false);
 
 				// Chassis ambient ground shadow
 				if (gpShadowCarTex) {
-					CVector chassisBottom = mat * CVector(0.0f, 0.0f, -0.45f);   // operator*(CMatrix, CVector) - local-to-world
+					CVector chassisBottom = mat * CVector(0.0f, 0.0f, -0.45f); // operator*(CMatrix, CVector) - local-to-world
 					CVector forward = mat.GetForward();
 					CVector right = mat.GetRight();
 					CShadows::StoreCarLightShadow(
@@ -2207,17 +2375,14 @@ static void OnGameProcess()
 						forward.x * 2.2f, forward.y * 2.2f,
 						right.x * 1.3f, right.y * 1.3f,
 						b.neonR, b.neonG, b.neonB,
-						5.0f
-					);
+						5.0f);
 				}
 			}
 
 			// 2. Render visual emergency strobe lights if siren is enabled
 			if (b.hasCustomSiren && b.sirenEnabled) {
 				int modelId = pVeh->m_nModelIndex;
-				bool nativeSirenModel = (modelId == 596 || modelId == 597 || modelId == 598 || modelId == 599 ||
-					modelId == 490 || modelId == 601 || modelId == 528 || modelId == 407 || modelId == 416 ||
-					modelId == 427 || modelId == 544 || modelId == 523);
+				bool nativeSirenModel = (modelId == 596 || modelId == 597 || modelId == 598 || modelId == 599 || modelId == 490 || modelId == 601 || modelId == 528 || modelId == 407 || modelId == 416 || modelId == 427 || modelId == 544 || modelId == 523);
 
 				// For models without native GTA:SA siren coronas, render alternating Red/Blue roof strobes
 				if (!nativeSirenModel) {
@@ -2229,8 +2394,8 @@ static void OnGameProcess()
 						roofZ = col->m_boundBox.m_vecMax.z + 0.08f;
 					}
 
-					CVector roofLeft  = mat * CVector(-0.35f, 0.0f, roofZ);
-					CVector roofRight = mat * CVector( 0.35f, 0.0f, roofZ);
+					CVector roofLeft = mat * CVector(-0.35f, 0.0f, roofZ);
+					CVector roofRight = mat * CVector(0.35f, 0.0f, roofZ);
 
 					if (phase == 0) {
 						CCoronas::RegisterCorona(
@@ -2242,8 +2407,7 @@ static void OnGameProcess()
 							65.0f,
 							CORONATYPE_SHINYSTAR,
 							FLARETYPE_NONE,
-							false, false, 0, 0.0f, false, 0.15f, 0, 15.0f, false, false
-						);
+							false, false, 0, 0.0f, false, 0.15f, 0, 15.0f, false, false);
 					} else {
 						CCoronas::RegisterCorona(
 							reinterpret_cast<uintptr_t>(pVeh) + 0x31,
@@ -2254,8 +2418,7 @@ static void OnGameProcess()
 							65.0f,
 							CORONATYPE_SHINYSTAR,
 							FLARETYPE_NONE,
-							false, false, 0, 0.0f, false, 0.15f, 0, 15.0f, false, false
-						);
+							false, false, 0, 0.0f, false, 0.15f, 0, 15.0f, false, false);
 					}
 				}
 			}

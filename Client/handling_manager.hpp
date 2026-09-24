@@ -12,6 +12,7 @@
 #include <RakNet/PacketEnumerations.h>
 #include <RakNet/StringCompressor.h>
 
+#include <atomic>
 #include <cstdint>
 #include <cstring>
 #include <deque>
@@ -19,7 +20,6 @@
 #include <memory>
 #include <mutex>
 #include <vector>
-#include <atomic>
 
 #include "defs.h"
 
@@ -129,7 +129,7 @@ public:
 		} value;
 	};
 
-	// Static members – defined in .cpp
+	// Static members - defined in .cpp
 	static std::map<uint16_t, std::unique_ptr<tHandlingData>> m_vehicleHandlings;
 	static std::map<uint16_t, std::unique_ptr<tHandlingData>> m_modelHandlings;
 	static std::map<CVehicle*, std::unique_ptr<tHandlingData>> m_customHandlings;

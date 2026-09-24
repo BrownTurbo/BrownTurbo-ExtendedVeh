@@ -1041,15 +1041,7 @@ void HandlingManager::ProcessVehicleMods(uint16_t sampVehicleId, const std::vect
 	handling->m_transmissionData.InitGearRatios();
 
 	RecalculateDerivedHandling(handling, gtaVehicle);
-	ClientLog(LogLevel::Info, std::format("ProcessVehicleMods: Applied {} attribs to vehicle {}. Mass={:.1f}, MaxVel={:.1f} km/h (game={:.4f}), Accel={:.5f}, Gears={}, Submerged={}, Buoyancy={:.4f}, ModelFlags={:#x}",
-		entries.size(), sampVehicleId, handling->m_fMass,
-		(handling->m_transmissionData.m_fMaxGearVelocity / 1.2f) * 180.0f,
-		handling->m_transmissionData.m_fMaxGearVelocity,
-		handling->m_transmissionData.m_fEngineAcceleration,
-		static_cast<int>(handling->m_transmissionData.m_nNumberOfGears),
-		static_cast<int>(handling->m_nPercentSubmerged),
-		handling->m_fBuoyancyConstant,
-		static_cast<uint32_t>(handling->m_nModelFlags)));
+	ClientLog(LogLevel::Info, std::format("ProcessVehicleMods: Applied {} attribs to vehicle {}. Mass={:.1f}, MaxVel={:.1f} km/h (game={:.4f}), Accel={:.5f}, Gears={}, Submerged={}, Buoyancy={:.4f}, ModelFlags={:#x}", entries.size(), sampVehicleId, handling->m_fMass, (handling->m_transmissionData.m_fMaxGearVelocity / 1.2f) * 180.0f, handling->m_transmissionData.m_fMaxGearVelocity, handling->m_transmissionData.m_fEngineAcceleration, static_cast<int>(handling->m_transmissionData.m_nNumberOfGears), static_cast<int>(handling->m_nPercentSubmerged), handling->m_fBuoyancyConstant, static_cast<uint32_t>(handling->m_nModelFlags)));
 }
 
 void HandlingManager::ProcessVehicleDoorState(uint16_t sampVehicleId, uint8_t doorId, bool missing)
@@ -1587,8 +1579,7 @@ bool HandlingManager::ProcessAction(CustomVehAction action, RakNet::BitStream* b
 	case static_cast<CustomVehAction>(CustomVeh::Protocol::Action::SetVehicleStance): {
 		CustomVeh::Protocol::VehicleStancePacket stance {};
 		if (bs->Read(reinterpret_cast<char*>(&stance), sizeof(stance))) {
-			ClientLog(LogLevel::Info, std::format("SetVehicleStance: vehId={}, frontScale={:.2f}, rearScale={:.2f}, frontCamber={:.2f}, rearCamber={:.2f}, frontTrack={:.2f}, rearTrack={:.2f}",
-				stance.sampVehicleId, stance.frontWheelScale, stance.rearWheelScale, stance.frontCamber, stance.rearCamber, stance.frontTrackWidth, stance.rearTrackWidth));
+			ClientLog(LogLevel::Info, std::format("SetVehicleStance: vehId={}, frontScale={:.2f}, rearScale={:.2f}, frontCamber={:.2f}, rearCamber={:.2f}, frontTrack={:.2f}, rearTrack={:.2f}", stance.sampVehicleId, stance.frontWheelScale, stance.rearWheelScale, stance.frontCamber, stance.rearCamber, stance.frontTrackWidth, stance.rearTrackWidth));
 			CustomVehicleBindingManager::Instance().SetVehicleStance(
 				stance.sampVehicleId, stance.frontWheelScale, stance.rearWheelScale,
 				stance.frontCamber, stance.rearCamber, stance.frontTrackWidth, stance.rearTrackWidth);
@@ -1614,8 +1605,7 @@ bool HandlingManager::ProcessAction(CustomVehAction action, RakNet::BitStream* b
 	case static_cast<CustomVehAction>(CustomVeh::Protocol::Action::SetVehicleNeon): {
 		CustomVeh::Protocol::VehicleNeonPacket neon {};
 		if (bs->Read(reinterpret_cast<char*>(&neon), sizeof(neon))) {
-			ClientLog(LogLevel::Info, std::format("SetVehicleNeon: vehId={}, enabled={}, r={}, g={}, b={}, size={:.2f}",
-				neon.sampVehicleId, neon.enabled != 0, neon.r, neon.g, neon.b, neon.size));
+			ClientLog(LogLevel::Info, std::format("SetVehicleNeon: vehId={}, enabled={}, r={}, g={}, b={}, size={:.2f}", neon.sampVehicleId, neon.enabled != 0, neon.r, neon.g, neon.b, neon.size));
 			CustomVehicleBindingManager::Instance().SetVehicleNeon(neon.sampVehicleId, neon.enabled != 0, neon.r, neon.g, neon.b, neon.size);
 		}
 		return true;
@@ -1623,8 +1613,7 @@ bool HandlingManager::ProcessAction(CustomVehAction action, RakNet::BitStream* b
 	case static_cast<CustomVehAction>(CustomVeh::Protocol::Action::SetVehicleWindowTint): {
 		CustomVeh::Protocol::VehicleWindowTintPacket tint {};
 		if (bs->Read(reinterpret_cast<char*>(&tint), sizeof(tint))) {
-			ClientLog(LogLevel::Info, std::format("SetVehicleWindowTint: vehId={}, alpha={}, r={}, g={}, b={}",
-				tint.sampVehicleId, tint.alpha, tint.r, tint.g, tint.b));
+			ClientLog(LogLevel::Info, std::format("SetVehicleWindowTint: vehId={}, alpha={}, r={}, g={}, b={}", tint.sampVehicleId, tint.alpha, tint.r, tint.g, tint.b));
 			CustomVehicleBindingManager::Instance().SetVehicleWindowTint(tint.sampVehicleId, tint.alpha, tint.r, tint.g, tint.b);
 		}
 		return true;
@@ -1632,8 +1621,7 @@ bool HandlingManager::ProcessAction(CustomVehAction action, RakNet::BitStream* b
 	case static_cast<CustomVehAction>(CustomVeh::Protocol::Action::SetVehicleWheelColor): {
 		CustomVeh::Protocol::VehicleWheelColorPacket wc {};
 		if (bs->Read(reinterpret_cast<char*>(&wc), sizeof(wc))) {
-			ClientLog(LogLevel::Info, std::format("SetVehicleWheelColor: vehId={}, r={}, g={}, b={}",
-				wc.sampVehicleId, wc.r, wc.g, wc.b));
+			ClientLog(LogLevel::Info, std::format("SetVehicleWheelColor: vehId={}, r={}, g={}, b={}", wc.sampVehicleId, wc.r, wc.g, wc.b));
 			CustomVehicleBindingManager::Instance().SetVehicleWheelColor(wc.sampVehicleId, wc.r, wc.g, wc.b);
 		}
 		return true;
@@ -1641,8 +1629,7 @@ bool HandlingManager::ProcessAction(CustomVehAction action, RakNet::BitStream* b
 	case static_cast<CustomVehAction>(CustomVeh::Protocol::Action::SetVehicleBackfire): {
 		CustomVeh::Protocol::VehicleBackfirePacket bf {};
 		if (bs->Read(reinterpret_cast<char*>(&bf), sizeof(bf))) {
-			ClientLog(LogLevel::Info, std::format("SetVehicleBackfire: vehId={}, enabled={}",
-				bf.sampVehicleId, bf.enabled != 0));
+			ClientLog(LogLevel::Info, std::format("SetVehicleBackfire: vehId={}, enabled={}", bf.sampVehicleId, bf.enabled != 0));
 			CustomVehicleBindingManager::Instance().SetVehicleBackfire(bf.sampVehicleId, bf.enabled != 0);
 		}
 		return true;
@@ -1650,8 +1637,7 @@ bool HandlingManager::ProcessAction(CustomVehAction action, RakNet::BitStream* b
 	case static_cast<CustomVehAction>(CustomVeh::Protocol::Action::SetVehicleHorn): {
 		CustomVeh::Protocol::VehicleHornPacket horn {};
 		if (bs->Read(reinterpret_cast<char*>(&horn), sizeof(horn))) {
-			ClientLog(LogLevel::Info, std::format("SetVehicleHorn: vehId={}, soundId={}, pitch={:.2f}",
-				horn.sampVehicleId, horn.hornSoundId, horn.hornPitch));
+			ClientLog(LogLevel::Info, std::format("SetVehicleHorn: vehId={}, soundId={}, pitch={:.2f}", horn.sampVehicleId, horn.hornSoundId, horn.hornPitch));
 			CustomVehicleBindingManager::Instance().SetVehicleHorn(horn.sampVehicleId, horn.hornSoundId, horn.hornPitch);
 		}
 		return true;
@@ -1659,8 +1645,7 @@ bool HandlingManager::ProcessAction(CustomVehAction action, RakNet::BitStream* b
 	case static_cast<CustomVehAction>(CustomVeh::Protocol::Action::SetVehicleSiren): {
 		CustomVeh::Protocol::VehicleSirenPacket siren {};
 		if (bs->Read(reinterpret_cast<char*>(&siren), sizeof(siren))) {
-			ClientLog(LogLevel::Info, std::format("SetVehicleSiren: vehId={}, enabled={}, type={}",
-				siren.sampVehicleId, siren.enabled != 0, siren.sirenType));
+			ClientLog(LogLevel::Info, std::format("SetVehicleSiren: vehId={}, enabled={}, type={}", siren.sampVehicleId, siren.enabled != 0, siren.sirenType));
 			CustomVehicleBindingManager::Instance().SetVehicleSiren(siren.sampVehicleId, siren.enabled != 0, siren.sirenType);
 		}
 		return true;
@@ -1668,8 +1653,7 @@ bool HandlingManager::ProcessAction(CustomVehAction action, RakNet::BitStream* b
 	case static_cast<CustomVehAction>(CustomVeh::Protocol::Action::SetVehicleLights): {
 		CustomVeh::Protocol::VehicleLightsPacket lights {};
 		if (bs->Read(reinterpret_cast<char*>(&lights), sizeof(lights))) {
-			ClientLog(LogLevel::Info, std::format("SetVehicleLights: vehId={}, category={}, scale={:.2f}",
-				lights.sampVehicleId, lights.lightingCategory, lights.lightScaleMult));
+			ClientLog(LogLevel::Info, std::format("SetVehicleLights: vehId={}, category={}, scale={:.2f}", lights.sampVehicleId, lights.lightingCategory, lights.lightScaleMult));
 			CustomVehicleBindingManager::Instance().SetVehicleLights(lights.sampVehicleId, lights.lightingCategory, lights.lightScaleMult);
 		}
 		return true;
@@ -1677,8 +1661,7 @@ bool HandlingManager::ProcessAction(CustomVehAction action, RakNet::BitStream* b
 	case static_cast<CustomVehAction>(CustomVeh::Protocol::Action::SetVehicleWheel): {
 		CustomVeh::Protocol::VehicleWheelPacket wheel {};
 		if (bs->Read(reinterpret_cast<char*>(&wheel), sizeof(wheel))) {
-			ClientLog(LogLevel::Info, std::format("SetVehicleWheel: vehId={}, wheelModelId={}",
-				wheel.sampVehicleId, wheel.wheelModelId));
+			ClientLog(LogLevel::Info, std::format("SetVehicleWheel: vehId={}, wheelModelId={}", wheel.sampVehicleId, wheel.wheelModelId));
 			CustomVehicleBindingManager::Instance().SetVehicleWheel(wheel.sampVehicleId, wheel.wheelModelId);
 		}
 		return true;
