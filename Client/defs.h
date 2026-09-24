@@ -26,7 +26,7 @@ struct RPC_WorldVehicleAdd_Data {
 
 //
 constexpr uint16_t PKT_EXTVEH = 251;
-constexpr uint32_t EXTENDEDVEH_COMPAT_VERSION = 0x1001D;
+constexpr uint32_t EXTENDEDVEH_COMPAT_VERSION = 0xA839E;
 //
 
 constexpr uint16_t RPC_WorldPlayerAdd = 137;
