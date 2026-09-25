@@ -1431,7 +1431,7 @@ SCRIPT_API(BeginCustomVehicleDef, bool(int customModelId, int visualBase, int au
 	engineSoundId.OffSound = static_cast<int16_t>(engineOffSoundId);
 	HandlingMgr::BeginCustomVehicleDef(static_cast<uint32_t>(customModelId), static_cast<uint32_t>(visualBase), static_cast<uint32_t>(audioBase), static_cast<uint32_t>(handlingBase), engineSoundId);
 	if (core_)
-		core_->logLn(LogLevel::Message, "[ExtendedVeh] BeginCustomVehicleDef: Staged custom model %d (visual=%d, audio=%d, handling=%d)", customModelId, visualBase, audioBase, handlingBase);
+		core_->logLn(LogLevel::Debug, "[ExtendedVeh] BeginCustomVehicleDef: Staged custom model %d (visual=%d, audio=%d, handling=%d)", customModelId, visualBase, audioBase, handlingBase);
 	return true;
 }
 
@@ -1573,7 +1573,7 @@ SCRIPT_API(CommitCustomVehicleDef, bool(int customModelId))
 	if (core_)
 	{
 		if (ret)
-			core_->logLn(LogLevel::Message, "[ExtendedVeh] CommitCustomVehicleDef: Successfully committed custom model %d", customModelId);
+			core_->logLn(LogLevel::Debug, "[ExtendedVeh] CommitCustomVehicleDef: Successfully committed custom model %d", customModelId);
 		else
 			core_->logLn(LogLevel::Warning, "[ExtendedVeh] CommitCustomVehicleDef: Failed to commit custom model %d (not staged or invalid assets)", customModelId);
 	}
@@ -1852,9 +1852,9 @@ inline bool BindCustomVehicle(IVehicle& vehicle, int customModelId)
 	}
 	if (!compo)
 		return false;
-	CustomVehicleBindingRegistry::Instance().Bind(static_cast<uint16_t>(vehicleid), static_cast<uint32_t>(customModelId));
+	bool changed = CustomVehicleBindingRegistry::Instance().Bind(static_cast<uint16_t>(vehicleid), static_cast<uint32_t>(customModelId));
 
-	if (core_)
+	if (changed && core_)
 	{
 		core_->logLn(LogLevel::Message, "[ExtendedVeh] BindCustomVehicle: Bound vehicle %d to custom model %d", vehicleid, customModelId);
 		for (IPlayer* player : core_->getPlayers().players())

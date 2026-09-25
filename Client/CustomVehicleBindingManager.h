@@ -6,6 +6,7 @@
 #include <unordered_map>
 
 class CVehicle;
+class CColModel;
 
 class CustomVehicleBindingManager {
 public:
@@ -93,6 +94,7 @@ public:
 	}
 
 	static void SetBaseModelId(uint32_t customModelId, uint32_t baseModelId);
+	static CColModel* GetCollisionForVehicle(CVehicle* vehicle);
 
 	void Bind(uint16_t vehicleId, uint32_t customModelId);
 

@@ -106,7 +106,7 @@ class ModelConfigParser
 {
 public:
 	static bool ParseFile(const fs::path& filePath, ModelConfig& outConfig, uint32_t fallbackBaseModel = 411);
-	static bool ParseString(const std::string& content, ModelConfig& outConfig, uint32_t fallbackBaseModel = 411);
+	static bool ParseString(const std::string& content, ModelConfig& outConfig, uint32_t fallbackBaseModel = 411, const std::string& sourceName = "model.ini");
 
 	static uint8_t ParseVehicleClass(const std::string& str);
 	static int ResolveVehicleModelId(const std::string& nameOrId);
@@ -114,9 +114,10 @@ public:
 
 	static void Trim(std::string& s);
 	static std::string ToLower(std::string s);
-	static bool ParseBool(const std::string& val);
-	static uint32_t ParseUInt(const std::string& val);
-	static float ParseFloat(const std::string& val);
+	static bool ParseBool(const std::string& val, bool* ok = nullptr);
+	static uint32_t ParseUInt(const std::string& val, bool* ok = nullptr);
+	static int ParseInt(const std::string& val, bool* ok = nullptr);
+	static float ParseFloat(const std::string& val, bool* ok = nullptr);
 	static std::vector<std::string> Split(const std::string& s, char delim);
 };
 

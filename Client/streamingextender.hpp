@@ -3,6 +3,7 @@
 #include <cstring>
 #include <unordered_map>
 
+#include "game_sa/CColModel.h"
 #include "game_sa/CHandlingDataMgr.h"
 #include "game_sa/CModelInfo.h"
 #include "game_sa/CStreaming.h"
@@ -310,25 +311,46 @@ public:
 		ClientLog(LogLevel::Debug, "FinalizeClump -> AFTER SetAtomicRenderCallbacks");
 
 		// If the DFF contains an unmanaged "tuning" frame containing optional bodykit variations
-		// (fenders_f0, spoiler1, spoiler2, splitter0, etc.), GTA:SA's visibility plugins do not manage them,
-		// causing multiple conflicting bodykit parts to render simultaneously on top of the factory chassis.
-		// Hide the tuning frame hierarchy by default.
+		// (e.g. bumper_f0 vs bumper_f1, spoiler1, spoiler2, interior0 vs interior1), GTA:SA's visibility plugins
+		// do not manage them, causing all variations to render simultaneously on top of each other.
+		// Retain baseline factory parts (*0: bumper_f0, bumper_r0, interior0, splitter0, trunk_badge0)
+		// and hide duplicate/aftermarket variations (*1, *2, *3, spoiler*, fenders*).
 		RwFrame* tuningFrame = CClumpModelInfo::GetFrameFromName(pClump, "tuning");
 		if (tuningFrame) {
-			struct TuningHideContext {
+			struct TuningFilterContext {
 				RwFrame* root;
 			} ctx { tuningFrame };
 			RpClumpForAllAtomics(pClump, [](RpAtomic* atomic, void* data) -> RpAtomic* {
-				auto* c = reinterpret_cast<TuningHideContext*>(data);
-				for (RwFrame* f = RpAtomicGetFrame(atomic); f != nullptr; f = RwFrameGetParent(f)) {
+				auto* c = reinterpret_cast<TuningFilterContext*>(data);
+				RwFrame* atomicFrame = RpAtomicGetFrame(atomic);
+				for (RwFrame* f = atomicFrame; f != nullptr; f = RwFrameGetParent(f)) {
 					if (f == c->root) {
-						RpAtomicSetFlags(atomic, 0);
+						const char* nodeName = GetFrameNodeName(atomicFrame);
+						std::string name = nodeName ? nodeName : "";
+						std::transform(name.begin(), name.end(), name.begin(), ::tolower);
+
+						// Hide aftermarket variations (*1, *2, *3, spoiler*, fenders*)
+						// Keep baseline factory parts (*0: bumper_f0, bumper_r0, interior0, splitter0, trunk_badge0)
+						bool hide = false;
+						if (name.rfind("fenders", 0) == 0 || name.rfind("spoiler", 0) == 0) {
+							hide = true;
+						} else if (!name.empty()) {
+							char lastChar = name.back();
+							if (lastChar >= '1' && lastChar <= '9') {
+								hide = true;
+							}
+						}
+
+						if (hide) {
+							RpAtomicSetFlags(atomic, 0);
+						} else {
+							RpAtomicSetFlags(atomic, rpATOMICRENDER);
+						}
 						break;
 					}
 				}
 				return atomic;
-			},
-				&ctx);
+			}, &ctx);
 		}
 
 		// ExtractDummiesFromClump is a fallback only: it fills any dummy slot that
@@ -400,7 +422,7 @@ public:
 
 			pInfo->DeleteRwObject();
 			if (pInfo->bDoWeOwnTheColModel && pInfo->m_pColModel) {
-				delete pInfo->m_pColModel;
+				reinterpret_cast<void(__thiscall*)(CBaseModelInfo*)>(0x4C4C40)(pInfo);
 				pInfo->m_pColModel = nullptr;
 				pInfo->bDoWeOwnTheColModel = 0;
 			}
@@ -436,7 +458,7 @@ public:
 
 				pInfo->DeleteRwObject();
 				if (pInfo->bDoWeOwnTheColModel && pInfo->m_pColModel) {
-					delete pInfo->m_pColModel;
+					reinterpret_cast<void(__thiscall*)(CBaseModelInfo*)>(0x4C4C40)(pInfo);
 					pInfo->m_pColModel = nullptr;
 					pInfo->bDoWeOwnTheColModel = 0;
 				}

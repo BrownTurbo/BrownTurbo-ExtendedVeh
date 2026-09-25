@@ -7,6 +7,8 @@
 #include <game_sa/CAutomobile.h>
 #include <game_sa/CBike.h>
 #include <game_sa/CBoat.h>
+#include <game_sa/CColModel.h>
+#include <game_sa/CCollisionData.h>
 #include <game_sa/CCustomCarPlateMgr.h>
 #include <game_sa/CModelInfo.h>
 #include <game_sa/CStreaming.h>
@@ -16,7 +18,9 @@
 #include <game_sa/rw/rpworld.h>
 #include <game_sa/rw/rwcore.h>
 #include <algorithm>
+#include <atomic>
 #include <format>
+#include <shared_mutex>
 
 static bool IsFrameOrChildOf(RwFrame* frame, RwFrame* targetParent)
 {
@@ -98,6 +102,25 @@ void CustomVehicleBindingManager::SetBaseModelId(uint32_t customModelId, uint32_
 	}
 }
 
+static inline std::unordered_map<CVehicle*, CColModel*> s_fastVehicleColMap;
+static inline std::shared_mutex s_fastColMutex;
+static inline std::atomic<bool> s_hasCustomCols { false };
+
+CColModel* CustomVehicleBindingManager::GetCollisionForVehicle(CVehicle* vehicle)
+{
+	if (!vehicle || !s_hasCustomCols.load(std::memory_order_relaxed))
+		return nullptr;
+	std::shared_lock lock(s_fastColMutex);
+	auto it = s_fastVehicleColMap.find(vehicle);
+	if (it == s_fastVehicleColMap.end())
+		return nullptr;
+	CColModel* col = it->second;
+	if (col && col->m_pColData && col->m_pColData->m_pLines && col->m_pColData->m_nNumLines >= 4) {
+		return col;
+	}
+	return nullptr;
+}
+
 void CustomVehicleBindingManager::Bind(uint16_t vehicleId, uint32_t customModelId)
 {
 	uint32_t baseModelId = 0;
@@ -118,10 +141,15 @@ void CustomVehicleBindingManager::Bind(uint16_t vehicleId, uint32_t customModelI
 					baseModelId = baseIt->second;
 				}
 			}
-			ClientLog(LogLevel::Warning, std::format("Ignoring duplicate bind: vehicle={} customModel={}", vehicleId, customModelId));
+			ClientLog(LogLevel::Debug, std::format("Duplicate bind ignored (already active): vehicle={} customModel={}", vehicleId, customModelId));
 			return;
 		}
 
+		if (binding.appliedGameVehicle) {
+			std::unique_lock colLock(s_fastColMutex);
+			s_fastVehicleColMap.erase(binding.appliedGameVehicle);
+			s_hasCustomCols.store(!s_fastVehicleColMap.empty(), std::memory_order_relaxed);
+		}
 		HandlingManager::DecrementModelUse(binding.customModelId);
 		m_bindings.erase(existing);
 	}
@@ -234,14 +262,15 @@ void CustomVehicleBindingManager::Unbind(uint16_t vehicleId)
 
 					CWorld::Add(vehicle);
 				}
-				// CVehicle doesn't expose m_pColModel directly; use CEntity::GetColModel().
-				// Restoring the original model's collision: GTA:SA looks up the col model
-				// via the model info when it next needs it - resetting the vehicle's model
-				// index (which was never changed for custom vehicles) keeps it correct.
-				// Nothing extra to do here.
 			}
 			HandlingManager::OnVehicleStreamIn(vehicle, static_cast<uint16_t>(vehicleId));
 		}
+	}
+
+	if (binding.appliedGameVehicle) {
+		std::unique_lock colLock(s_fastColMutex);
+		s_fastVehicleColMap.erase(binding.appliedGameVehicle);
+		s_hasCustomCols.store(!s_fastVehicleColMap.empty(), std::memory_order_relaxed);
 	}
 
 	m_bindings.erase(it);
@@ -249,6 +278,11 @@ void CustomVehicleBindingManager::Unbind(uint16_t vehicleId)
 
 void CustomVehicleBindingManager::Clear()
 {
+	{
+		std::unique_lock colLock(s_fastColMutex);
+		s_fastVehicleColMap.clear();
+		s_hasCustomCols.store(false, std::memory_order_relaxed);
+	}
 	std::lock_guard lock(m_mutex);
 	for (auto& [vehicleId, binding] : m_bindings) {
 		HandlingManager::DecrementModelUse(binding.customModelId);
@@ -346,6 +380,11 @@ void CustomVehicleBindingManager::Process()
 
 		auto* vehicle = GetGameVehicleFromPool(vehicleId);
 		if (!vehicle || !IsVehiclePointerValid(vehicle)) {
+			if (binding.appliedGameVehicle) {
+				std::unique_lock colLock(s_fastColMutex);
+				s_fastVehicleColMap.erase(binding.appliedGameVehicle);
+				s_hasCustomCols.store(!s_fastVehicleColMap.empty(), std::memory_order_relaxed);
+			}
 			binding.appliedGameVehicle = nullptr;
 			binding.modelApplied = false;
 			binding.originalModelId = -1;
@@ -357,6 +396,11 @@ void CustomVehicleBindingManager::Process()
 		}
 
 		if (!binding.modelApplied || binding.appliedGameVehicle != vehicle) {
+			if (binding.appliedGameVehicle && binding.appliedGameVehicle != vehicle) {
+				std::unique_lock colLock(s_fastColMutex);
+				s_fastVehicleColMap.erase(binding.appliedGameVehicle);
+				s_hasCustomCols.store(!s_fastVehicleColMap.empty(), std::memory_order_relaxed);
+			}
 			ClientLog(LogLevel::Info, std::format("Applying visual model: vehicle={} customModel={} baseModel={} vehiclePtr=0x{:X} sourceClump=0x{:X}", vehicleId, binding.customModelId, binding.baseModelId, reinterpret_cast<std::uintptr_t>(vehicle), reinterpret_cast<std::uintptr_t>(model->m_pRwClump)));
 
 			RpClump* newClump = CloneClumpPreservingOrder(model->m_pRwClump);
@@ -453,8 +497,13 @@ void CustomVehicleBindingManager::Process()
 
 				CWorld::Add(vehicle);
 
-				// CVehicle doesn't expose m_pColModel directly (CEntity::GetColModel() is the API).
-				// Custom model collision is managed via model info - no manual vehicle pointer update needed.
+				{
+					std::unique_lock colLock(s_fastColMutex);
+					if (model && model->m_pColModel && model->m_pColModel->m_pColData && model->m_pColModel->m_pColData->m_pLines && model->m_pColModel->m_pColData->m_nNumLines >= 4) {
+						s_fastVehicleColMap[vehicle] = model->m_pColModel;
+						s_hasCustomCols.store(true, std::memory_order_relaxed);
+					}
+				}
 
 				binding.appliedGameVehicle = vehicle;
 				binding.modelApplied = true;

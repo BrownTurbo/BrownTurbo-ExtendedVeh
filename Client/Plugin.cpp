@@ -8,6 +8,7 @@
 #include <game_sa/CCheat.h>
 #include <game_sa/CCoronas.h>
 #include <game_sa/CHandlingDataMgr.h>
+#include <game_sa/CColModel.h>
 #include <game_sa/CModelInfo.h>
 #include <game_sa/CPad.h>
 #include <game_sa/CPlayerPed.h>
@@ -1235,6 +1236,24 @@ static void __cdecl Hooked_StoreCarLightShadow(
 	}
 }
 
+#include <game_sa/CColLine.h>
+#include <game_sa/CCollisionData.h>
+#include <game_sa/CColModel.h>
+
+using GetColModelFn = CColModel*(__thiscall*)(CEntity*);
+static GetColModelFn g_origGetColModel = nullptr;
+
+static CColModel* __fastcall Hooked_GetColModel(CEntity* thisPtr, void* /*edx*/)
+{
+	if (thisPtr && thisPtr->m_nType == ENTITY_TYPE_VEHICLE) {
+		CColModel* customCol = CustomVehicleBindingManager::GetCollisionForVehicle(reinterpret_cast<CVehicle*>(thisPtr));
+		if (customCol && customCol->m_pColData && customCol->m_pColData->m_pLines && customCol->m_pColData->m_nNumLines >= 4) {
+			return customCol;
+		}
+	}
+	return g_origGetColModel ? g_origGetColModel(thisPtr) : nullptr;
+}
+
 #include <windows.h>
 #include <iostream>
 
@@ -1771,10 +1790,10 @@ private:
 
 				// CRITICAL FIX: GTA SA's collision plugin reader (0x41B2BD) executes during
 				// RpClumpStreamRead if the DFF has an embedded collision chunk. It accesses
-				// ds:[0x009689E0] (set via 0x0041B350) to attach the collision model to the
+				// ds:[0x009689E0] (set via 0x0041A750) to attach the collision model to the
 				// model info and flag ownership (0x41B2C7: or byte ptr [eax+13h], 8).
 				// If ds:[0x009689E0] is null, it crashes at 0x4C4BD2 (inside SetColModel)
-				// or at 0x41B2C7. Setting it here mirrors MTA:SA CRenderWareSA.cpp:302.
+				// or at 0x41B2C7. Setting it here mirrors GTA SA CStreaming::ConvertModelToLoaded (0x536798).
 				auto SetCollisionModel = reinterpret_cast<void(__cdecl*)(CBaseModelInfo*)>(0x0041B350);
 				SetCollisionModel(newModel);
 				*reinterpret_cast<CBaseModelInfo**>(0x009689E0) = newModel;
@@ -1852,14 +1871,43 @@ private:
 							}
 						}
 					}
-					// Fallback: If neither embedded DFF collision nor external COL was provided,
-					// borrow the base model's collision so physics and raycasts don't crash.
+					// Fallback & Adaptation: Ensure the vehicle model info has a valid collision model with suspension lines
+					CBaseModelInfo* visualBase = GetEngineModelInfo(static_cast<int>(pending->def.visualBaseModel));
 					if (!newModel->m_pColModel) {
-						CBaseModelInfo* visualBase = GetEngineModelInfo(static_cast<int>(pending->def.visualBaseModel));
 						if (visualBase && visualBase->m_pColModel) {
 							newModel->m_pColModel = visualBase->m_pColModel;
 							newModel->bDoWeOwnTheColModel = 0;
-							ClientLog(LogLevel::Warning, std::format("Model {} using fallback collision from base model {}", pending->def.customModelId, pending->def.visualBaseModel));
+							*reinterpret_cast<uint8_t*>(reinterpret_cast<uintptr_t>(newModel) + 0x12) &= ~0x80;
+							*reinterpret_cast<uint8_t*>(reinterpret_cast<uintptr_t>(newModel) + 0x13) &= ~0x08;
+							ClientLog(LogLevel::Info, std::format("Model {} using base collision model from base {}", pending->def.customModelId, pending->def.visualBaseModel));
+						}
+					} else {
+						// If custom collision exists (external COL) but lacks wheel suspension lines,
+						// inject the base model's 4 suspension lines into the collision data.
+						bool hasValidLines = (newModel->m_pColModel->m_pColData && newModel->m_pColModel->m_pColData->m_pLines && newModel->m_pColModel->m_pColData->m_nNumLines >= 4);
+						if (!hasValidLines && newModel->m_pColModel->m_pColData && visualBase && visualBase->m_pColModel && visualBase->m_pColModel->m_pColData && visualBase->m_pColModel->m_pColData->m_pLines && visualBase->m_pColModel->m_pColData->m_nNumLines >= 4) {
+							auto pMalloc = reinterpret_cast<void*(__cdecl*)(size_t)>(0x72F420);
+							void* lineMem = pMalloc(sizeof(CColLine) * 4);
+							if (lineMem) {
+								memcpy(lineMem, visualBase->m_pColModel->m_pColData->m_pLines, sizeof(CColLine) * 4);
+								newModel->m_pColModel->m_pColData->m_pLines = reinterpret_cast<CColLine*>(lineMem);
+								newModel->m_pColModel->m_pColData->m_nNumLines = 4;
+								hasValidLines = true;
+								ClientLog(LogLevel::Info, std::format("Model {}: Injected 4 suspension lines from base model {}", pending->def.customModelId, pending->def.visualBaseModel));
+							}
+						}
+						if (!hasValidLines) {
+							// If custom collision cannot provide valid suspension lines, safely delete it and revert to base vehicle's collision
+							if (newModel->m_pColModel) {
+								reinterpret_cast<void(__thiscall*)(CBaseModelInfo*)>(0x4C4C40)(newModel);
+							}
+							if (visualBase && visualBase->m_pColModel) {
+								newModel->m_pColModel = visualBase->m_pColModel;
+								newModel->bDoWeOwnTheColModel = 0;
+								*reinterpret_cast<uint8_t*>(reinterpret_cast<uintptr_t>(newModel) + 0x12) &= ~0x80;
+								*reinterpret_cast<uint8_t*>(reinterpret_cast<uintptr_t>(newModel) + 0x13) &= ~0x08;
+								ClientLog(LogLevel::Warning, std::format("Model {} reverted to base collision model {} due to missing suspension lines", pending->def.customModelId, pending->def.visualBaseModel));
+							}
 						}
 					}
 				} else {
@@ -3010,6 +3058,18 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD dwReason, LPVOID lpReserved)
 			ClientLog(LogLevel::Error, std::format("Failed to hook CClumpModelInfo::GetFrameFromId (0x4C53C0): {}", MH_StatusToString(frameIdStatus)));
 		}
 
+		MH_STATUS colStatus = MH_CreateHook(reinterpret_cast<void*>(0x535300), reinterpret_cast<void*>(&Hooked_GetColModel), reinterpret_cast<void**>(&g_origGetColModel));
+		if (colStatus == MH_OK) {
+			MH_STATUS enableStatus = MH_EnableHook(reinterpret_cast<void*>(0x535300));
+			if (enableStatus == MH_OK) {
+				ClientLog(LogLevel::Info, "CEntity::GetColModel (0x535300) hooked successfully via MinHook");
+			} else {
+				ClientLog(LogLevel::Error, std::format("Failed to enable CEntity::GetColModel hook: {}", MH_StatusToString(enableStatus)));
+			}
+		} else {
+			ClientLog(LogLevel::Error, std::format("Failed to hook CEntity::GetColModel (0x535300): {}", MH_StatusToString(colStatus)));
+		}
+
 		Plugn = std::make_unique<c_plugin>(hModule);
 		static bool threadSpawned = false;
 		if (!threadSpawned) {
@@ -3108,6 +3168,12 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD dwReason, LPVOID lpReserved)
 			MH_DisableHook(reinterpret_cast<void*>(0x4C53C0));
 			MH_RemoveHook(reinterpret_cast<void*>(0x4C53C0));
 			g_origGetFrameFromId = nullptr;
+		}
+
+		if (g_origGetColModel) {
+			MH_DisableHook(reinterpret_cast<void*>(0x535300));
+			MH_RemoveHook(reinterpret_cast<void*>(0x535300));
+			g_origGetColModel = nullptr;
 		}
 
 		rakhook::on_receive_rpc.clear();

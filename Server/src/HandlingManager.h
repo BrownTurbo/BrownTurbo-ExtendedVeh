@@ -87,7 +87,7 @@ bool GetPlayerHandling(uint16_t playerid, CHandlingAttrib attrib, uint8_t& ret);
 bool ResetAll(uint16_t playerid);
 
 void UnregisterCustomVehicle(uint32_t customModelId);
-void BeginCustomVehicleDef(uint32_t customModelId, uint32_t visualBase, uint32_t audioBase, uint32_t handlingBase, CustomVeh::Protocol::EngineSound engineSoundId);
+void BeginCustomVehicleDef(uint32_t customModelId, uint32_t visualBase, uint32_t audioBase, uint32_t handlingBase, CustomVeh::Protocol::EngineSound engineSoundId, const ModelConfig* preParsedConfig = nullptr);
 bool SetCustomVehicleDff(uint32_t customModelId);
 bool SetCustomVehicleTxd(uint32_t customModelId);
 bool SetCustomVehicleCol(uint32_t customModelId);
@@ -103,7 +103,7 @@ void SendCustomVehicleDefToAll(uint32_t modelId);
 void SendCustomVehicleDestroyToPlayer(IPlayer& player, uint32_t modelId);
 void SendCustomVehicleDestroyToAll(uint32_t modelId);
 
-bool LoadCustomVehicleConfig(uint32_t customModelId);
+bool LoadCustomVehicleConfig(uint32_t customModelId, const ModelConfig* preParsedConfig = nullptr);
 bool DefineCustomVehicleFromConfig(uint32_t customModelId, uint32_t defaultVisualBase = 411);
 int LoadAllCustomVehicles(uint32_t defaultVisualBase = 411);
 

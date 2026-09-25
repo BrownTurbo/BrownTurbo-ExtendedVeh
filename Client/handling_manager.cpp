@@ -700,6 +700,9 @@ void HandlingManager::OnVehicleStreamIn(CVehicle* pVehicle, uint16_t sampId)
 	// 2. Check if vehicle already has custom vehicle handling
 	auto vehIt = m_vehicleHandlings.find(sampId);
 	if (vehIt != m_vehicleHandlings.end()) {
+		if (pVehicle->m_pHandlingData == vehIt->second.get()) {
+			return;
+		}
 		RecalculateDerivedHandling(vehIt->second.get(), pVehicle);
 		ClientLog(LogLevel::Info, std::format("OnVehicleStreamIn: Reapplied custom handling for vehicle {}", sampId));
 		return;
@@ -713,6 +716,9 @@ void HandlingManager::OnVehicleStreamIn(CVehicle* pVehicle, uint16_t sampId)
 	}
 	auto modelIt = m_modelHandlings.find(modelId);
 	if (modelIt != m_modelHandlings.end()) {
+		if (pVehicle->m_pHandlingData == modelIt->second.get()) {
+			return;
+		}
 		RecalculateDerivedHandling(modelIt->second.get(), pVehicle);
 		ClientLog(LogLevel::Info, std::format("OnVehicleStreamIn: Reapplied model handling for vehicle {} (model {})", sampId, modelId));
 		return;
@@ -720,6 +726,9 @@ void HandlingManager::OnVehicleStreamIn(CVehicle* pVehicle, uint16_t sampId)
 		auto* customModel = StreamingExtender::GetCustomModel(binding->customModelId);
 		if (customModel) {
 			tHandlingData* customBaseHandling = static_cast<tHandlingData*>(&gHandlingDataMgr.m_aVehicleHandling[customModel->m_nHandlingId]);
+			if (pVehicle->m_pHandlingData == customBaseHandling) {
+				return;
+			}
 			RecalculateDerivedHandling(customBaseHandling, pVehicle);
 			ClientLog(LogLevel::Info, std::format("OnVehicleStreamIn: Reapplied custom base handling for vehicle {} (custom model {})", sampId, modelId));
 			return;

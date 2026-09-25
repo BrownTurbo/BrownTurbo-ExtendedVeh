@@ -56,13 +56,13 @@ public:
 		return instance;
 	}
 
-	void Bind(uint16_t sampVehicleId, uint32_t customModelId)
+	bool Bind(uint16_t sampVehicleId, uint32_t customModelId)
 	{
 		std::lock_guard<std::mutex> lock(m_mutex);
 		auto existing = m_states.find(sampVehicleId);
 		if (existing != m_states.end() && existing->second.customModelId == customModelId)
 		{
-			return;
+			return false;
 		}
 		VehicleCustomState state = m_states[sampVehicleId];
 		state.customModelId = customModelId;
@@ -85,6 +85,7 @@ public:
 			}
 		}
 		m_states.insert_or_assign(sampVehicleId, std::move(state));
+		return true;
 	}
 
 	void Unbind(uint16_t sampVehicleId)

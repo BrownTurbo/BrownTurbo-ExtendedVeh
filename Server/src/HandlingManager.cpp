@@ -1004,7 +1004,7 @@ void UnregisterCustomVehicle(uint32_t customModelId)
 	SendCustomVehicleDestroyToAll(customModelId);
 }
 
-void BeginCustomVehicleDef(uint32_t customModelId, uint32_t visualBase, uint32_t audioBase, uint32_t handlingBase, CustomVeh::Protocol::EngineSound engineSoundId)
+void BeginCustomVehicleDef(uint32_t customModelId, uint32_t visualBase, uint32_t audioBase, uint32_t handlingBase, CustomVeh::Protocol::EngineSound engineSoundId, const ModelConfig* preParsedConfig)
 {
 	ExtendedVehCompo* compo = ExtendedVehCompo::get();
 	ICore* core_ = compo ? compo->getCore() : nullptr;
@@ -1029,7 +1029,7 @@ void BeginCustomVehicleDef(uint32_t customModelId, uint32_t visualBase, uint32_t
 	entry.handlingModMap.clear();
 
 	// Auto-check and load model.ini if present in models/{customModelId}/
-	LoadCustomVehicleConfig(customModelId);
+	LoadCustomVehicleConfig(customModelId, preParsedConfig);
 }
 
 bool SetCustomVehicleAsset(uint32_t customModelId, std::string filename, CustomVeh::Protocol::AssetDescriptor CustomVeh::Protocol::VehicleDefinition::*asset)
@@ -1420,7 +1420,7 @@ void SendCustomVehicleDestroyToAll(uint32_t modelId)
 	}
 }
 
-bool LoadCustomVehicleConfig(uint32_t customModelId)
+bool LoadCustomVehicleConfig(uint32_t customModelId, const ModelConfig* preParsedConfig)
 {
 	ExtendedVehCompo* compo = ExtendedVehCompo::get();
 	ICore* core_ = compo ? compo->getCore() : nullptr;
@@ -1431,29 +1431,37 @@ bool LoadCustomVehicleConfig(uint32_t customModelId)
 		fs::path fallback = fs::path(g_modelsDir) / (std::to_string(customModelId) + ".ini");
 		if (fs::exists(fallback))
 			iniPath = fallback;
-		else
+		else if (!preParsedConfig)
 			return false;
 	}
 
-	uint32_t fallbackBase = 411;
 	auto itStaged = stagedCustomVehicleDefs.find(customModelId);
-	if (itStaged != stagedCustomVehicleDefs.end())
+
+	ModelConfig config;
+	if (preParsedConfig)
 	{
-		fallbackBase = itStaged->second.handlingBaseModel;
+		config = *preParsedConfig;
 	}
 	else
 	{
-		auto itComm = customVehicleDefs.find(customModelId);
-		if (itComm != customVehicleDefs.end())
-			fallbackBase = itComm->second.handlingBaseModel;
-	}
+		uint32_t fallbackBase = 411;
+		if (itStaged != stagedCustomVehicleDefs.end())
+		{
+			fallbackBase = itStaged->second.handlingBaseModel;
+		}
+		else
+		{
+			auto itComm = customVehicleDefs.find(customModelId);
+			if (itComm != customVehicleDefs.end())
+				fallbackBase = itComm->second.handlingBaseModel;
+		}
 
-	ModelConfig config;
-	if (!ModelConfigParser::ParseFile(iniPath, config, fallbackBase))
-	{
-		if (core_)
-			core_->logLn(LogLevel::Warning, "[ExtendedVeh] LoadCustomVehicleConfig: Failed to parse '%s' for model %u", iniPath.string().c_str(), customModelId);
-		return false;
+		if (!ModelConfigParser::ParseFile(iniPath, config, fallbackBase))
+		{
+			if (core_)
+				core_->logLn(LogLevel::Warning, "[ExtendedVeh] LoadCustomVehicleConfig: Failed to parse '%s' for model %u", iniPath.string().c_str(), customModelId);
+			return false;
+		}
 	}
 
 	customVehicleConfigs[customModelId] = config;
@@ -1496,15 +1504,34 @@ bool LoadCustomVehicleConfig(uint32_t customModelId)
 	if (config.hasHandling)
 	{
 		stHandlingEntry& entry = gCustomModelHandlings[customModelId];
-		eVehicleLightsSize originalFrontLights = entry.handlingData.m_nFrontLights;
+		eVehicleLightsSize priorFrontLights = entry.handlingData.m_nFrontLights;
+		bool hadPriorFrontMod = (entry.handlingModMap.find(HANDL_FRONTLIGHTS) != entry.handlingModMap.end());
+
+		eVehicleLightsSize priorRearLights = entry.handlingData.m_nRearLights;
+		bool hadPriorRearMod = (entry.handlingModMap.find(HANDL_REARLIGHTS) != entry.handlingModMap.end());
 
 		entry.handlingData = config.handlingData;
 
 		bool hasExplicitFrontLights = (config.handlingMods.find(HANDL_FRONTLIGHTS) != config.handlingMods.end());
-		if (!hasExplicitFrontLights)
+		if (!hasExplicitFrontLights && hadPriorFrontMod)
 		{
-			// Retain the base vehicle's front light size if not explicitly configured in model.ini
-			entry.handlingData.m_nFrontLights = originalFrontLights;
+			// Retain prior runtime modification if not explicitly specified in model.ini
+			entry.handlingData.m_nFrontLights = priorFrontLights;
+			stHandlingMod frontMod {};
+			frontMod.type = TYPE_BYTE;
+			frontMod.bval = static_cast<uint8_t>(priorFrontLights);
+			entry.handlingModMap[HANDL_FRONTLIGHTS] = frontMod;
+		}
+
+		bool hasExplicitRearLights = (config.handlingMods.find(HANDL_REARLIGHTS) != config.handlingMods.end());
+		if (!hasExplicitRearLights && hadPriorRearMod)
+		{
+			// Retain prior runtime modification if not explicitly specified in model.ini
+			entry.handlingData.m_nRearLights = priorRearLights;
+			stHandlingMod rearMod {};
+			rearMod.type = TYPE_BYTE;
+			rearMod.bval = static_cast<uint8_t>(priorRearLights);
+			entry.handlingModMap[HANDL_REARLIGHTS] = rearMod;
 		}
 
 		for (const auto& [attrib, mod] : config.handlingMods)
@@ -1641,7 +1668,7 @@ bool DefineCustomVehicleFromConfig(uint32_t customModelId, uint32_t defaultVisua
 	engineSound.OnSound = config.engineOnSound;
 	engineSound.OffSound = config.engineOffSound;
 
-	BeginCustomVehicleDef(customModelId, visualBase, audioBase, handlingBase, engineSound);
+	BeginCustomVehicleDef(customModelId, visualBase, audioBase, handlingBase, engineSound, hasIni ? &config : nullptr);
 
 	if (!SetCustomVehicleDff(customModelId))
 	{
@@ -1661,11 +1688,6 @@ bool DefineCustomVehicleFromConfig(uint32_t customModelId, uint32_t defaultVisua
 
 	// COL is optional
 	SetCustomVehicleCol(customModelId);
-
-	if (hasIni)
-	{
-		LoadCustomVehicleConfig(customModelId);
-	}
 
 	return CommitCustomVehicleDef(customModelId);
 }
