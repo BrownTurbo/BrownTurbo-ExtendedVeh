@@ -122,6 +122,8 @@ void ExtendedVehCompo::onInit(IComponentList* components)
 	}
 
 	core_->getEventDispatcher().addEventHandler(this);
+	core_->getPlayers().getPlayerConnectDispatcher().addEventHandler(this);
+	core_->getPlayers().getPlayerSpawnDispatcher().addEventHandler(this);
 
 	auto amxFuncs = pawn_component_->getAmxFunctions();
 	g_origAmxGetAddr = reinterpret_cast<amx_GetAddr_t>(amxFuncs[AMX_FUNC_GetAddr]);

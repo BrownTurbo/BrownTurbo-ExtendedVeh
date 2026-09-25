@@ -4,9 +4,11 @@
 #include <mutex>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 class CVehicle;
 class CColModel;
+struct RwFrame;
 
 class CustomVehicleBindingManager {
 public:
@@ -57,6 +59,12 @@ public:
 
 		bool backfireEnabled { false };
 		uint32_t lastBackfireTick { 0 };
+
+		bool hasPopupHeadlights { false };
+		float popupHeadlightAngle { 0.0f };
+		float popupMaxAngle { 0.6981317f }; // GTA SA native pop-up angle (0.6981317 rad = 40.0 deg)
+		uint32_t lastHeadlightActiveTick { 0 };
+		std::vector<RwFrame*> popupFrames;
 
 		bool hasCustomHorn { false };
 		int8_t hornSoundId { 0 };

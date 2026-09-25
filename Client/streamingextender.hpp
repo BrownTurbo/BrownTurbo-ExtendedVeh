@@ -358,6 +358,15 @@ public:
 		if (pInfo->m_pVehicleStruct) {
 			ExtractDummiesFromClump(pClump, pInfo->m_pVehicleStruct);
 
+			// Explicitly zero secondary headlights (slot 2) and secondary taillights (slot 3)
+			// if the custom model DFF does not contain headlights2 or taillights2 frames.
+			if (CClumpModelInfo::GetFrameFromName(pClump, "headlights2") == nullptr) {
+				pInfo->m_pVehicleStruct->m_avDummyPos[2] = CVector(0.0f, 0.0f, 0.0f);
+			}
+			if (CClumpModelInfo::GetFrameFromName(pClump, "taillights2") == nullptr) {
+				pInfo->m_pVehicleStruct->m_avDummyPos[3] = CVector(0.0f, 0.0f, 0.0f);
+			}
+
 			if (pBaseInfo && pBaseInfo->m_pVehicleStruct) {
 				// Fallback any (0,0,0) dummy positions from base vehicle
 				for (int i = 0; i < 15; ++i) {
@@ -398,6 +407,19 @@ public:
 		return s_customModels.contains(id);
 	}
 
+	static void SafeFreeCustomColModel(CColModel* col)
+	{
+		if (!col)
+			return;
+		if (col->m_pColData) {
+			col->m_nFlags = 0; // Clear bit 2 (0x04) so ~CColModel() won't attempt to free sub-arrays or link list!
+			auto pFree = reinterpret_cast<void(__cdecl*)(void*)>(0x72F430);
+			pFree(col->m_pColData);
+			col->m_pColData = nullptr;
+		}
+		reinterpret_cast<void(__cdecl*)(CColModel*)>(0x40fc40)(col);
+	}
+
 	static void DestroyCustomModel(uint32_t customId)
 	{
 		// Check if the model is still in use
@@ -422,7 +444,7 @@ public:
 
 			pInfo->DeleteRwObject();
 			if (pInfo->bDoWeOwnTheColModel && pInfo->m_pColModel) {
-				reinterpret_cast<void(__thiscall*)(CBaseModelInfo*)>(0x4C4C40)(pInfo);
+				SafeFreeCustomColModel(pInfo->m_pColModel);
 				pInfo->m_pColModel = nullptr;
 				pInfo->bDoWeOwnTheColModel = 0;
 			}
@@ -458,7 +480,7 @@ public:
 
 				pInfo->DeleteRwObject();
 				if (pInfo->bDoWeOwnTheColModel && pInfo->m_pColModel) {
-					reinterpret_cast<void(__thiscall*)(CBaseModelInfo*)>(0x4C4C40)(pInfo);
+					SafeFreeCustomColModel(pInfo->m_pColModel);
 					pInfo->m_pColModel = nullptr;
 					pInfo->bDoWeOwnTheColModel = 0;
 				}

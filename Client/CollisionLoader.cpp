@@ -101,8 +101,7 @@ void CollisionLoader::Shutdown()
 		 * object to GTA's collision model pool.
 		 */
 		if (handle.collision) {
-			delete handle.collision;
-
+			StreamingExtender::SafeFreeCustomColModel(handle.collision);
 			handle.collision = nullptr;
 		}
 
@@ -526,10 +525,6 @@ bool CollisionLoader::LoadCollisionFromMemory(uint8_t* data, size_t size, CVehic
 			pRecord = matched;
 	}
 
-	if (modelInfo->m_pColModel && !modelInfo->bDoWeOwnTheColModel) {
-		return false;
-	}
-
 	CColModel* newCollision = nullptr;
 	try {
 		newCollision = new CColModel();
@@ -539,20 +534,21 @@ bool CollisionLoader::LoadCollisionFromMemory(uint8_t* data, size_t size, CVehic
 
 	const Result loadResult = LoadRecordIntoGta(fileBuf, *pRecord, *newCollision, stats, err);
 	if (loadResult != Result::Success) {
-		delete newCollision;
+		StreamingExtender::SafeFreeCustomColModel(newCollision);
 		return false;
 	}
 
 	newCollision->m_nColSlot = 0xFF;
 
 	if (modelInfo->m_pColModel && modelInfo->bDoWeOwnTheColModel) {
-		delete modelInfo->m_pColModel;
+		StreamingExtender::SafeFreeCustomColModel(modelInfo->m_pColModel);
 		modelInfo->m_pColModel = nullptr;
+		modelInfo->bDoWeOwnTheColModel = 0;
 	}
 	modelInfo->m_pColModel = newCollision;
 	modelInfo->bDoWeOwnTheColModel = 1;
 
-	return LoadRecordIntoGta(fileBuf, *pRecord, *modelInfo->m_pColModel, stats, err) == Result::Success;
+	return true;
 }
 
 const RecordInfo*
@@ -843,7 +839,7 @@ CollisionLoader::Load(
 		outError);
 
 	if (loadResult != Result::Success) {
-		delete collision;
+		StreamingExtender::SafeFreeCustomColModel(collision);
 		return loadResult;
 	}
 
@@ -892,7 +888,7 @@ CollisionLoader::Load(
 
 		target->SetIsLod(int(handle.previousOwned));
 
-		delete collision;
+		StreamingExtender::SafeFreeCustomColModel(collision);
 
 		outError = "GTA failed to install the CColModel.";
 
@@ -1120,7 +1116,7 @@ CollisionLoader::Release(
 	}
 
 	if (handle.collision) {
-		delete handle.collision;
+		StreamingExtender::SafeFreeCustomColModel(handle.collision);
 		handle.collision = nullptr;
 	}
 
@@ -1175,7 +1171,7 @@ CollisionLoader::Unload(
 		handle.installed = false;
 	}
 
-	delete handle.collision;
+	StreamingExtender::SafeFreeCustomColModel(handle.collision);
 	handle.collision = nullptr;
 
 	loaded_.erase(it);

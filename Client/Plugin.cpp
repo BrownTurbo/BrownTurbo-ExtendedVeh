@@ -6,6 +6,7 @@
 #include <game_sa/CBike.h>
 #include <game_sa/CCamera.h>
 #include <game_sa/CCheat.h>
+#include <game_sa/CClock.h>
 #include <game_sa/CCoronas.h>
 #include <game_sa/CHandlingDataMgr.h>
 #include <game_sa/CColModel.h>
@@ -41,7 +42,7 @@ struct DummySwapGuard {
 		: m_baseModel(baseModel)
 		, m_savedStruct(nullptr)
 	{
-		if (m_baseModel && customModel && customModel->m_pVehicleStruct) {
+		if (m_baseModel && customModel && customModel->m_pVehicleStruct && m_baseModel != customModel && m_baseModel->m_pVehicleStruct != customModel->m_pVehicleStruct) {
 			m_savedStruct = m_baseModel->m_pVehicleStruct;
 			m_baseModel->m_pVehicleStruct = customModel->m_pVehicleStruct;
 		}
@@ -660,6 +661,25 @@ static bool __fastcall Hooked_DoHeadLightEffect(CVehicle* thisVehicle, void* edx
 	if (thisVehicle && IsVehiclePointerValid(thisVehicle)) {
 		auto* binding = CustomVehicleBindingManager::Instance().FindByVehicle(thisVehicle);
 		if (binding) {
+			if (dummyId == 0 && lightState != 0) {
+				binding->lastHeadlightActiveTick = GetTickCount();
+			}
+
+			// If dummyId == 2 (secondary headlight), only allow if custom model actually has headlights2
+			if (dummyId == 2) {
+				auto* customModel = StreamingExtender::GetCustomModel(binding->customModelId);
+				if (!customModel || !customModel->m_pRwClump || CClumpModelInfo::GetFrameFromName(customModel->m_pRwClump, "headlights2") == nullptr) {
+					s_pCurrentHeadLightVehicle = nullptr;
+					return false;
+				}
+			}
+
+			// If this vehicle has popup headlights and they are closed, don't draw headlight coronas/cones
+			if (binding->hasPopupHeadlights && binding->popupHeadlightAngle < 0.15f) {
+				s_pCurrentHeadLightVehicle = nullptr;
+				return false;
+			}
+
 			auto* customModel = StreamingExtender::GetCustomModel(binding->customModelId);
 			auto* baseModel = reinterpret_cast<CVehicleModelInfo*>(CModelInfo::GetModelInfo(thisVehicle->m_nModelIndex));
 			DummySwapGuard guard(baseModel, customModel);
@@ -681,15 +701,60 @@ static bool __fastcall Hooked_DoHeadLightEffect(CVehicle* thisVehicle, void* edx
 static bool __fastcall Hooked_DoTailLightEffect(CVehicle* thisVehicle, void* edx, int lightId, CMatrix& matrix, unsigned char arg2, unsigned char arg3, unsigned int arg4, unsigned char arg5)
 {
 	s_pCurrentTailLightVehicle = thisVehicle;
-	// In GTA SA, arg4 is bSkipCorona (1 skips corona registration for running lights, 0 draws it).
-	// arg5 is bCalculateColor (1 calculates red brightness and color, 0 drops it).
-	// Setting arg4 = 0 and arg5 = 1 forces taillights to render their red glowing lens coronas at night!
-	arg4 = 0;
-	arg5 = 1;
 	bool res = false;
 
 	if (thisVehicle && IsVehiclePointerValid(thisVehicle)) {
 		auto* binding = CustomVehicleBindingManager::Instance().FindByVehicle(thisVehicle);
+		if (binding) {
+			// lightId == 1 corresponds to secondary taillights (taillights2 / m_avDummyPos[3])
+			if (lightId == 1) {
+				auto* customModel = StreamingExtender::GetCustomModel(binding->customModelId);
+				if (!customModel || !customModel->m_pRwClump || CClumpModelInfo::GetFrameFromName(customModel->m_pRwClump, "taillights2") == nullptr) {
+					s_pCurrentTailLightVehicle = nullptr;
+					return false;
+				}
+			}
+		}
+
+		bool isNight = (CClock::ms_nGameClockHours >= 20 || CClock::ms_nGameClockHours < 7);
+		bool lightsOn = (thisVehicle->bLightsOn != 0) || (thisVehicle->bEngineOn != 0 && isNight);
+		bool hasDriver = (thisVehicle->m_pDriver != nullptr);
+		bool isHandbrake = (thisVehicle->bIsHandbrakeOn != 0);
+		bool isFootBrake = (thisVehicle->m_fBreakPedal > 0.05f);
+		bool isBraking = hasDriver && (isFootBrake || isHandbrake);
+
+		bool isReversing = false;
+		if (thisVehicle->m_nVehicleSubClass == VEHICLE_AUTOMOBILE && hasDriver && thisVehicle->bEngineOn) {
+			auto* car = reinterpret_cast<CAutomobile*>(thisVehicle);
+			CVector fwd = car->m_matrix ? car->m_matrix->up : car->GetForward();
+			float fwdSpeed = car->m_vecMoveSpeed.x * fwd.x + car->m_vecMoveSpeed.y * fwd.y + car->m_vecMoveSpeed.z * fwd.z;
+			if ((car->m_nCurrentGear == 0 && car->m_fGasPedal > 0.05f) || (fwdSpeed < -0.01f)) {
+				isReversing = true;
+			}
+		}
+
+		// Support Handbrake Lighting Up Brake Lights:
+		// In vanilla GTA SA at 0x6E19A1, test [esi+0x428], 0x20 skips brake lights when bIsHandbrakeOn is set.
+		// Temporarily clear bIsHandbrakeOn and set m_fBreakPedal = 1.0f so GTA SA calculates full brake brightness.
+		bool origHandbrake = thisVehicle->bIsHandbrakeOn;
+		float origBrakePedal = thisVehicle->m_fBreakPedal;
+		if (isHandbrake && hasDriver) {
+			thisVehicle->bIsHandbrakeOn = false;
+			if (thisVehicle->m_fBreakPedal < 1.0f) {
+				thisVehicle->m_fBreakPedal = 1.0f;
+			}
+		}
+
+		// Corona registration mode:
+		if (isBraking) {
+			arg4 = 0; // Ensure brake light corona is not skipped by arg4 flag
+		} else if (isReversing) {
+			arg4 = 0; // Allow reverse light corona
+			arg5 = 1; // Compute color/brightness
+		} else if (lightsOn && arg5 == 1) {
+			arg4 = 0; // Allow night running light corona
+		}
+
 		if (binding) {
 			auto* customModel = StreamingExtender::GetCustomModel(binding->customModelId);
 			auto* baseModel = reinterpret_cast<CVehicleModelInfo*>(CModelInfo::GetModelInfo(thisVehicle->m_nModelIndex));
@@ -697,9 +762,19 @@ static bool __fastcall Hooked_DoTailLightEffect(CVehicle* thisVehicle, void* edx
 			if (g_origDoTailLightEffect) {
 				res = g_origDoTailLightEffect(thisVehicle, edx, lightId, matrix, arg2, arg3, arg4, arg5);
 			}
-			s_pCurrentTailLightVehicle = nullptr;
-			return res;
+		} else {
+			if (g_origDoTailLightEffect) {
+				res = g_origDoTailLightEffect(thisVehicle, edx, lightId, matrix, arg2, arg3, arg4, arg5);
+			}
 		}
+
+		if (isHandbrake && hasDriver) {
+			thisVehicle->bIsHandbrakeOn = origHandbrake;
+			thisVehicle->m_fBreakPedal = origBrakePedal;
+		}
+
+		s_pCurrentTailLightVehicle = nullptr;
+		return res;
 	}
 
 	if (g_origDoTailLightEffect) {
@@ -707,6 +782,89 @@ static bool __fastcall Hooked_DoTailLightEffect(CVehicle* thisVehicle, void* edx
 	}
 	s_pCurrentTailLightVehicle = nullptr;
 	return res;
+}
+
+static void(__fastcall* g_origDoVehicleLights)(CVehicle* thisVehicle, void* edx, CMatrix& matrix, unsigned int flags) = nullptr;
+
+static void __fastcall Hooked_DoVehicleLights(CVehicle* thisVehicle, void* edx, CMatrix& matrix, unsigned int flags)
+{
+	if (!thisVehicle || !IsVehiclePointerValid(thisVehicle)) {
+		if (g_origDoVehicleLights)
+			g_origDoVehicleLights(thisVehicle, edx, matrix, flags);
+		return;
+	}
+
+	auto* binding = CustomVehicleBindingManager::Instance().FindByVehicle(thisVehicle);
+	if (binding) {
+		auto* customModel = StreamingExtender::GetCustomModel(binding->customModelId);
+		auto* baseModel = reinterpret_cast<CVehicleModelInfo*>(CModelInfo::GetModelInfo(thisVehicle->m_nModelIndex));
+		DummySwapGuard guard(baseModel, customModel);
+		if (g_origDoVehicleLights) {
+			g_origDoVehicleLights(thisVehicle, edx, matrix, flags);
+		}
+		return;
+	}
+
+	if (g_origDoVehicleLights) {
+		g_origDoVehicleLights(thisVehicle, edx, matrix, flags);
+	}
+}
+
+static bool s_bLoadingCustomVehicleDff = false;
+static RwStream* (__cdecl* g_origClumpCollisionRead)(RwStream* stream, unsigned int length, void* object, int offsetInObject) = nullptr;
+
+static RwStream* __cdecl Hooked_ClumpCollisionRead(RwStream* stream, unsigned int length, void* object, int offsetInObject)
+{
+	if (s_bLoadingCustomVehicleDff) {
+		RwStreamSkip(stream, length);
+		return stream;
+	}
+	return g_origClumpCollisionRead ? g_origClumpCollisionRead(stream, length, object, offsetInObject) : stream;
+}
+
+static void(__fastcall* g_origCAutomobile_PreRender)(CAutomobile* thisCar, void* edx) = nullptr;
+
+static void __fastcall Hooked_CAutomobile_PreRender(CAutomobile* thisCar, void* edx)
+{
+	if (!thisCar || !IsVehiclePointerValid(thisCar)) {
+		if (g_origCAutomobile_PreRender)
+			g_origCAutomobile_PreRender(thisCar, edx);
+		return;
+	}
+
+	if (g_origCAutomobile_PreRender)
+		g_origCAutomobile_PreRender(thisCar, edx);
+
+	auto* binding = CustomVehicleBindingManager::Instance().FindByVehicle(thisCar);
+	if (binding && binding->hasPopupHeadlights && !binding->popupFrames.empty()) {
+		bool isNight = (CClock::ms_nGameClockHours >= 20 || CClock::ms_nGameClockHours < 7);
+		bool lightsOn = (thisCar->bLightsOn != 0) ||
+			(thisCar->bEngineOn != 0 && isNight);
+
+		uint32_t now = GetTickCount();
+		if (binding->lastHeadlightActiveTick > 0 && (now - binding->lastHeadlightActiveTick < 200)) {
+			lightsOn = true;
+		}
+
+		float targetAngle = lightsOn ? binding->popupMaxAngle : 0.0f;
+		float step = 0.035f * CTimer::ms_fTimeStep;
+
+		if (binding->popupHeadlightAngle < targetAngle) {
+			binding->popupHeadlightAngle = (std::min)(targetAngle, binding->popupHeadlightAngle + step);
+		} else if (binding->popupHeadlightAngle > targetAngle) {
+			binding->popupHeadlightAngle = (std::max)(targetAngle, binding->popupHeadlightAngle - step);
+		}
+
+		// Synchronize native automobile pop-up headlight angle (offset 0x958)
+		*reinterpret_cast<float*>(reinterpret_cast<uintptr_t>(thisCar) + 0x958) = binding->popupHeadlightAngle;
+
+		for (RwFrame* frame : binding->popupFrames) {
+			if (frame) {
+				thisCar->SetComponentRotation(frame, 0, binding->popupHeadlightAngle, true);
+				RwFrameUpdateObjects(frame);
+			}
+		}
+	}
 }
 
 static void(__fastcall* g_origAddExhaustParticles)(CVehicle* thisVehicle, void* edx) = nullptr;
@@ -1038,26 +1196,40 @@ static void __cdecl Hooked_RegisterCoronaTexture(
 		}
 	}
 
+	auto* binding = pVeh ? CustomVehicleBindingManager::Instance().FindByVehicle(pVeh) : nullptr;
+	if (binding && binding->hasPopupHeadlights && isFront) {
+		if (binding->popupHeadlightAngle < 0.15f) {
+			return; // Suppress front headlight coronas while popup headlights are closed
+		}
+		cfg.allowClustering = false; // Suppress horizontal/vertical clustering so popups don't duplicate
+	}
+
 	radius *= scale;
 	if (isRear) {
-		if (category == eVehicleLightingCategory::RCVehicle) {
-			radius = std::clamp(radius, 0.03f, 0.08f);
-		} else if (category == eVehicleLightingCategory::TwoWheeler) {
-			radius = std::clamp(radius, 0.14f, 0.28f);
-		} else {
-			radius = std::clamp(radius, 0.18f, 0.38f);
+		bool isBraking = false;
+		bool isReversing = false;
+
+		if (pVeh) {
+			bool hasDriver = (pVeh->m_pDriver != nullptr);
+			bool isHandbrake = (pVeh->bIsHandbrakeOn != 0);
+			bool isFootBrake = (pVeh->m_fBreakPedal > 0.05f);
+			isBraking = hasDriver && (isFootBrake || isHandbrake);
+
+			if (pVeh->m_nVehicleSubClass == VEHICLE_AUTOMOBILE && hasDriver && pVeh->bEngineOn) {
+				auto* car = reinterpret_cast<CAutomobile*>(pVeh);
+				CVector fwd = car->m_matrix ? car->m_matrix->up : car->GetForward();
+				float fwdSpeed = car->m_vecMoveSpeed.x * fwd.x + car->m_vecMoveSpeed.y * fwd.y + car->m_vecMoveSpeed.z * fwd.z;
+				if ((car->m_nCurrentGear == 0 && car->m_fGasPedal > 0.05f) || (fwdSpeed < -0.01f)) {
+					isReversing = true;
+				}
+			}
 		}
 
 		// Directional camera-facing check (MTA:SA approach):
 		// Taillights face backwards. When camera is in front of the vehicle or perpendicular,
 		// the taillights are occluded by the vehicle chassis/doors and must not bleed through.
 		if (pVeh) {
-			CVector dirFwd(0.0f, 1.0f, 0.0f);
-			if (pVeh->m_matrix) {
-				dirFwd = pVeh->m_matrix->up;
-			} else {
-				dirFwd = pVeh->GetForward();
-			}
+			CVector dirFwd = pVeh->m_matrix ? pVeh->m_matrix->up : pVeh->GetForward();
 			CVector vehBack = -dirFwd;
 
 			CVector worldPos = posn;
@@ -1084,22 +1256,36 @@ static void __cdecl Hooked_RegisterCoronaTexture(
 			}
 		}
 
-		// Calibrated automotive taillight alpha:
-		// Running lights (night driving): crisp, elegant, translucent red lens glow (~70 - 110).
-		// Brake lights: rich, intense stopping signal (~160 - 225).
-		if (alpha < 130) {
-			alpha = static_cast<unsigned char>(std::clamp(static_cast<int>(alpha * 1.15f), 70, 110));
+		if (isBraking) {
+			// Intense crimson brake light signal (foot brake or handbrake)
+			radius *= 1.35f;
+			alpha = static_cast<unsigned char>(std::clamp(static_cast<int>(alpha * 1.6f), 180, 240));
+			red = 255;
+			green = 20;
+			blue = 20;
+		} else if (isReversing) {
+			// Crisp, bright white reverse light
+			radius *= 0.90f;
+			alpha = static_cast<unsigned char>(std::clamp(static_cast<int>(alpha * 1.5f), 170, 230));
+			red = 245;
+			green = 245;
+			blue = 240;
 		} else {
-			alpha = static_cast<unsigned char>(std::clamp(static_cast<int>(alpha * 1.05f), 160, 225));
+			// Subtle, translucent night running light
+			radius *= 0.85f;
+			alpha = static_cast<unsigned char>(std::clamp(static_cast<int>(alpha * 0.75f), 55, 95));
+			red = 215;
+			green = 20;
+			blue = 20;
 		}
 
-		// Deep, vibrant crimson red color
-		if (red < 200)
-			red = 230;
-		if (green > 35)
-			green = 25;
-		if (blue > 35)
-			blue = 25;
+		if (category == eVehicleLightingCategory::RCVehicle) {
+			radius = std::clamp(radius, 0.03f, 0.08f);
+		} else if (category == eVehicleLightingCategory::TwoWheeler) {
+			radius = std::clamp(radius, 0.12f, isBraking ? 0.32f : 0.22f);
+		} else {
+			radius = std::clamp(radius, 0.16f, isBraking ? 0.45f : 0.28f);
+		}
 
 		farClip *= 1.15f;
 	} else if (isFront) {
@@ -1794,6 +1980,7 @@ private:
 				// model info and flag ownership (0x41B2C7: or byte ptr [eax+13h], 8).
 				// If ds:[0x009689E0] is null, it crashes at 0x4C4BD2 (inside SetColModel)
 				// or at 0x41B2C7. Setting it here mirrors GTA SA CStreaming::ConvertModelToLoaded (0x536798).
+				s_bLoadingCustomVehicleDff = true;
 				auto SetCollisionModel = reinterpret_cast<void(__cdecl*)(CBaseModelInfo*)>(0x0041B350);
 				SetCollisionModel(newModel);
 				*reinterpret_cast<CBaseModelInfo**>(0x009689E0) = newModel;
@@ -1807,6 +1994,7 @@ private:
 				SetCollisionModel(nullptr);
 				*reinterpret_cast<CBaseModelInfo**>(0x009689E0) = nullptr;
 				StopUsingCommonVehicleTexDictionary();
+				s_bLoadingCustomVehicleDff = false;
 
 				ClientLog(LogLevel::Debug, std::format("RpClumpStreamRead model {} -> clump=0x{:08X} (exc=0x{:08X})", pending->def.customModelId, reinterpret_cast<std::uintptr_t>(pClump), clumpException));
 				RwStreamClose(dffStream, nullptr);
@@ -1898,8 +2086,10 @@ private:
 						}
 						if (!hasValidLines) {
 							// If custom collision cannot provide valid suspension lines, safely delete it and revert to base vehicle's collision
-							if (newModel->m_pColModel) {
-								reinterpret_cast<void(__thiscall*)(CBaseModelInfo*)>(0x4C4C40)(newModel);
+							if (newModel->m_pColModel && newModel->bDoWeOwnTheColModel) {
+								StreamingExtender::SafeFreeCustomColModel(newModel->m_pColModel);
+								newModel->m_pColModel = nullptr;
+								newModel->bDoWeOwnTheColModel = 0;
 							}
 							if (visualBase && visualBase->m_pColModel) {
 								newModel->m_pColModel = visualBase->m_pColModel;
@@ -2950,6 +3140,42 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD dwReason, LPVOID lpReserved)
 			ClientLog(LogLevel::Error, std::format("Failed to hook CVehicle::DoTailLightEffect (0x6E1780): {}", MH_StatusToString(tlStatus)));
 		}
 
+		MH_STATUS vlStatus = MH_CreateHook(reinterpret_cast<void*>(0x6E1A60), reinterpret_cast<void*>(&Hooked_DoVehicleLights), reinterpret_cast<void**>(&g_origDoVehicleLights));
+		if (vlStatus == MH_OK) {
+			MH_STATUS enableStatus = MH_EnableHook(reinterpret_cast<void*>(0x6E1A60));
+			if (enableStatus == MH_OK) {
+				ClientLog(LogLevel::Info, "CVehicle::DoVehicleLights (0x6E1A60) hooked successfully via MinHook");
+			} else {
+				ClientLog(LogLevel::Error, std::format("Failed to enable CVehicle::DoVehicleLights hook: {}", MH_StatusToString(enableStatus)));
+			}
+		} else {
+			ClientLog(LogLevel::Error, std::format("Failed to hook CVehicle::DoVehicleLights (0x6E1A60): {}", MH_StatusToString(vlStatus)));
+		}
+
+		MH_STATUS preRenderStatus = MH_CreateHook(reinterpret_cast<void*>(0x6AAB50), reinterpret_cast<void*>(&Hooked_CAutomobile_PreRender), reinterpret_cast<void**>(&g_origCAutomobile_PreRender));
+		if (preRenderStatus == MH_OK) {
+			MH_STATUS enableStatus = MH_EnableHook(reinterpret_cast<void*>(0x6AAB50));
+			if (enableStatus == MH_OK) {
+				ClientLog(LogLevel::Info, "CAutomobile::PreRender (0x6AAB50) hooked successfully via MinHook");
+			} else {
+				ClientLog(LogLevel::Error, std::format("Failed to enable CAutomobile::PreRender hook: {}", MH_StatusToString(enableStatus)));
+			}
+		} else {
+			ClientLog(LogLevel::Error, std::format("Failed to hook CAutomobile::PreRender (0x6AAB50): {}", MH_StatusToString(preRenderStatus)));
+		}
+
+		MH_STATUS dffColStatus = MH_CreateHook(reinterpret_cast<void*>(0x41B1D0), reinterpret_cast<void*>(&Hooked_ClumpCollisionRead), reinterpret_cast<void**>(&g_origClumpCollisionRead));
+		if (dffColStatus == MH_OK) {
+			MH_STATUS enableStatus = MH_EnableHook(reinterpret_cast<void*>(0x41B1D0));
+			if (enableStatus == MH_OK) {
+				ClientLog(LogLevel::Info, "ClumpCollisionRead (0x41B1D0) hooked successfully via MinHook");
+			} else {
+				ClientLog(LogLevel::Error, std::format("Failed to enable ClumpCollisionRead hook: {}", MH_StatusToString(enableStatus)));
+			}
+		} else {
+			ClientLog(LogLevel::Error, std::format("Failed to hook ClumpCollisionRead (0x41B1D0): {}", MH_StatusToString(dffColStatus)));
+		}
+
 		MH_STATUS exhStatus = MH_CreateHook(reinterpret_cast<void*>(0x6DE240), reinterpret_cast<void*>(&Hooked_AddExhaustParticles), reinterpret_cast<void**>(&g_origAddExhaustParticles));
 		if (exhStatus == MH_OK) {
 			MH_STATUS enableStatus = MH_EnableHook(reinterpret_cast<void*>(0x6DE240));
@@ -3114,6 +3340,24 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD dwReason, LPVOID lpReserved)
 			MH_DisableHook(reinterpret_cast<void*>(0x6E1780));
 			MH_RemoveHook(reinterpret_cast<void*>(0x6E1780));
 			g_origDoTailLightEffect = nullptr;
+		}
+
+		if (g_origDoVehicleLights) {
+			MH_DisableHook(reinterpret_cast<void*>(0x6E1A60));
+			MH_RemoveHook(reinterpret_cast<void*>(0x6E1A60));
+			g_origDoVehicleLights = nullptr;
+		}
+
+		if (g_origCAutomobile_PreRender) {
+			MH_DisableHook(reinterpret_cast<void*>(0x6AAB50));
+			MH_RemoveHook(reinterpret_cast<void*>(0x6AAB50));
+			g_origCAutomobile_PreRender = nullptr;
+		}
+
+		if (g_origClumpCollisionRead) {
+			MH_DisableHook(reinterpret_cast<void*>(0x41B1D0));
+			MH_RemoveHook(reinterpret_cast<void*>(0x41B1D0));
+			g_origClumpCollisionRead = nullptr;
 		}
 
 		if (g_origAddExhaustParticles) {

@@ -480,6 +480,26 @@ void CustomVehicleBindingManager::Process()
 					}
 				}
 
+				binding.popupFrames.clear();
+				binding.hasPopupHeadlights = false;
+				binding.popupHeadlightAngle = 0.0f;
+				binding.lastHeadlightActiveTick = 0;
+
+				const char* popupNodeNames[] = {
+					"farolzr", "misc_a", "popupr", "popupl", "popup_l", "popup_r", "popup_light", "popup_light_l", "popup_light_r", "popup", "farol"
+				};
+				for (const char* nodeName : popupNodeNames) {
+					RwFrame* frame = CClumpModelInfo::GetFrameFromName(newClump, nodeName);
+					if (frame && std::find(binding.popupFrames.begin(), binding.popupFrames.end(), frame) == binding.popupFrames.end()) {
+						binding.popupFrames.push_back(frame);
+						binding.hasPopupHeadlights = true;
+					}
+				}
+				if (binding.hasPopupHeadlights) {
+					ClientLog(LogLevel::Info, std::format("Detected {} popup headlight frame(s) for vehicle {} (customModel={})",
+						static_cast<unsigned int>(binding.popupFrames.size()), vehicleId, binding.customModelId));
+				}
+
 				if (binding.hasCustomWheel) {
 					ApplyWheelToVehicle(vehicle, binding.customWheelModelId);
 				} else if (model && model->m_nWheelModelIndex > 0) {
