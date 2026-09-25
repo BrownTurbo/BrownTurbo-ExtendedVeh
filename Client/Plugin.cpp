@@ -716,15 +716,30 @@ static bool __fastcall Hooked_DoTailLightEffect(CVehicle* thisVehicle, void* edx
 			}
 		}
 
+		bool inWater = (thisVehicle->bSubmergedInWater != 0)
+			|| (thisVehicle->bIsDrowning != 0)
+			|| (thisVehicle->bTouchingWater != 0 && !thisVehicle->bEngineOn);
+
 		bool isNight = (CClock::ms_nGameClockHours >= 20 || CClock::ms_nGameClockHours < 7);
-		bool lightsOn = (thisVehicle->bLightsOn != 0) || (thisVehicle->bEngineOn != 0 && isNight);
+		bool lightsOn = !inWater && ((thisVehicle->bLightsOn != 0) || (thisVehicle->bEngineOn != 0 && isNight));
 		bool hasDriver = (thisVehicle->m_pDriver != nullptr);
-		bool isHandbrake = (thisVehicle->bIsHandbrakeOn != 0);
-		bool isFootBrake = (thisVehicle->m_fBreakPedal > 0.05f);
+
+		// In GTA SA, bIsHandbrakeOn is automatically forced to 1 by water physics when floating in water!
+		// For the local player, verify via CPad::GetPad(0)->GetHandBrake().
+		// If floating/submerged in water or engine off, handbrake is ignored.
+		bool isHandbrake = false;
+		if (!inWater && thisVehicle->bEngineOn) {
+			if (hasDriver && thisVehicle->m_pDriver == FindPlayerPed(-1)) {
+				isHandbrake = (CPad::GetPad(0)->GetHandBrake() > 0);
+			} else {
+				isHandbrake = (thisVehicle->bIsHandbrakeOn != 0);
+			}
+		}
+		bool isFootBrake = !inWater && (thisVehicle->m_fBreakPedal > 0.05f);
 		bool isBraking = hasDriver && (isFootBrake || isHandbrake);
 
 		bool isReversing = false;
-		if (thisVehicle->m_nVehicleSubClass == VEHICLE_AUTOMOBILE && hasDriver && thisVehicle->bEngineOn) {
+		if (thisVehicle->m_nVehicleSubClass == VEHICLE_AUTOMOBILE && hasDriver && thisVehicle->bEngineOn && !inWater) {
 			auto* car = reinterpret_cast<CAutomobile*>(thisVehicle);
 			CVector fwd = car->m_matrix ? car->m_matrix->up : car->GetForward();
 			float fwdSpeed = car->m_vecMoveSpeed.x * fwd.x + car->m_vecMoveSpeed.y * fwd.y + car->m_vecMoveSpeed.z * fwd.z;
@@ -1210,12 +1225,27 @@ static void __cdecl Hooked_RegisterCoronaTexture(
 		bool isReversing = false;
 
 		if (pVeh) {
+			bool inWater = (pVeh->bSubmergedInWater != 0)
+				|| (pVeh->bIsDrowning != 0)
+				|| (pVeh->bTouchingWater != 0 && !pVeh->bEngineOn);
+
+			if (inWater && !pVeh->bEngineOn) {
+				return; // Suppress rear light coronas when floating/drowned in water
+			}
+
 			bool hasDriver = (pVeh->m_pDriver != nullptr);
-			bool isHandbrake = (pVeh->bIsHandbrakeOn != 0);
-			bool isFootBrake = (pVeh->m_fBreakPedal > 0.05f);
+			bool isHandbrake = false;
+			if (!inWater && pVeh->bEngineOn) {
+				if (hasDriver && pVeh->m_pDriver == FindPlayerPed(-1)) {
+					isHandbrake = (CPad::GetPad(0)->GetHandBrake() > 0);
+				} else {
+					isHandbrake = (pVeh->bIsHandbrakeOn != 0);
+				}
+			}
+			bool isFootBrake = !inWater && (pVeh->m_fBreakPedal > 0.05f);
 			isBraking = hasDriver && (isFootBrake || isHandbrake);
 
-			if (pVeh->m_nVehicleSubClass == VEHICLE_AUTOMOBILE && hasDriver && pVeh->bEngineOn) {
+			if (pVeh->m_nVehicleSubClass == VEHICLE_AUTOMOBILE && hasDriver && pVeh->bEngineOn && !inWater) {
 				auto* car = reinterpret_cast<CAutomobile*>(pVeh);
 				CVector fwd = car->m_matrix ? car->m_matrix->up : car->GetForward();
 				float fwdSpeed = car->m_vecMoveSpeed.x * fwd.x + car->m_vecMoveSpeed.y * fwd.y + car->m_vecMoveSpeed.z * fwd.z;
