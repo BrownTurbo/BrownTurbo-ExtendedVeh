@@ -9,22 +9,6 @@
 #include <sstream>
 #include <vector>
 
-std::string CryptoUtility::BytesToHex(const std::uint8_t* buffer, std::size_t length)
-{
-	if (length > 0 && buffer == nullptr)
-		return {};
-
-	static constexpr char HEX[] = "0123456789abcdef";
-	std::string result;
-	result.resize(length * 2);
-
-	for (std::size_t i = 0; i < length; ++i) {
-		result[i * 2] = HEX[(buffer[i] >> 4) & 0x0F];
-		result[i * 2 + 1] = HEX[buffer[i] & 0x0F];
-	}
-	return result;
-}
-
 #if __has_include(<hash-library/sha256.h>)
 #include <hash-library/sha256.h>
 #else
