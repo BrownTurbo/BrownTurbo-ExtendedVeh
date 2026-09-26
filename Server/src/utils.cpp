@@ -2,39 +2,19 @@
 #include "defs.h"
 #include "HandlingManager.h"
 
+#if __has_include(<hash-library/sha256.h>)
+#include <hash-library/sha256.h>
+#else
+#include <sha256.h>
+#endif
+
 std::string Sha256Hex(const uint8_t* data, size_t length)
 {
-	BCRYPT_ALG_HANDLE hAlg = nullptr;
-	BCRYPT_HASH_HANDLE hHash = nullptr;
-	DWORD cbHash = 0, cbData = 0;
-	std::string result;
+	if (!data && length > 0)
+		return {};
 
-	if (BCryptOpenAlgorithmProvider(&hAlg, BCRYPT_SHA256_ALGORITHM, nullptr, 0) < 0)
-		return result;
-	if (BCryptGetProperty(hAlg, BCRYPT_HASH_LENGTH,
-			reinterpret_cast<PUCHAR>(&cbHash), sizeof(DWORD),
-			&cbData, 0)
-		< 0)
-	{
-		BCryptCloseAlgorithmProvider(hAlg, 0);
-		return result;
-	}
-	std::vector<uint8_t> hash(cbHash);
-	if (BCryptCreateHash(hAlg, &hHash, nullptr, 0, nullptr, 0, 0) >= 0)
-	{
-		BCryptHashData(hHash, const_cast<PUCHAR>(data), static_cast<ULONG>(length),
-			0);
-		if (BCryptFinishHash(hHash, hash.data(), cbHash, 0) >= 0)
-		{
-			char hex[2 * 32 + 1] = {};
-			for (size_t i = 0; i < hash.size(); ++i)
-				std::snprintf(hex + i * 2, 3, "%02x", hash[i]);
-			result.assign(hex);
-		}
-		BCryptDestroyHash(hHash);
-	}
-	BCryptCloseAlgorithmProvider(hAlg, 0);
-	return result;
+	SHA256 sha256;
+	return sha256(data, length);
 }
 
 bool IsPathInsideBase(const std::filesystem::path& baseDir, const std::filesystem::path& candidate)
@@ -70,6 +50,8 @@ bool ComputeFileSha256(const std::string& relativePath, std::string& outHex)
 {
 	try
 	{
+		outHex.clear();
+
 		fs::path candidate = fs::path(relativePath);
 		if (!candidate.is_absolute() && !IsPathInsideBase(g_modelsDir, candidate))
 		{
@@ -80,10 +62,20 @@ bool ComputeFileSha256(const std::string& relativePath, std::string& outHex)
 		std::ifstream file(candidate, std::ios::binary);
 		if (!file.is_open())
 			return false;
-		std::vector<uint8_t> data((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
 
-		outHex = Sha256Hex(data.data(), data.size());
-		return !outHex.empty();
+		SHA256 sha256;
+		std::vector<char> buffer(64 * 1024);
+
+		while (file.read(buffer.data(), buffer.size()) || file.gcount() > 0)
+		{
+			sha256.add(buffer.data(), static_cast<size_t>(file.gcount()));
+		}
+
+		if (file.bad())
+			return false;
+
+		outHex = sha256.getHash();
+		return outHex.size() == 64;
 	}
 	catch (...)
 	{

@@ -1,8 +1,6 @@
 #pragma once
 
 #include <windows.h>
-#include <bcrypt.h>
-#pragma comment(lib, "bcrypt.lib")
 #include <algorithm>
 #include <cstdint>
 #include <cstdio>

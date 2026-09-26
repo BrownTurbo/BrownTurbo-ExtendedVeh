@@ -2766,9 +2766,7 @@ static void OnGameProcess()
 						cur.gameVeh->bEngineOn = true;
 						cur.gameVeh->bIsDrowning = false;
 						cur.gameVeh->bSubmergedInWater = false;
-						if (cur.gameVeh->m_pDriver != localPed) {
-							cur.gameVeh->bIsHandbrakeOn = false;
-						}
+						cur.gameVeh->bIsHandbrakeOn = false;
 						if (cur.gameVeh->m_pHandlingData->m_fBuoyancyConstant > 0.0f) {
 							cur.gameVeh->m_fBuoyancyConstant = cur.gameVeh->m_pHandlingData->m_fBuoyancyConstant;
 						}
