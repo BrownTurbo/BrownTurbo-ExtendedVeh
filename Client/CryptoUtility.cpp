@@ -1,15 +1,13 @@
 #include "CryptoUtility.h"
 
 #include <windows.h>
-#include <bcrypt.h>
 
 #include <array>
+#include <filesystem>
 #include <fstream>
 #include <iomanip>
 #include <sstream>
 #include <vector>
-
-#pragma comment(lib, "bcrypt.lib")
 
 std::string CryptoUtility::BytesToHex(const std::uint8_t* buffer, std::size_t length)
 {
@@ -27,6 +25,12 @@ std::string CryptoUtility::BytesToHex(const std::uint8_t* buffer, std::size_t le
 	return result;
 }
 
+#if __has_include(<hash-library/sha256.h>)
+#include <hash-library/sha256.h>
+#else
+#include <sha256.h>
+#endif
+
 bool CryptoUtility::ComputeSHA256(const std::uint8_t* data, std::size_t length, std::string& outHashStr)
 {
 	outHashStr.clear();
@@ -34,248 +38,38 @@ bool CryptoUtility::ComputeSHA256(const std::uint8_t* data, std::size_t length, 
 	if (length > 0 && data == nullptr)
 		return false;
 
-	BCRYPT_ALG_HANDLE hAlg = nullptr;
-	BCRYPT_HASH_HANDLE hHash = nullptr;
+	SHA256 sha256;
+	outHashStr = sha256(data, length);
 
-	std::vector<std::uint8_t> hashObject;
-	std::vector<std::uint8_t> hashBuffer;
-
-	DWORD objectSize = 0;
-	DWORD hashLength = 0;
-	DWORD resultSize = 0;
-
-	NTSTATUS status = BCryptOpenAlgorithmProvider(
-		&hAlg,
-		BCRYPT_SHA256_ALGORITHM,
-		nullptr,
-		0);
-
-	if (!BCRYPT_SUCCESS(status))
-		return false;
-
-	status = BCryptGetProperty(
-		hAlg,
-		BCRYPT_OBJECT_LENGTH,
-		reinterpret_cast<PUCHAR>(&objectSize),
-		sizeof(objectSize),
-		&resultSize,
-		0);
-
-	if (!BCRYPT_SUCCESS(status)) {
-		BCryptCloseAlgorithmProvider(hAlg, 0);
-		return false;
-	}
-
-	status = BCryptGetProperty(
-		hAlg,
-		BCRYPT_HASH_LENGTH,
-		reinterpret_cast<PUCHAR>(&hashLength),
-		sizeof(hashLength),
-		&resultSize,
-		0);
-
-	if (!BCRYPT_SUCCESS(status)) {
-		BCryptCloseAlgorithmProvider(hAlg, 0);
-		return false;
-	}
-
-	if (hashLength != 32) {
-		BCryptCloseAlgorithmProvider(hAlg, 0);
-		return false;
-	}
-
-	hashObject.resize(objectSize);
-	hashBuffer.resize(hashLength);
-
-	status = BCryptCreateHash(
-		hAlg,
-		&hHash,
-		hashObject.data(),
-		static_cast<ULONG>(
-			hashObject.size()),
-		nullptr,
-		0,
-		0);
-
-	if (!BCRYPT_SUCCESS(status)) {
-		BCryptCloseAlgorithmProvider(hAlg, 0);
-		return false;
-	}
-
-	constexpr std::size_t MAX_HASH_CHUNK = 64 * 1024;
-	std::size_t offset = 0;
-
-	while (offset < length) {
-		const std::size_t remaining = length - offset;
-		const std::size_t chunkSize = remaining > MAX_HASH_CHUNK ? MAX_HASH_CHUNK : remaining;
-
-		status = BCryptHashData(
-			hHash,
-			const_cast<PUCHAR>(
-				data + offset),
-			static_cast<ULONG>(
-				chunkSize),
-			0);
-
-		if (!BCRYPT_SUCCESS(status)) {
-			BCryptDestroyHash(hHash);
-			BCryptCloseAlgorithmProvider(
-				hAlg,
-				0);
-
-			return false;
-		}
-
-		offset += chunkSize;
-	}
-
-	status = BCryptFinishHash(
-		hHash,
-		hashBuffer.data(),
-		static_cast<ULONG>(
-			hashBuffer.size()),
-		0);
-
-	if (!BCRYPT_SUCCESS(status)) {
-		BCryptDestroyHash(hHash);
-		BCryptCloseAlgorithmProvider(
-			hAlg,
-			0);
-
-		return false;
-	}
-
-	BCryptDestroyHash(hHash);
-	BCryptCloseAlgorithmProvider(hAlg, 0);
-
-	outHashStr = BytesToHex(hashBuffer.data(), hashBuffer.size());
 	return outHashStr.size() == 64;
 }
 
 bool CryptoUtility::ComputeFileSHA256(const std::filesystem::path& filePath, std::string& outHashStr)
 {
-	outHashStr.clear();
+	try {
+		outHashStr.clear();
 
-	std::ifstream file(filePath, std::ios::binary);
-	if (!file.is_open())
-		return false;
-
-	BCRYPT_ALG_HANDLE hAlg = nullptr;
-	BCRYPT_HASH_HANDLE hHash = nullptr;
-
-	DWORD objectSize = 0;
-	DWORD hashLength = 0;
-	DWORD resultSize = 0;
-
-	NTSTATUS status = BCryptOpenAlgorithmProvider(
-		&hAlg,
-		BCRYPT_SHA256_ALGORITHM,
-		nullptr,
-		0);
-
-	if (!BCRYPT_SUCCESS(status))
-		return false;
-
-	status = BCryptGetProperty(
-		hAlg,
-		BCRYPT_OBJECT_LENGTH,
-		reinterpret_cast<PUCHAR>(
-			&objectSize),
-		sizeof(objectSize),
-		&resultSize,
-		0);
-
-	if (!BCRYPT_SUCCESS(status)) {
-		BCryptCloseAlgorithmProvider(hAlg, 0);
-		return false;
-	}
-
-	status = BCryptGetProperty(
-		hAlg,
-		BCRYPT_HASH_LENGTH,
-		reinterpret_cast<PUCHAR>(
-			&hashLength),
-		sizeof(hashLength),
-		&resultSize,
-		0);
-
-	if (!BCRYPT_SUCCESS(status)) {
-		BCryptCloseAlgorithmProvider(
-			hAlg,
-			0);
-
-		return false;
-	}
-
-	if (hashLength != 32) {
-		BCryptCloseAlgorithmProvider(hAlg, 0);
-		return false;
-	}
-
-	std::vector<std::uint8_t> hashObject(objectSize);
-	std::vector<std::uint8_t> hashBuffer(hashLength);
-	status = BCryptCreateHash(
-		hAlg,
-		&hHash,
-		hashObject.data(),
-		static_cast<ULONG>(
-			hashObject.size()),
-		nullptr,
-		0,
-		0);
-
-	if (!BCRYPT_SUCCESS(status)) {
-		BCryptCloseAlgorithmProvider(hAlg, 0);
-		return false;
-	}
-
-	constexpr std::size_t FILE_CHUNK_SIZE = 64 * 1024;
-	std::array<std::uint8_t, FILE_CHUNK_SIZE> buffer {};
-
-	while (true) {
-		file.read(reinterpret_cast<char*>(buffer.data()), static_cast<std::streamsize>(buffer.size()));
-
-		const std::streamsize bytesRead = file.gcount();
-		if (bytesRead > 0) {
-			status = BCryptHashData(
-				hHash,
-				buffer.data(),
-				static_cast<ULONG>(
-					bytesRead),
-				0);
-
-			if (!BCRYPT_SUCCESS(status)) {
-				BCryptDestroyHash(hHash);
-				BCryptCloseAlgorithmProvider(hAlg, 0);
-				return false;
-			}
-		}
-
-		if (file.eof())
-			break;
-
-		if (file.fail()) {
-			BCryptDestroyHash(hHash);
-			BCryptCloseAlgorithmProvider(hAlg, 0);
+		std::ifstream file(filePath.c_str(), std::ios::binary);
+		if (!file.is_open())
 			return false;
+
+		SHA256 sha256;
+		std::vector<char> buffer(64 * 1024);
+
+		while (file.read(buffer.data(), buffer.size()) || file.gcount() > 0) {
+			sha256.add(buffer.data(), static_cast<size_t>(file.gcount()));
 		}
+
+		if (file.bad())
+			return false;
+
+		outHashStr = sha256.getHash();
+		return outHashStr.size() == 64;
 	}
-
-	status = BCryptFinishHash(
-		hHash,
-		hashBuffer.data(),
-		static_cast<ULONG>(
-			hashBuffer.size()),
-		0);
-
-	BCryptDestroyHash(hHash);
-	BCryptCloseAlgorithmProvider(hAlg, 0);
-
-	if (!BCRYPT_SUCCESS(status))
+	catch (...)
+	{
 		return false;
-
-	outHashStr = BytesToHex(hashBuffer.data(), hashBuffer.size());
-	return outHashStr.size() == 64;
+	}
 }
 
 #if __has_include(<hash-library/md5.h>)
