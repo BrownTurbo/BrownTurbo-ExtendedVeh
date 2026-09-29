@@ -49,9 +49,7 @@ private:
 	static int AllocateGtaModelSlot()
 	{
 		auto** table = GetModelInfoTable();
-		for (int slot = CUSTOM_GTA_MODEL_BASE;
-			 slot < TOTAL_GTA_MODEL_COUNT;
-			 ++slot) {
+		for (int slot = CUSTOM_GTA_MODEL_BASE; slot < TOTAL_GTA_MODEL_COUNT; ++slot) {
 			if (table[slot] != nullptr)
 				continue;
 			bool alreadyClaimed = false;
@@ -65,6 +63,7 @@ private:
 				return slot;
 		}
 
+		ClientLog(LogLevel::Error, std::format("[Streaming] AllocateGtaModelSlot: exhausted range [{}, {}). s_customModels has {} entries.", CUSTOM_GTA_MODEL_BASE, TOTAL_GTA_MODEL_COUNT, static_cast<int>(s_customModels.size())));
 		return -1;
 	}
 
@@ -399,7 +398,15 @@ public:
 	static CVehicleModelInfo* GetCustomModel(uint32_t id)
 	{
 		auto it = s_customModels.find(id);
-		return (it != s_customModels.end()) ? it->second->modelInfo : nullptr;
+		if (it != s_customModels.end())
+		{
+			ClientLog(LogLevel::Debug, std::format("GetCustomModel: matched Custom model Identifier. id={}", id));
+			return it->second->modelInfo;
+		}
+		else {
+			ClientLog(LogLevel::Error, std::format("GetCustomModel: failed to match Custom model Identifier. id={}", id));
+			return nullptr;
+		}
 	}
 
 	static bool IsCustomModel(uint32_t id)
@@ -470,7 +477,11 @@ public:
 
 	static void ClearAllCustomModels()
 	{
-		for (auto& [id, entry] : s_customModels) {
+		// Move-steal the map so s_customModels is empty *before* teardown begins.
+		// If DeleteRwObject or any other cleanup step throws, AllocateGtaModelSlot
+		// will never see stale entries claiming slots that are null in the GTA table.
+		auto models = std::move(s_customModels); // s_customModels is now empty
+		for (auto& [id, entry] : models) {
 			if (!entry)
 				continue;
 			CVehicleModelInfo* pInfo = entry->modelInfo;
@@ -497,8 +508,8 @@ public:
 			delete entry;
 			AudioExtender::UnregisterVehicleAudio(id);
 		}
-		s_customModels.clear();
 	}
+
 
 	static void SetDestructionCallback(void (*callback)(uint32_t))
 	{

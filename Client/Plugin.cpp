@@ -1926,6 +1926,7 @@ private:
 		if (!pending->modelInfo) {
 			pending->modelInfo = StreamingExtender::CreateCustomModel(pending->def);
 			if (!pending->modelInfo) {
+				ClientLog(LogLevel::Error, std::format("FinalizeCustomVehicle: modelInfo is missing for custom model {}", pending->def.customModelId).c_str());
 				SendMsg(0xFF0000, std::format("Failed to create GTA model for custom model {}", pending->def.customModelId).c_str());
 				return;
 			}
@@ -2336,6 +2337,11 @@ public:
 
 	void RequestClearAllCustomModels()
 	{
+		{
+			std::lock_guard<std::mutex> lock(m_pendingFinalizeMutex);
+			while (!m_pendingFinalizeQueue.empty())
+				m_pendingFinalizeQueue.pop();
+		}
 		m_pendingClearAll.store(true, std::memory_order_relaxed);
 	}
 
@@ -2359,6 +2365,7 @@ public:
 				while (!m_completedQueue.empty())
 					m_completedQueue.pop();
 			}
+			CustomVehicleBindingManager::Instance().Clear();
 			StreamingExtender::ClearAllCustomModels();
 		}
 	}
@@ -2434,9 +2441,13 @@ void InitializeHooks()
 		} else if (id == RPC_Spawn) {
 			ClientLog(LogLevel::Info, "RPC_Spawn received.");
 			_customVehInstance.SetLocalPlayerSpawned(true);
-			_customVehInstance.ProcessPendingDefinitions();
-			_customVehInstance.ProcessPendingFinalizations();
-			CustomVehicleBindingManager::Instance().Process();
+			MainThreadQueue::Instance().Push([]() {
+				_customVehInstance.ProcessPendingClearAll();
+				_customVehInstance.ProcessPendingDefinitions();
+				_customVehInstance.ProcessCompletedDownloads();
+				_customVehInstance.ProcessPendingFinalizations();
+				CustomVehicleBindingManager::Instance().Process();
+			});
 			return true;
 		} else if (id == RPC_GameModeRestart) {
 			ClientLog(LogLevel::Info, "Received RPC_GameModeRestart (142), resetting session state and re-sending init packet...");
@@ -2581,6 +2592,7 @@ static void OnGameProcess()
 			}
 		}
 
+		_customVehInstance.ProcessPendingClearAll();
 		_customVehInstance.ProcessPendingDefinitions();
 		_customVehInstance.ProcessCompletedDownloads();
 		_customVehInstance.ProcessPendingFinalizations();
