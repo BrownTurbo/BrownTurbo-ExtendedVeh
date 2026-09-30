@@ -270,6 +270,18 @@ native GetCustomVehicleAllowedUpgrade(customModelId, index);
 native bool:SetCustomVehicleLightingOffset(customModelId, Float:hlOffsetX, Float:hlOffsetY, Float:hlOffsetZ, Float:tlOffsetX = 0.0, Float:tlOffsetY = 0.0, Float:tlOffsetZ = 0.0);
 native bool:GetCustomVehicleLightingOffset(customModelId, &Float:hlOffsetX, &Float:hlOffsetY, &Float:hlOffsetZ, &Float:tlOffsetX, &Float:tlOffsetY, &Float:tlOffsetZ);
 
+native bool:SetCustomVehicleModelOffsets(customModelId, Float:frontWheelOffsetZ, Float:rearWheelOffsetZ, Float:frontWheelOffsetY = 0.0, Float:rearWheelOffsetY = 0.0, Float:chassisOffsetX = 0.0, Float:chassisOffsetY = 0.0, Float:chassisOffsetZ = 0.0);
+native bool:GetCustomVehicleModelOffsets(customModelId, &Float:frontWheelOffsetZ, &Float:rearWheelOffsetZ, &Float:frontWheelOffsetY, &Float:rearWheelOffsetY, &Float:chassisOffsetX, &Float:chassisOffsetY, &Float:chassisOffsetZ);
+
+native bool:SetCustomVehicleModelWheelOffsets(customModelId, Float:frontOffsetZ, Float:rearOffsetZ, Float:frontOffsetY = 0.0, Float:rearOffsetY = 0.0);
+native bool:GetCustomVehicleModelWheelOffsets(customModelId, &Float:frontOffsetZ, &Float:rearOffsetZ, &Float:frontOffsetY, &Float:rearOffsetY);
+
+native bool:SetCustomVehicleModelChassisOffset(customModelId, Float:chassisX, Float:chassisY, Float:chassisZ);
+native bool:GetCustomVehicleModelChassisOffset(customModelId, &Float:chassisX, &Float:chassisY, &Float:chassisZ);
+
+native bool:SetCustomVehicleModelStance(customModelId, Float:frontScale, Float:rearScale, Float:frontCamber, Float:rearCamber, Float:frontTrackWidth, Float:rearTrackWidth);
+native bool:GetCustomVehicleModelStance(customModelId, &Float:frontScale, &Float:rearScale, &Float:frontCamber, &Float:rearCamber, &Float:frontTrackWidth, &Float:rearTrackWidth);
+
 /*
  * Custom Vehicle Instance Customization Natives
  *
@@ -282,6 +294,15 @@ native bool:BindCustomVehicle(vehicleid, customModelId);
 
 native bool:SetCustomVehicleStance(vehicleid, Float:frontScale, Float:rearScale, Float:frontCamber, Float:rearCamber, Float:frontTrackWidth, Float:rearTrackWidth);
 native bool:GetCustomVehicleStance(vehicleid, &Float:frontScale, &Float:rearScale, &Float:frontCamber, &Float:rearCamber, &Float:frontTrackWidth, &Float:rearTrackWidth);
+
+native bool:SetCustomVehicleOffsets(vehicleid, Float:frontWheelOffsetZ, Float:rearWheelOffsetZ, Float:frontWheelOffsetY = 0.0, Float:rearWheelOffsetY = 0.0, Float:chassisOffsetX = 0.0, Float:chassisOffsetY = 0.0, Float:chassisOffsetZ = 0.0);
+native bool:GetCustomVehicleOffsets(vehicleid, &Float:frontWheelOffsetZ, &Float:rearWheelOffsetZ, &Float:frontWheelOffsetY, &Float:rearWheelOffsetY, &Float:chassisOffsetX, &Float:chassisOffsetY, &Float:chassisOffsetZ);
+
+native bool:SetCustomVehicleWheelOffsets(vehicleid, Float:frontOffsetZ, Float:rearOffsetZ, Float:frontOffsetY = 0.0, Float:rearOffsetY = 0.0);
+native bool:GetCustomVehicleWheelOffsets(vehicleid, &Float:frontOffsetZ, &Float:rearOffsetZ, &Float:frontOffsetY, &Float:rearOffsetY);
+
+native bool:SetCustomVehicleChassisOffset(vehicleid, Float:chassisX, Float:chassisY, Float:chassisZ);
+native bool:GetCustomVehicleChassisOffset(vehicleid, &Float:chassisX, &Float:chassisY, &Float:chassisZ);
 
 native bool:SetCustomVehicleExtras(vehicleid, extrasMask);
 native bool:GetCustomVehicleExtras(vehicleid, &extrasMask);
@@ -371,6 +392,20 @@ native bool:SetCustomVehicleAllDoorsMissing(vehicleid, bool:missing);
 #define GetCustomVehicleModelLightingOffset GetCustomVehicleLightingOffset
 #define SetVehicleModelLightingOffset       SetCustomVehicleLightingOffset
 #define GetVehicleModelLightingOffset       GetCustomVehicleLightingOffset
+#define SetVehicleModelOffsets              SetCustomVehicleModelOffsets
+#define GetVehicleModelOffsets              GetCustomVehicleModelOffsets
+#define SetVehicleModelWheelOffsets         SetCustomVehicleModelWheelOffsets
+#define GetVehicleModelWheelOffsets         GetCustomVehicleModelWheelOffsets
+#define SetVehicleModelChassisOffset        SetCustomVehicleModelChassisOffset
+#define GetVehicleModelChassisOffset        GetCustomVehicleModelChassisOffset
+#define SetVehicleModelStance               SetCustomVehicleModelStance
+#define GetVehicleModelStance               GetCustomVehicleModelStance
+#define SetVehicleOffsets                   SetCustomVehicleOffsets
+#define GetVehicleOffsets                   GetCustomVehicleOffsets
+#define SetVehicleWheelOffsets              SetCustomVehicleWheelOffsets
+#define GetVehicleWheelOffsets              GetCustomVehicleWheelOffsets
+#define SetVehicleChassisOffset             SetCustomVehicleChassisOffset
+#define GetVehicleChassisOffset             GetCustomVehicleChassisOffset
 #define SetVehicleModelHorn         SetCustomVehicleModelHorn
 #define SetVehicleModelSiren        SetCustomVehicleModelSiren
 #define SetVehicleDoorMissing       SetCustomVehicleDoorMissing

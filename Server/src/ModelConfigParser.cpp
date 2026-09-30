@@ -1404,6 +1404,66 @@ bool ModelConfigParser::ParseString(const std::string& content, ModelConfig& out
 						outConfig.taillightCustomZ = f;
 				}
 			}
+			else if (currentSection == "offsets")
+			{
+				outConfig.hasOffsets = true;
+				bool ok = false;
+				float f = ParseFloat(val, &ok);
+				if (ok)
+				{
+					if (lowerKey == "frontwheeloffsetz")
+						outConfig.frontWheelOffsetZ = f;
+					else if (lowerKey == "rearwheeloffsetz")
+						outConfig.rearWheelOffsetZ = f;
+					else if (lowerKey == "wheeloffsetz")
+					{
+						outConfig.frontWheelOffsetZ = f;
+						outConfig.rearWheelOffsetZ = f;
+					}
+					else if (lowerKey == "frontwheeloffsety")
+						outConfig.frontWheelOffsetY = f;
+					else if (lowerKey == "rearwheeloffsety")
+						outConfig.rearWheelOffsetY = f;
+					else if (lowerKey == "wheeloffsety")
+					{
+						outConfig.frontWheelOffsetY = f;
+						outConfig.rearWheelOffsetY = f;
+					}
+					else if (lowerKey == "chassisoffsetx")
+						outConfig.chassisOffsetX = f;
+					else if (lowerKey == "chassisoffsety")
+						outConfig.chassisOffsetY = f;
+					else if (lowerKey == "chassisoffsetz")
+						outConfig.chassisOffsetZ = f;
+					else if (lowerKey == "fronttrackwidth")
+						outConfig.frontTrackWidth = f;
+					else if (lowerKey == "reartrackwidth")
+						outConfig.rearTrackWidth = f;
+					else if (lowerKey == "trackwidth")
+					{
+						outConfig.frontTrackWidth = f;
+						outConfig.rearTrackWidth = f;
+					}
+					else if (lowerKey == "frontwheelscale")
+						outConfig.frontWheelScale = f;
+					else if (lowerKey == "rearwheelscale")
+						outConfig.rearWheelScale = f;
+					else if (lowerKey == "wheelscale")
+					{
+						outConfig.frontWheelScale = f;
+						outConfig.rearWheelScale = f;
+					}
+					else if (lowerKey == "frontcamber")
+						outConfig.frontCamber = f;
+					else if (lowerKey == "rearcamber")
+						outConfig.rearCamber = f;
+					else if (lowerKey == "camber")
+					{
+						outConfig.frontCamber = f;
+						outConfig.rearCamber = f;
+					}
+				}
+			}
 			else if (currentSection == "audio")
 			{
 				outConfig.hasAudio = true;

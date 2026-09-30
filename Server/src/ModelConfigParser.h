@@ -84,6 +84,22 @@ struct ModelConfig
 	float taillightCustomY = 0.0f;
 	float taillightCustomZ = 0.0f;
 
+	// [offsets]
+	bool hasOffsets = false;
+	float frontWheelOffsetZ = 0.0f;
+	float rearWheelOffsetZ = 0.0f;
+	float frontWheelOffsetY = 0.0f;
+	float rearWheelOffsetY = 0.0f;
+	float frontTrackWidth = 0.0f;
+	float rearTrackWidth = 0.0f;
+	float chassisOffsetX = 0.0f;
+	float chassisOffsetY = 0.0f;
+	float chassisOffsetZ = 0.0f;
+	float frontWheelScale = 1.0f;
+	float rearWheelScale = 1.0f;
+	float frontCamber = 0.0f;
+	float rearCamber = 0.0f;
+
 	// [audio]
 	bool hasAudio = false;
 	std::string engineFile;

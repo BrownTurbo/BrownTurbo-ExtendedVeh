@@ -1365,6 +1365,20 @@ void SendCustomVehicleDefToPlayer(IPlayer& player, uint32_t modelId)
 	bs.Write(def.lighting.taillightCustomY);
 	bs.Write(def.lighting.taillightCustomZ);
 
+	bs.Write(def.offsets.frontWheelOffsetZ);
+	bs.Write(def.offsets.rearWheelOffsetZ);
+	bs.Write(def.offsets.frontWheelOffsetY);
+	bs.Write(def.offsets.rearWheelOffsetY);
+	bs.Write(def.offsets.frontTrackWidth);
+	bs.Write(def.offsets.rearTrackWidth);
+	bs.Write(def.offsets.chassisOffsetX);
+	bs.Write(def.offsets.chassisOffsetY);
+	bs.Write(def.offsets.chassisOffsetZ);
+	bs.Write(def.offsets.frontWheelScale);
+	bs.Write(def.offsets.rearWheelScale);
+	bs.Write(def.offsets.frontCamber);
+	bs.Write(def.offsets.rearCamber);
+
 	if (def.flags & CustomVeh::Protocol::HasAnyAudio)
 	{
 		bs.Write(def.customAudio.volume);
@@ -1631,6 +1645,32 @@ bool LoadCustomVehicleConfig(uint32_t customModelId, const ModelConfig* preParse
 		auto itComm = customVehicleDefs.find(customModelId);
 		if (itComm != customVehicleDefs.end())
 			applyLightingConfig(itComm->second);
+	}
+
+	// Apply custom position / wheel / chassis offsets configuration to staged or committed definition
+	{
+		auto applyOffsetsConfig = [&](CustomVeh::Protocol::VehicleDefinition& def)
+		{
+			def.offsets.frontWheelOffsetZ = config.frontWheelOffsetZ;
+			def.offsets.rearWheelOffsetZ = config.rearWheelOffsetZ;
+			def.offsets.frontWheelOffsetY = config.frontWheelOffsetY;
+			def.offsets.rearWheelOffsetY = config.rearWheelOffsetY;
+			def.offsets.frontTrackWidth = config.frontTrackWidth;
+			def.offsets.rearTrackWidth = config.rearTrackWidth;
+			def.offsets.chassisOffsetX = config.chassisOffsetX;
+			def.offsets.chassisOffsetY = config.chassisOffsetY;
+			def.offsets.chassisOffsetZ = config.chassisOffsetZ;
+			def.offsets.frontWheelScale = config.frontWheelScale;
+			def.offsets.rearWheelScale = config.rearWheelScale;
+			def.offsets.frontCamber = config.frontCamber;
+			def.offsets.rearCamber = config.rearCamber;
+		};
+
+		if (itStaged != stagedCustomVehicleDefs.end())
+			applyOffsetsConfig(itStaged->second);
+		auto itComm = customVehicleDefs.find(customModelId);
+		if (itComm != customVehicleDefs.end())
+			applyOffsetsConfig(itComm->second);
 	}
 
 	if (core_)
@@ -1960,6 +2000,202 @@ bool GetCustomVehicleLightingOffset(uint32_t customModelId, float& hlX, float& h
 		tlX = itStaged->second.lighting.taillightOffsetX;
 		tlY = itStaged->second.lighting.taillightOffsetY;
 		tlZ = itStaged->second.lighting.taillightOffsetZ;
+		return true;
+	}
+	return false;
+}
+
+bool SetCustomVehicleModelOffsets(uint32_t customModelId, float frontZ, float rearZ, float frontY, float rearY, float chassisX, float chassisY, float chassisZ)
+{
+	auto itStaged = stagedCustomVehicleDefs.find(customModelId);
+	if (itStaged != stagedCustomVehicleDefs.end())
+	{
+		itStaged->second.offsets.frontWheelOffsetZ = frontZ;
+		itStaged->second.offsets.rearWheelOffsetZ = rearZ;
+		itStaged->second.offsets.frontWheelOffsetY = frontY;
+		itStaged->second.offsets.rearWheelOffsetY = rearY;
+		itStaged->second.offsets.chassisOffsetX = chassisX;
+		itStaged->second.offsets.chassisOffsetY = chassisY;
+		itStaged->second.offsets.chassisOffsetZ = chassisZ;
+	}
+	auto itComm = customVehicleDefs.find(customModelId);
+	if (itComm != customVehicleDefs.end())
+	{
+		itComm->second.offsets.frontWheelOffsetZ = frontZ;
+		itComm->second.offsets.rearWheelOffsetZ = rearZ;
+		itComm->second.offsets.frontWheelOffsetY = frontY;
+		itComm->second.offsets.rearWheelOffsetY = rearY;
+		itComm->second.offsets.chassisOffsetX = chassisX;
+		itComm->second.offsets.chassisOffsetY = chassisY;
+		itComm->second.offsets.chassisOffsetZ = chassisZ;
+		SendCustomVehicleDefToAll(customModelId);
+	}
+	return itStaged != stagedCustomVehicleDefs.end() || itComm != customVehicleDefs.end();
+}
+
+bool GetCustomVehicleModelOffsets(uint32_t customModelId, float& frontZ, float& rearZ, float& frontY, float& rearY, float& chassisX, float& chassisY, float& chassisZ)
+{
+	auto itComm = customVehicleDefs.find(customModelId);
+	if (itComm != customVehicleDefs.end())
+	{
+		frontZ = itComm->second.offsets.frontWheelOffsetZ;
+		rearZ = itComm->second.offsets.rearWheelOffsetZ;
+		frontY = itComm->second.offsets.frontWheelOffsetY;
+		rearY = itComm->second.offsets.rearWheelOffsetY;
+		chassisX = itComm->second.offsets.chassisOffsetX;
+		chassisY = itComm->second.offsets.chassisOffsetY;
+		chassisZ = itComm->second.offsets.chassisOffsetZ;
+		return true;
+	}
+	auto itStaged = stagedCustomVehicleDefs.find(customModelId);
+	if (itStaged != stagedCustomVehicleDefs.end())
+	{
+		frontZ = itStaged->second.offsets.frontWheelOffsetZ;
+		rearZ = itStaged->second.offsets.rearWheelOffsetZ;
+		frontY = itStaged->second.offsets.frontWheelOffsetY;
+		rearY = itStaged->second.offsets.rearWheelOffsetY;
+		chassisX = itStaged->second.offsets.chassisOffsetX;
+		chassisY = itStaged->second.offsets.chassisOffsetY;
+		chassisZ = itStaged->second.offsets.chassisOffsetZ;
+		return true;
+	}
+	return false;
+}
+
+bool SetCustomVehicleModelWheelOffsets(uint32_t customModelId, float frontZ, float rearZ, float frontY, float rearY)
+{
+	auto itStaged = stagedCustomVehicleDefs.find(customModelId);
+	if (itStaged != stagedCustomVehicleDefs.end())
+	{
+		itStaged->second.offsets.frontWheelOffsetZ = frontZ;
+		itStaged->second.offsets.rearWheelOffsetZ = rearZ;
+		itStaged->second.offsets.frontWheelOffsetY = frontY;
+		itStaged->second.offsets.rearWheelOffsetY = rearY;
+	}
+	auto itComm = customVehicleDefs.find(customModelId);
+	if (itComm != customVehicleDefs.end())
+	{
+		itComm->second.offsets.frontWheelOffsetZ = frontZ;
+		itComm->second.offsets.rearWheelOffsetZ = rearZ;
+		itComm->second.offsets.frontWheelOffsetY = frontY;
+		itComm->second.offsets.rearWheelOffsetY = rearY;
+		SendCustomVehicleDefToAll(customModelId);
+	}
+	return itStaged != stagedCustomVehicleDefs.end() || itComm != customVehicleDefs.end();
+}
+
+bool GetCustomVehicleModelWheelOffsets(uint32_t customModelId, float& frontZ, float& rearZ, float& frontY, float& rearY)
+{
+	auto itComm = customVehicleDefs.find(customModelId);
+	if (itComm != customVehicleDefs.end())
+	{
+		frontZ = itComm->second.offsets.frontWheelOffsetZ;
+		rearZ = itComm->second.offsets.rearWheelOffsetZ;
+		frontY = itComm->second.offsets.frontWheelOffsetY;
+		rearY = itComm->second.offsets.rearWheelOffsetY;
+		return true;
+	}
+	auto itStaged = stagedCustomVehicleDefs.find(customModelId);
+	if (itStaged != stagedCustomVehicleDefs.end())
+	{
+		frontZ = itStaged->second.offsets.frontWheelOffsetZ;
+		rearZ = itStaged->second.offsets.rearWheelOffsetZ;
+		frontY = itStaged->second.offsets.frontWheelOffsetY;
+		rearY = itStaged->second.offsets.rearWheelOffsetY;
+		return true;
+	}
+	return false;
+}
+
+bool SetCustomVehicleModelChassisOffset(uint32_t customModelId, float chassisX, float chassisY, float chassisZ)
+{
+	auto itStaged = stagedCustomVehicleDefs.find(customModelId);
+	if (itStaged != stagedCustomVehicleDefs.end())
+	{
+		itStaged->second.offsets.chassisOffsetX = chassisX;
+		itStaged->second.offsets.chassisOffsetY = chassisY;
+		itStaged->second.offsets.chassisOffsetZ = chassisZ;
+	}
+	auto itComm = customVehicleDefs.find(customModelId);
+	if (itComm != customVehicleDefs.end())
+	{
+		itComm->second.offsets.chassisOffsetX = chassisX;
+		itComm->second.offsets.chassisOffsetY = chassisY;
+		itComm->second.offsets.chassisOffsetZ = chassisZ;
+		SendCustomVehicleDefToAll(customModelId);
+	}
+	return itStaged != stagedCustomVehicleDefs.end() || itComm != customVehicleDefs.end();
+}
+
+bool GetCustomVehicleModelChassisOffset(uint32_t customModelId, float& chassisX, float& chassisY, float& chassisZ)
+{
+	auto itComm = customVehicleDefs.find(customModelId);
+	if (itComm != customVehicleDefs.end())
+	{
+		chassisX = itComm->second.offsets.chassisOffsetX;
+		chassisY = itComm->second.offsets.chassisOffsetY;
+		chassisZ = itComm->second.offsets.chassisOffsetZ;
+		return true;
+	}
+	auto itStaged = stagedCustomVehicleDefs.find(customModelId);
+	if (itStaged != stagedCustomVehicleDefs.end())
+	{
+		chassisX = itStaged->second.offsets.chassisOffsetX;
+		chassisY = itStaged->second.offsets.chassisOffsetY;
+		chassisZ = itStaged->second.offsets.chassisOffsetZ;
+		return true;
+	}
+	return false;
+}
+
+bool SetCustomVehicleModelStance(uint32_t customModelId, float frontScale, float rearScale, float frontCamber, float rearCamber, float frontTrackWidth, float rearTrackWidth)
+{
+	auto itStaged = stagedCustomVehicleDefs.find(customModelId);
+	if (itStaged != stagedCustomVehicleDefs.end())
+	{
+		itStaged->second.offsets.frontWheelScale = frontScale;
+		itStaged->second.offsets.rearWheelScale = rearScale;
+		itStaged->second.offsets.frontCamber = frontCamber;
+		itStaged->second.offsets.rearCamber = rearCamber;
+		itStaged->second.offsets.frontTrackWidth = frontTrackWidth;
+		itStaged->second.offsets.rearTrackWidth = rearTrackWidth;
+	}
+	auto itComm = customVehicleDefs.find(customModelId);
+	if (itComm != customVehicleDefs.end())
+	{
+		itComm->second.offsets.frontWheelScale = frontScale;
+		itComm->second.offsets.rearWheelScale = rearScale;
+		itComm->second.offsets.frontCamber = frontCamber;
+		itComm->second.offsets.rearCamber = rearCamber;
+		itComm->second.offsets.frontTrackWidth = frontTrackWidth;
+		itComm->second.offsets.rearTrackWidth = rearTrackWidth;
+		SendCustomVehicleDefToAll(customModelId);
+	}
+	return itStaged != stagedCustomVehicleDefs.end() || itComm != customVehicleDefs.end();
+}
+
+bool GetCustomVehicleModelStance(uint32_t customModelId, float& frontScale, float& rearScale, float& frontCamber, float& rearCamber, float& frontTrackWidth, float& rearTrackWidth)
+{
+	auto itComm = customVehicleDefs.find(customModelId);
+	if (itComm != customVehicleDefs.end())
+	{
+		frontScale = itComm->second.offsets.frontWheelScale;
+		rearScale = itComm->second.offsets.rearWheelScale;
+		frontCamber = itComm->second.offsets.frontCamber;
+		rearCamber = itComm->second.offsets.rearCamber;
+		frontTrackWidth = itComm->second.offsets.frontTrackWidth;
+		rearTrackWidth = itComm->second.offsets.rearTrackWidth;
+		return true;
+	}
+	auto itStaged = stagedCustomVehicleDefs.find(customModelId);
+	if (itStaged != stagedCustomVehicleDefs.end())
+	{
+		frontScale = itStaged->second.offsets.frontWheelScale;
+		rearScale = itStaged->second.offsets.rearWheelScale;
+		frontCamber = itStaged->second.offsets.frontCamber;
+		rearCamber = itStaged->second.offsets.rearCamber;
+		frontTrackWidth = itStaged->second.offsets.frontTrackWidth;
+		rearTrackWidth = itStaged->second.offsets.rearTrackWidth;
 		return true;
 	}
 	return false;

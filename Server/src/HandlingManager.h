@@ -130,4 +130,16 @@ int GetCustomVehicleAllowedUpgrade(uint32_t customModelId, int index);
 
 bool SetCustomVehicleLightingOffset(uint32_t customModelId, float hlX, float hlY, float hlZ, float tlX = 0.0f, float tlY = 0.0f, float tlZ = 0.0f);
 bool GetCustomVehicleLightingOffset(uint32_t customModelId, float& hlX, float& hlY, float& hlZ, float& tlX, float& tlY, float& tlZ);
+
+bool SetCustomVehicleModelOffsets(uint32_t customModelId, float frontZ, float rearZ, float frontY = 0.0f, float rearY = 0.0f, float chassisX = 0.0f, float chassisY = 0.0f, float chassisZ = 0.0f);
+bool GetCustomVehicleModelOffsets(uint32_t customModelId, float& frontZ, float& rearZ, float& frontY, float& rearY, float& chassisX, float& chassisY, float& chassisZ);
+
+bool SetCustomVehicleModelWheelOffsets(uint32_t customModelId, float frontZ, float rearZ, float frontY = 0.0f, float rearY = 0.0f);
+bool GetCustomVehicleModelWheelOffsets(uint32_t customModelId, float& frontZ, float& rearZ, float& frontY, float& rearY);
+
+bool SetCustomVehicleModelChassisOffset(uint32_t customModelId, float chassisX, float chassisY, float chassisZ);
+bool GetCustomVehicleModelChassisOffset(uint32_t customModelId, float& chassisX, float& chassisY, float& chassisZ);
+
+bool SetCustomVehicleModelStance(uint32_t customModelId, float frontScale, float rearScale, float frontCamber, float rearCamber, float frontTrackWidth, float rearTrackWidth);
+bool GetCustomVehicleModelStance(uint32_t customModelId, float& frontScale, float& rearScale, float& frontCamber, float& rearCamber, float& frontTrackWidth, float& rearTrackWidth);
 }

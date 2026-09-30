@@ -1822,6 +1822,134 @@ SCRIPT_API(GetVehicleModelLightingOffset, bool(int customModelId, float& hlOffse
 	return HandlingMgr::GetCustomVehicleLightingOffset(static_cast<uint32_t>(customModelId), hlOffsetX, hlOffsetY, hlOffsetZ, tlOffsetX, tlOffsetY, tlOffsetZ);
 }
 
+// native bool:SetCustomVehicleModelOffsets(customModelId, Float:frontWheelOffsetZ, Float:rearWheelOffsetZ, Float:frontWheelOffsetY = 0.0, Float:rearWheelOffsetY = 0.0, Float:chassisOffsetX = 0.0, Float:chassisOffsetY = 0.0, Float:chassisOffsetZ = 0.0);
+SCRIPT_API(SetCustomVehicleModelOffsets, bool(int customModelId, float frontZ, float rearZ, float frontY, float rearY, float chassisX, float chassisY, float chassisZ))
+{
+	if (customModelId < CVehicleMgr::CUSTOM_MODEL_START || customModelId > CVehicleMgr::MAX_NETWORK_VEHICLES)
+		return false;
+	return HandlingMgr::SetCustomVehicleModelOffsets(static_cast<uint32_t>(customModelId), frontZ, rearZ, frontY, rearY, chassisX, chassisY, chassisZ);
+}
+
+// Alias: SetVehicleModelOffsets -> SetCustomVehicleModelOffsets
+SCRIPT_API(SetVehicleModelOffsets, bool(int customModelId, float frontZ, float rearZ, float frontY, float rearY, float chassisX, float chassisY, float chassisZ))
+{
+	if (customModelId < CVehicleMgr::CUSTOM_MODEL_START || customModelId > CVehicleMgr::MAX_NETWORK_VEHICLES)
+		return false;
+	return HandlingMgr::SetCustomVehicleModelOffsets(static_cast<uint32_t>(customModelId), frontZ, rearZ, frontY, rearY, chassisX, chassisY, chassisZ);
+}
+
+// native bool:GetCustomVehicleModelOffsets(customModelId, &Float:frontWheelOffsetZ, &Float:rearWheelOffsetZ, &Float:frontWheelOffsetY, &Float:rearWheelOffsetY, &Float:chassisOffsetX, &Float:chassisOffsetY, &Float:chassisOffsetZ);
+SCRIPT_API(GetCustomVehicleModelOffsets, bool(int customModelId, float& frontZ, float& rearZ, float& frontY, float& rearY, float& chassisX, float& chassisY, float& chassisZ))
+{
+	if (customModelId < CVehicleMgr::CUSTOM_MODEL_START || customModelId > CVehicleMgr::MAX_NETWORK_VEHICLES)
+		return false;
+	return HandlingMgr::GetCustomVehicleModelOffsets(static_cast<uint32_t>(customModelId), frontZ, rearZ, frontY, rearY, chassisX, chassisY, chassisZ);
+}
+
+// Alias: GetVehicleModelOffsets -> GetCustomVehicleModelOffsets
+SCRIPT_API(GetVehicleModelOffsets, bool(int customModelId, float& frontZ, float& rearZ, float& frontY, float& rearY, float& chassisX, float& chassisY, float& chassisZ))
+{
+	if (customModelId < CVehicleMgr::CUSTOM_MODEL_START || customModelId > CVehicleMgr::MAX_NETWORK_VEHICLES)
+		return false;
+	return HandlingMgr::GetCustomVehicleModelOffsets(static_cast<uint32_t>(customModelId), frontZ, rearZ, frontY, rearY, chassisX, chassisY, chassisZ);
+}
+
+// native bool:SetCustomVehicleModelWheelOffsets(customModelId, Float:frontOffsetZ, Float:rearOffsetZ, Float:frontOffsetY = 0.0, Float:rearOffsetY = 0.0);
+SCRIPT_API(SetCustomVehicleModelWheelOffsets, bool(int customModelId, float frontZ, float rearZ, float frontY, float rearY))
+{
+	if (customModelId < CVehicleMgr::CUSTOM_MODEL_START || customModelId > CVehicleMgr::MAX_NETWORK_VEHICLES)
+		return false;
+	return HandlingMgr::SetCustomVehicleModelWheelOffsets(static_cast<uint32_t>(customModelId), frontZ, rearZ, frontY, rearY);
+}
+
+// Alias: SetVehicleModelWheelOffsets -> SetCustomVehicleModelWheelOffsets
+SCRIPT_API(SetVehicleModelWheelOffsets, bool(int customModelId, float frontZ, float rearZ, float frontY, float rearY))
+{
+	if (customModelId < CVehicleMgr::CUSTOM_MODEL_START || customModelId > CVehicleMgr::MAX_NETWORK_VEHICLES)
+		return false;
+	return HandlingMgr::SetCustomVehicleModelWheelOffsets(static_cast<uint32_t>(customModelId), frontZ, rearZ, frontY, rearY);
+}
+
+// native bool:GetCustomVehicleModelWheelOffsets(customModelId, &Float:frontOffsetZ, &Float:rearOffsetZ, &Float:frontOffsetY, &Float:rearOffsetY);
+SCRIPT_API(GetCustomVehicleModelWheelOffsets, bool(int customModelId, float& frontZ, float& rearZ, float& frontY, float& rearY))
+{
+	if (customModelId < CVehicleMgr::CUSTOM_MODEL_START || customModelId > CVehicleMgr::MAX_NETWORK_VEHICLES)
+		return false;
+	return HandlingMgr::GetCustomVehicleModelWheelOffsets(static_cast<uint32_t>(customModelId), frontZ, rearZ, frontY, rearY);
+}
+
+// Alias: GetVehicleModelWheelOffsets -> GetCustomVehicleModelWheelOffsets
+SCRIPT_API(GetVehicleModelWheelOffsets, bool(int customModelId, float& frontZ, float& rearZ, float& frontY, float& rearY))
+{
+	if (customModelId < CVehicleMgr::CUSTOM_MODEL_START || customModelId > CVehicleMgr::MAX_NETWORK_VEHICLES)
+		return false;
+	return HandlingMgr::GetCustomVehicleModelWheelOffsets(static_cast<uint32_t>(customModelId), frontZ, rearZ, frontY, rearY);
+}
+
+// native bool:SetCustomVehicleModelChassisOffset(customModelId, Float:chassisX, Float:chassisY, Float:chassisZ);
+SCRIPT_API(SetCustomVehicleModelChassisOffset, bool(int customModelId, float chassisX, float chassisY, float chassisZ))
+{
+	if (customModelId < CVehicleMgr::CUSTOM_MODEL_START || customModelId > CVehicleMgr::MAX_NETWORK_VEHICLES)
+		return false;
+	return HandlingMgr::SetCustomVehicleModelChassisOffset(static_cast<uint32_t>(customModelId), chassisX, chassisY, chassisZ);
+}
+
+// Alias: SetVehicleModelChassisOffset -> SetCustomVehicleModelChassisOffset
+SCRIPT_API(SetVehicleModelChassisOffset, bool(int customModelId, float chassisX, float chassisY, float chassisZ))
+{
+	if (customModelId < CVehicleMgr::CUSTOM_MODEL_START || customModelId > CVehicleMgr::MAX_NETWORK_VEHICLES)
+		return false;
+	return HandlingMgr::SetCustomVehicleModelChassisOffset(static_cast<uint32_t>(customModelId), chassisX, chassisY, chassisZ);
+}
+
+// native bool:GetCustomVehicleModelChassisOffset(customModelId, &Float:chassisX, &Float:chassisY, &Float:chassisZ);
+SCRIPT_API(GetCustomVehicleModelChassisOffset, bool(int customModelId, float& chassisX, float& chassisY, float& chassisZ))
+{
+	if (customModelId < CVehicleMgr::CUSTOM_MODEL_START || customModelId > CVehicleMgr::MAX_NETWORK_VEHICLES)
+		return false;
+	return HandlingMgr::GetCustomVehicleModelChassisOffset(static_cast<uint32_t>(customModelId), chassisX, chassisY, chassisZ);
+}
+
+// Alias: GetVehicleModelChassisOffset -> GetCustomVehicleModelChassisOffset
+SCRIPT_API(GetVehicleModelChassisOffset, bool(int customModelId, float& chassisX, float& chassisY, float& chassisZ))
+{
+	if (customModelId < CVehicleMgr::CUSTOM_MODEL_START || customModelId > CVehicleMgr::MAX_NETWORK_VEHICLES)
+		return false;
+	return HandlingMgr::GetCustomVehicleModelChassisOffset(static_cast<uint32_t>(customModelId), chassisX, chassisY, chassisZ);
+}
+
+// native bool:SetCustomVehicleModelStance(customModelId, Float:frontScale, Float:rearScale, Float:frontCamber, Float:rearCamber, Float:frontTrackWidth, Float:rearTrackWidth);
+SCRIPT_API(SetCustomVehicleModelStance, bool(int customModelId, float frontScale, float rearScale, float frontCamber, float rearCamber, float frontTrackWidth, float rearTrackWidth))
+{
+	if (customModelId < CVehicleMgr::CUSTOM_MODEL_START || customModelId > CVehicleMgr::MAX_NETWORK_VEHICLES)
+		return false;
+	return HandlingMgr::SetCustomVehicleModelStance(static_cast<uint32_t>(customModelId), frontScale, rearScale, frontCamber, rearCamber, frontTrackWidth, rearTrackWidth);
+}
+
+// Alias: SetVehicleModelStance -> SetCustomVehicleModelStance
+SCRIPT_API(SetVehicleModelStance, bool(int customModelId, float frontScale, float rearScale, float frontCamber, float rearCamber, float frontTrackWidth, float rearTrackWidth))
+{
+	if (customModelId < CVehicleMgr::CUSTOM_MODEL_START || customModelId > CVehicleMgr::MAX_NETWORK_VEHICLES)
+		return false;
+	return HandlingMgr::SetCustomVehicleModelStance(static_cast<uint32_t>(customModelId), frontScale, rearScale, frontCamber, rearCamber, frontTrackWidth, rearTrackWidth);
+}
+
+// native bool:GetCustomVehicleModelStance(customModelId, &Float:frontScale, &Float:rearScale, &Float:frontCamber, &Float:rearCamber, &Float:frontTrackWidth, &Float:rearTrackWidth);
+SCRIPT_API(GetCustomVehicleModelStance, bool(int customModelId, float& frontScale, float& rearScale, float& frontCamber, float& rearCamber, float& frontTrackWidth, float& rearTrackWidth))
+{
+	if (customModelId < CVehicleMgr::CUSTOM_MODEL_START || customModelId > CVehicleMgr::MAX_NETWORK_VEHICLES)
+		return false;
+	return HandlingMgr::GetCustomVehicleModelStance(static_cast<uint32_t>(customModelId), frontScale, rearScale, frontCamber, rearCamber, frontTrackWidth, rearTrackWidth);
+}
+
+// Alias: GetVehicleModelStance -> GetCustomVehicleModelStance
+SCRIPT_API(GetVehicleModelStance, bool(int customModelId, float& frontScale, float& rearScale, float& frontCamber, float& rearCamber, float& frontTrackWidth, float& rearTrackWidth))
+{
+	if (customModelId < CVehicleMgr::CUSTOM_MODEL_START || customModelId > CVehicleMgr::MAX_NETWORK_VEHICLES)
+		return false;
+	return HandlingMgr::GetCustomVehicleModelStance(static_cast<uint32_t>(customModelId), frontScale, rearScale, frontCamber, rearCamber, frontTrackWidth, rearTrackWidth);
+}
+
 namespace CustomVehicleNatives
 {
 inline bool BindCustomVehicle(IVehicle& vehicle, int customModelId)
@@ -1961,6 +2089,176 @@ SCRIPT_API(GetCustomVehicleStance, bool(IVehicle& vehicle, float& frontScale, fl
 SCRIPT_API(GetVehicleStance, bool(IVehicle& vehicle, float& frontScale, float& rearScale, float& frontCamber, float& rearCamber, float& frontTrackWidth, float& rearTrackWidth))
 {
 	return CustomVehicleNatives::GetCustomVehicleStance(vehicle, frontScale, rearScale, frontCamber, rearCamber, frontTrackWidth, rearTrackWidth);
+}
+
+namespace CustomVehicleNatives
+{
+inline bool SetCustomVehicleOffsets(IVehicle& vehicle, float frontZ, float rearZ, float frontY, float rearY, float chassisX, float chassisY, float chassisZ)
+{
+	int vehicleid = vehicle.getID();
+	if (!CVehicleMgr::VehicleRegistry::Get().IsValidVehicleID(vehicleid))
+		return false;
+
+	uint16_t vId = static_cast<uint16_t>(vehicleid);
+	CustomVeh::Protocol::VehicleOffsetsPacket pkt {};
+	pkt.sampVehicleId = vId;
+	pkt.frontWheelOffsetZ = frontZ;
+	pkt.rearWheelOffsetZ = rearZ;
+	pkt.frontWheelOffsetY = frontY;
+	pkt.rearWheelOffsetY = rearY;
+	pkt.chassisOffsetX = chassisX;
+	pkt.chassisOffsetY = chassisY;
+	pkt.chassisOffsetZ = chassisZ;
+
+	CustomVehicleBindingRegistry::Instance().SetOffsets(vId, pkt);
+
+	ExtendedVehCompo* compo = ExtendedVehCompo::get();
+	ICore* core_ = compo ? compo->getCore() : nullptr;
+	if (core_)
+	{
+		for (IPlayer* player : core_->getPlayers().players())
+		{
+			if (player && gPlayers.HasExtendedVeh(player->getID()))
+			{
+				CustomVehicleTransport::SendVehicleOffsets(*player, pkt);
+			}
+		}
+	}
+	return true;
+}
+
+inline bool GetCustomVehicleOffsets(IVehicle& vehicle, float& frontZ, float& rearZ, float& frontY, float& rearY, float& chassisX, float& chassisY, float& chassisZ)
+{
+	int vehicleid = vehicle.getID();
+	if (!CVehicleMgr::VehicleRegistry::Get().IsValidVehicleID(vehicleid))
+		return false;
+
+	auto offOpt = CustomVehicleBindingRegistry::Instance().GetOffsets(static_cast<uint16_t>(vehicleid));
+	if (!offOpt)
+		return false;
+
+	frontZ = offOpt->frontWheelOffsetZ;
+	rearZ = offOpt->rearWheelOffsetZ;
+	frontY = offOpt->frontWheelOffsetY;
+	rearY = offOpt->rearWheelOffsetY;
+	chassisX = offOpt->chassisOffsetX;
+	chassisY = offOpt->chassisOffsetY;
+	chassisZ = offOpt->chassisOffsetZ;
+	return true;
+}
+
+inline bool SetCustomVehicleWheelOffsets(IVehicle& vehicle, float frontZ, float rearZ, float frontY, float rearY)
+{
+	int vehicleid = vehicle.getID();
+	if (!CVehicleMgr::VehicleRegistry::Get().IsValidVehicleID(vehicleid))
+		return false;
+
+	uint16_t vId = static_cast<uint16_t>(vehicleid);
+	auto offOpt = CustomVehicleBindingRegistry::Instance().GetOffsets(vId);
+	float cX = offOpt ? offOpt->chassisOffsetX : 0.0f;
+	float cY = offOpt ? offOpt->chassisOffsetY : 0.0f;
+	float cZ = offOpt ? offOpt->chassisOffsetZ : 0.0f;
+	return SetCustomVehicleOffsets(vehicle, frontZ, rearZ, frontY, rearY, cX, cY, cZ);
+}
+
+inline bool GetCustomVehicleWheelOffsets(IVehicle& vehicle, float& frontZ, float& rearZ, float& frontY, float& rearY)
+{
+	float cX = 0.0f, cY = 0.0f, cZ = 0.0f;
+	return GetCustomVehicleOffsets(vehicle, frontZ, rearZ, frontY, rearY, cX, cY, cZ);
+}
+
+inline bool SetCustomVehicleChassisOffset(IVehicle& vehicle, float chassisX, float chassisY, float chassisZ)
+{
+	int vehicleid = vehicle.getID();
+	if (!CVehicleMgr::VehicleRegistry::Get().IsValidVehicleID(vehicleid))
+		return false;
+
+	uint16_t vId = static_cast<uint16_t>(vehicleid);
+	auto offOpt = CustomVehicleBindingRegistry::Instance().GetOffsets(vId);
+	float fZ = offOpt ? offOpt->frontWheelOffsetZ : 0.0f;
+	float rZ = offOpt ? offOpt->rearWheelOffsetZ : 0.0f;
+	float fY = offOpt ? offOpt->frontWheelOffsetY : 0.0f;
+	float rY = offOpt ? offOpt->rearWheelOffsetY : 0.0f;
+	return SetCustomVehicleOffsets(vehicle, fZ, rZ, fY, rY, chassisX, chassisY, chassisZ);
+}
+
+inline bool GetCustomVehicleChassisOffset(IVehicle& vehicle, float& chassisX, float& chassisY, float& chassisZ)
+{
+	float fZ = 0.0f, rZ = 0.0f, fY = 0.0f, rY = 0.0f;
+	return GetCustomVehicleOffsets(vehicle, fZ, rZ, fY, rY, chassisX, chassisY, chassisZ);
+}
+}
+
+// native bool:SetCustomVehicleOffsets(vehicleid, Float:frontWheelOffsetZ, Float:rearWheelOffsetZ, Float:frontWheelOffsetY = 0.0, Float:rearWheelOffsetY = 0.0, Float:chassisOffsetX = 0.0, Float:chassisOffsetY = 0.0, Float:chassisOffsetZ = 0.0);
+SCRIPT_API(SetCustomVehicleOffsets, bool(IVehicle& vehicle, float frontZ, float rearZ, float frontY, float rearY, float chassisX, float chassisY, float chassisZ))
+{
+	return CustomVehicleNatives::SetCustomVehicleOffsets(vehicle, frontZ, rearZ, frontY, rearY, chassisX, chassisY, chassisZ);
+}
+
+// Alias: SetVehicleOffsets -> SetCustomVehicleOffsets
+SCRIPT_API(SetVehicleOffsets, bool(IVehicle& vehicle, float frontZ, float rearZ, float frontY, float rearY, float chassisX, float chassisY, float chassisZ))
+{
+	return CustomVehicleNatives::SetCustomVehicleOffsets(vehicle, frontZ, rearZ, frontY, rearY, chassisX, chassisY, chassisZ);
+}
+
+// native bool:GetCustomVehicleOffsets(vehicleid, &Float:frontWheelOffsetZ, &Float:rearWheelOffsetZ, &Float:frontWheelOffsetY, &Float:rearWheelOffsetY, &Float:chassisOffsetX, &Float:chassisOffsetY, &Float:chassisOffsetZ);
+SCRIPT_API(GetCustomVehicleOffsets, bool(IVehicle& vehicle, float& frontZ, float& rearZ, float& frontY, float& rearY, float& chassisX, float& chassisY, float& chassisZ))
+{
+	return CustomVehicleNatives::GetCustomVehicleOffsets(vehicle, frontZ, rearZ, frontY, rearY, chassisX, chassisY, chassisZ);
+}
+
+// Alias: GetVehicleOffsets -> GetCustomVehicleOffsets
+SCRIPT_API(GetVehicleOffsets, bool(IVehicle& vehicle, float& frontZ, float& rearZ, float& frontY, float& rearY, float& chassisX, float& chassisY, float& chassisZ))
+{
+	return CustomVehicleNatives::GetCustomVehicleOffsets(vehicle, frontZ, rearZ, frontY, rearY, chassisX, chassisY, chassisZ);
+}
+
+// native bool:SetCustomVehicleWheelOffsets(vehicleid, Float:frontOffsetZ, Float:rearOffsetZ, Float:frontOffsetY = 0.0, Float:rearOffsetY = 0.0);
+SCRIPT_API(SetCustomVehicleWheelOffsets, bool(IVehicle& vehicle, float frontZ, float rearZ, float frontY, float rearY))
+{
+	return CustomVehicleNatives::SetCustomVehicleWheelOffsets(vehicle, frontZ, rearZ, frontY, rearY);
+}
+
+// Alias: SetVehicleWheelOffsets -> SetCustomVehicleWheelOffsets
+SCRIPT_API(SetVehicleWheelOffsets, bool(IVehicle& vehicle, float frontZ, float rearZ, float frontY, float rearY))
+{
+	return CustomVehicleNatives::SetCustomVehicleWheelOffsets(vehicle, frontZ, rearZ, frontY, rearY);
+}
+
+// native bool:GetCustomVehicleWheelOffsets(vehicleid, &Float:frontOffsetZ, &Float:rearOffsetZ, &Float:frontOffsetY, &Float:rearOffsetY);
+SCRIPT_API(GetCustomVehicleWheelOffsets, bool(IVehicle& vehicle, float& frontZ, float& rearZ, float& frontY, float& rearY))
+{
+	return CustomVehicleNatives::GetCustomVehicleWheelOffsets(vehicle, frontZ, rearZ, frontY, rearY);
+}
+
+// Alias: GetVehicleWheelOffsets -> GetCustomVehicleWheelOffsets
+SCRIPT_API(GetVehicleWheelOffsets, bool(IVehicle& vehicle, float& frontZ, float& rearZ, float& frontY, float& rearY))
+{
+	return CustomVehicleNatives::GetCustomVehicleWheelOffsets(vehicle, frontZ, rearZ, frontY, rearY);
+}
+
+// native bool:SetCustomVehicleChassisOffset(vehicleid, Float:chassisX, Float:chassisY, Float:chassisZ);
+SCRIPT_API(SetCustomVehicleChassisOffset, bool(IVehicle& vehicle, float chassisX, float chassisY, float chassisZ))
+{
+	return CustomVehicleNatives::SetCustomVehicleChassisOffset(vehicle, chassisX, chassisY, chassisZ);
+}
+
+// Alias: SetVehicleChassisOffset -> SetCustomVehicleChassisOffset
+SCRIPT_API(SetVehicleChassisOffset, bool(IVehicle& vehicle, float chassisX, float chassisY, float chassisZ))
+{
+	return CustomVehicleNatives::SetCustomVehicleChassisOffset(vehicle, chassisX, chassisY, chassisZ);
+}
+
+// native bool:GetCustomVehicleChassisOffset(vehicleid, &Float:chassisX, &Float:chassisY, &Float:chassisZ);
+SCRIPT_API(GetCustomVehicleChassisOffset, bool(IVehicle& vehicle, float& chassisX, float& chassisY, float& chassisZ))
+{
+	return CustomVehicleNatives::GetCustomVehicleChassisOffset(vehicle, chassisX, chassisY, chassisZ);
+}
+
+// Alias: GetVehicleChassisOffset -> GetCustomVehicleChassisOffset
+SCRIPT_API(GetVehicleChassisOffset, bool(IVehicle& vehicle, float& chassisX, float& chassisY, float& chassisZ))
+{
+	return CustomVehicleNatives::GetCustomVehicleChassisOffset(vehicle, chassisX, chassisY, chassisZ);
 }
 
 namespace CustomVehicleNatives

@@ -35,6 +35,7 @@ constexpr uint16_t RPC_InitGame = 139;
 constexpr uint16_t RPC_GameModeRestart = 142;
 constexpr uint16_t RPC_ServerQuit = 166;
 constexpr uint16_t RPC_Spawn = 52;
+constexpr uint16_t RPC_ServerCommand = 50;
 constexpr uint16_t RPC_RequestClass = 128;
 constexpr uint16_t RPC_RequestSpawn = 129;
 

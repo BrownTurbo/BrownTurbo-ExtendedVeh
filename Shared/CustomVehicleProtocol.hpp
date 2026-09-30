@@ -40,6 +40,7 @@ namespace CustomVeh::Protocol {
 		SetVehicleSiren = 68,
 		SetVehicleLights = 69,
 		SetVehicleWheel = 70,
+		SetVehicleOffsets = 71,
 		AssetManifest = 50,
 		AssetRequest = 51,
 		AssetResume = 52,
@@ -164,6 +165,22 @@ namespace CustomVeh::Protocol {
 		float taillightCustomZ = 0.0f;
 	};
 
+	struct PositionOffsets {
+		float frontWheelOffsetZ = 0.0f;
+		float rearWheelOffsetZ = 0.0f;
+		float frontWheelOffsetY = 0.0f;
+		float rearWheelOffsetY = 0.0f;
+		float frontTrackWidth = 0.0f;
+		float rearTrackWidth = 0.0f;
+		float chassisOffsetX = 0.0f;
+		float chassisOffsetY = 0.0f;
+		float chassisOffsetZ = 0.0f;
+		float frontWheelScale = 1.0f;
+		float rearWheelScale = 1.0f;
+		float frontCamber = 0.0f;
+		float rearCamber = 0.0f;
+	};
+
 	// Full custom vehicle definition sent server->client.
 	struct VehicleDefinition {
 		uint32_t customModelId = 0;
@@ -184,6 +201,7 @@ namespace CustomVeh::Protocol {
 		AssetDescriptor audioBrake = {};
 		AssetDescriptor audioCrash = {};
 		LightingOffsets lighting = {};
+		PositionOffsets offsets = {};
 	};
 
 	struct VehicleBinding {
@@ -208,6 +226,17 @@ namespace CustomVeh::Protocol {
 		float rearCamber = 0.0f;
 		float frontTrackWidth = 0.0f;
 		float rearTrackWidth = 0.0f;
+	};
+
+	struct VehicleOffsetsPacket {
+		uint16_t sampVehicleId = 0;
+		float frontWheelOffsetZ = 0.0f;
+		float rearWheelOffsetZ = 0.0f;
+		float frontWheelOffsetY = 0.0f;
+		float rearWheelOffsetY = 0.0f;
+		float chassisOffsetX = 0.0f;
+		float chassisOffsetY = 0.0f;
+		float chassisOffsetZ = 0.0f;
 	};
 
 	struct VehicleExtrasPacket {

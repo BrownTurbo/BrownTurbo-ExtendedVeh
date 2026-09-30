@@ -22,6 +22,7 @@ public:
 		CustomVeh::Protocol::VehicleSirenPacket siren {};
 		CustomVeh::Protocol::VehicleLightsPacket lights {};
 		CustomVeh::Protocol::VehicleWheelPacket wheel {};
+		CustomVeh::Protocol::VehicleOffsetsPacket offsets {};
 		bool hasCustomStance { false };
 		bool hasCustomExtras { false };
 		bool hasCustomPaintjob { false };
@@ -33,6 +34,7 @@ public:
 		bool hasCustomSiren { false };
 		bool hasCustomLights { false };
 		bool hasCustomWheel { false };
+		bool hasCustomOffsets { false };
 	};
 
 	struct ModelAudioDefaults
@@ -297,6 +299,23 @@ public:
 		auto it = m_states.find(sampVehicleId);
 		if (it != m_states.end() && it->second.hasCustomWheel)
 			return it->second.wheel;
+		return std::nullopt;
+	}
+
+	void SetOffsets(uint16_t sampVehicleId, const CustomVeh::Protocol::VehicleOffsetsPacket& offsets)
+	{
+		std::lock_guard<std::mutex> lock(m_mutex);
+		auto& state = m_states[sampVehicleId];
+		state.offsets = offsets;
+		state.hasCustomOffsets = true;
+	}
+
+	std::optional<CustomVeh::Protocol::VehicleOffsetsPacket> GetOffsets(uint16_t sampVehicleId) const
+	{
+		std::lock_guard<std::mutex> lock(m_mutex);
+		auto it = m_states.find(sampVehicleId);
+		if (it != m_states.end() && it->second.hasCustomOffsets)
+			return it->second.offsets;
 		return std::nullopt;
 	}
 

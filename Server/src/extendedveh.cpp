@@ -421,6 +421,12 @@ void ExtendedVehCompo::SyncCustomVehicleToPlayer(IVehicle& vehicle, IPlayer& pla
 	{
 		CustomVehicleTransport::SendVehicleWheel(player, *wheelOpt);
 	}
+
+	auto offsetsOpt = CustomVehicleBindingRegistry::Instance().GetOffsets(vId);
+	if (offsetsOpt)
+	{
+		CustomVehicleTransport::SendVehicleOffsets(player, *offsetsOpt);
+	}
 }
 
 void ExtendedVehCompo::SyncCustomVehiclesToPlayer(IPlayer& player)

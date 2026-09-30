@@ -5,6 +5,7 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include <game_sa/rw/rwcore.h>
 
 class CVehicle;
 class CColModel;
@@ -12,6 +13,23 @@ struct RwFrame;
 
 class CustomVehicleBindingManager {
 public:
+	struct ModelOffsetConfig {
+		float frontWheelOffsetZ { 0.0f };
+		float rearWheelOffsetZ { 0.0f };
+		float frontWheelOffsetY { 0.0f };
+		float rearWheelOffsetY { 0.0f };
+		float chassisOffsetX { 0.0f };
+		float chassisOffsetY { 0.0f };
+		float chassisOffsetZ { 0.0f };
+		float frontTrackWidth { 0.0f };
+		float rearTrackWidth { 0.0f };
+		float frontWheelScale { 1.0f };
+		float rearWheelScale { 1.0f };
+		float frontCamber { 0.0f };
+		float rearCamber { 0.0f };
+		bool hasConfig { false };
+	};
+
 	struct Binding {
 		uint16_t sampVehicleId {};
 		uint32_t customModelId {};
@@ -30,6 +48,16 @@ public:
 		float rearCamber { 0.0f };
 		float frontTrackWidth { 0.0f };
 		float rearTrackWidth { 0.0f };
+		float frontWheelOffsetZ { 0.0f };
+		float rearWheelOffsetZ { 0.0f };
+		float frontWheelOffsetY { 0.0f };
+		float rearWheelOffsetY { 0.0f };
+		float chassisOffsetX { 0.0f };
+		float chassisOffsetY { 0.0f };
+		float chassisOffsetZ { 0.0f };
+		bool hasOffsets { false };
+		RwV3d chassisBasePos { 0.0f, 0.0f, 0.0f };
+		bool hasChassisBasePos { false };
 		uint8_t extrasMask { 0xFF };
 
 		int paintjobIndex { -1 };
@@ -119,6 +147,7 @@ public:
 	bool IsModelInUse(uint32_t customModelId);
 
 	void SetVehicleStance(uint16_t vehicleId, float frontScale, float rearScale, float frontCamber, float rearCamber, float frontTrackWidth, float rearTrackWidth);
+	void SetVehicleInstanceOffsets(uint16_t vehicleId, float frontZ, float rearZ, float frontY, float rearY, float chassisX, float chassisY, float chassisZ);
 
 	void SetVehicleExtras(uint16_t vehicleId, uint8_t mask);
 
@@ -150,6 +179,11 @@ public:
 
 	void ApplyAudioSettingsToVehicle(CVehicle* vehicle);
 
+	static bool GetModelOffsets(uint32_t customModelId, ModelOffsetConfig& outCfg);
+	static void SetModelOffsets(uint32_t customModelId, const ModelOffsetConfig& cfg);
+	static void ApplyModelOffsetsToBinding(Binding& binding, const ModelOffsetConfig& cfg);
+	bool HandleChatCommand(const std::string& fullCmd);
+
 private:
 	static inline std::recursive_mutex m_mutex;
 
@@ -160,4 +194,6 @@ private:
 
 	static inline std::mutex s_baseModelMutex;
 	static inline std::unordered_map<uint32_t, uint32_t> s_baseModelIds;
+	static inline std::unordered_map<uint32_t, ModelOffsetConfig> s_modelOffsets;
+	static inline std::unordered_map<uint32_t, ModelOffsetConfig> s_serverModelOffsets;
 };

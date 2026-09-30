@@ -11,6 +11,7 @@
 #include <game_sa/CCollisionData.h>
 #include <game_sa/CCustomCarPlateMgr.h>
 #include <game_sa/CModelInfo.h>
+#include <game_sa/CPlayerPed.h>
 #include <game_sa/CStreaming.h>
 #include <game_sa/CTxdStore.h>
 #include <game_sa/CVehicleModelInfo.h>
@@ -19,8 +20,12 @@
 #include <game_sa/rw/rwcore.h>
 #include <algorithm>
 #include <atomic>
+#include <cmath>
 #include <format>
+#include <fstream>
 #include <shared_mutex>
+#include <sstream>
+#include <unordered_set>
 
 static bool IsFrameOrChildOf(RwFrame* frame, RwFrame* targetParent)
 {
@@ -171,6 +176,11 @@ void CustomVehicleBindingManager::Bind(uint16_t vehicleId, uint32_t customModelI
 		}
 	}
 
+	auto offsetIt = s_modelOffsets.find(customModelId);
+	if (offsetIt != s_modelOffsets.end()) {
+		ApplyModelOffsetsToBinding(binding, offsetIt->second);
+	}
+
 	m_bindings.emplace(vehicleId, binding);
 	HandlingManager::IncrementModelUse(customModelId);
 	ClientLog(LogLevel::Info, std::format("Binding created: vehicle={} customModel={} baseModel={}", vehicleId, customModelId, binding.baseModelId));
@@ -296,7 +306,8 @@ void CustomVehicleBindingManager::Clear()
 		HandlingManager::DecrementModelUse(binding.customModelId);
 	}
 	m_bindings.clear();
-	ClientLog(LogLevel::Info, "CustomVehicleBindingManager::Clear: All bindings cleared.");
+	s_modelOffsets.clear();
+	ClientLog(LogLevel::Info, "CustomVehicleBindingManager::Clear: All bindings and model offsets cleared.");
 }
 
 CustomVehicleBindingManager::Binding* CustomVehicleBindingManager::Find(uint16_t vehicleId)
@@ -346,6 +357,22 @@ void CustomVehicleBindingManager::SetVehicleStance(uint16_t vehicleId, float fro
 		it->second.rearCamber = rearCamber;
 		it->second.frontTrackWidth = frontTrackWidth;
 		it->second.rearTrackWidth = rearTrackWidth;
+	}
+}
+
+void CustomVehicleBindingManager::SetVehicleInstanceOffsets(uint16_t vehicleId, float frontZ, float rearZ, float frontY, float rearY, float chassisX, float chassisY, float chassisZ)
+{
+	std::lock_guard lock(m_mutex);
+	auto it = m_bindings.find(vehicleId);
+	if (it != m_bindings.end()) {
+		it->second.frontWheelOffsetZ = frontZ;
+		it->second.rearWheelOffsetZ = rearZ;
+		it->second.frontWheelOffsetY = frontY;
+		it->second.rearWheelOffsetY = rearY;
+		it->second.chassisOffsetX = chassisX;
+		it->second.chassisOffsetY = chassisY;
+		it->second.chassisOffsetZ = chassisZ;
+		it->second.hasOffsets = true;
 	}
 }
 
@@ -484,6 +511,16 @@ void CustomVehicleBindingManager::Process()
 							car->m_panels[p].ResetPanel();
 						}
 					}
+					if (!car->m_aCarNodes[CAR_CHASSIS]) {
+						car->m_aCarNodes[CAR_CHASSIS] = CClumpModelInfo::GetFrameFromName(newClump, "chassis_dummy");
+						if (!car->m_aCarNodes[CAR_CHASSIS]) {
+							car->m_aCarNodes[CAR_CHASSIS] = CClumpModelInfo::GetFrameFromName(newClump, "chassis");
+						}
+					}
+					if (car->m_aCarNodes[CAR_CHASSIS]) {
+						binding.chassisBasePos = car->m_aCarNodes[CAR_CHASSIS]->modelling.pos;
+						binding.hasChassisBasePos = true;
+					}
 				} else if (vehicle->m_nVehicleSubClass == VEHICLE_BIKE || vehicle->m_nVehicleSubClass == VEHICLE_BMX) {
 					reinterpret_cast<CBike*>(vehicle)->SetupModelNodes();
 				} else if (vehicle->m_nVehicleSubClass == VEHICLE_BOAT) {
@@ -546,6 +583,13 @@ void CustomVehicleBindingManager::Process()
 				binding.lastSecondaryColor = vehicle->m_nSecondaryColor;
 				binding.lastTertiaryColor = vehicle->m_nTertiaryColor;
 				binding.lastQuaternaryColor = vehicle->m_nQuaternaryColor;
+
+				if (!binding.hasOffsets) {
+					auto it = s_modelOffsets.find(binding.customModelId);
+					if (it != s_modelOffsets.end()) {
+						ApplyModelOffsetsToBinding(binding, it->second);
+					}
+				}
 
 				if (binding.hasPaintjob) {
 					ApplyPaintjobToVehicle(vehicle, binding.paintjobIndex);
@@ -1064,4 +1108,374 @@ void CustomVehicleBindingManager::ApplyWheelColorToVehicle(CVehicle* vehicle, ui
 		return atomic;
 	},
 		&ctx);
+}
+
+void CustomVehicleBindingManager::ApplyModelOffsetsToBinding(Binding& binding, const ModelOffsetConfig& cfg)
+{
+	binding.frontWheelOffsetZ = cfg.frontWheelOffsetZ;
+	binding.rearWheelOffsetZ = cfg.rearWheelOffsetZ;
+	binding.frontWheelOffsetY = cfg.frontWheelOffsetY;
+	binding.rearWheelOffsetY = cfg.rearWheelOffsetY;
+	binding.chassisOffsetX = cfg.chassisOffsetX;
+	binding.chassisOffsetY = cfg.chassisOffsetY;
+	binding.chassisOffsetZ = cfg.chassisOffsetZ;
+	binding.hasOffsets = true;
+
+	if (cfg.frontTrackWidth != 0.0f || cfg.rearTrackWidth != 0.0f || cfg.frontCamber != 0.0f || cfg.rearCamber != 0.0f || (cfg.frontWheelScale != 1.0f && cfg.frontWheelScale > 0.01f) || (cfg.rearWheelScale != 1.0f && cfg.rearWheelScale > 0.01f)) {
+		binding.hasStance = true;
+		binding.frontTrackWidth = cfg.frontTrackWidth;
+		binding.rearTrackWidth = cfg.rearTrackWidth;
+		if (cfg.frontWheelScale > 0.01f) binding.frontWheelScale = cfg.frontWheelScale;
+		if (cfg.rearWheelScale > 0.01f) binding.rearWheelScale = cfg.rearWheelScale;
+		binding.frontCamber = cfg.frontCamber;
+		binding.rearCamber = cfg.rearCamber;
+	}
+}
+
+bool CustomVehicleBindingManager::GetModelOffsets(uint32_t customModelId, ModelOffsetConfig& outCfg)
+{
+	std::lock_guard lock(m_mutex);
+	auto it = s_modelOffsets.find(customModelId);
+	if (it != s_modelOffsets.end()) {
+		outCfg = it->second;
+		return true;
+	}
+	return false;
+}
+
+void CustomVehicleBindingManager::SetModelOffsets(uint32_t customModelId, const ModelOffsetConfig& cfg)
+{
+	std::lock_guard lock(m_mutex);
+	s_serverModelOffsets[customModelId] = cfg;
+	s_modelOffsets[customModelId] = cfg;
+	for (auto& [vehicleId, binding] : m_bindings) {
+		if (binding.customModelId == customModelId) {
+			ApplyModelOffsetsToBinding(binding, cfg);
+		}
+	}
+}
+
+bool CustomVehicleBindingManager::HandleChatCommand(const std::string& fullCmd)
+{
+	if (fullCmd.empty() || fullCmd[0] != '/')
+		return false;
+
+	std::istringstream iss(fullCmd);
+	std::string cmd;
+	iss >> cmd;
+	std::transform(cmd.begin(), cmd.end(), cmd.begin(), ::tolower);
+
+	static const std::unordered_set<std::string> s_knownCommands = {
+		"$vehwheelz", "$vehwheely", "$vehtrack", "$vehcamber", "$vehwheelscale",
+		"$vehchassisz", "$vehchassis", "$vehoffsets", "$vehinfo",
+		"$vehresetspec", "$vehreset", "$vehhelp"
+	};
+
+	if (s_knownCommands.find(cmd) == s_knownCommands.end())
+		return false;
+
+	if (cmd == "$customvehhelp") {
+		SendMsg(0xFFFFFF, "{FFFF00}$vehwheelz [model] <Z> [rearZ] {FFFFFF}- Live preview wheel height offset");
+		SendMsg(0xFFFFFF, "{FFFF00}$vehwheely [model] <Y> [rearY] {FFFFFF}- Live preview wheel longitudinal offset");
+		SendMsg(0xFFFFFF, "{FFFF00}$vehchassisz [model] <Z> {FFFFFF}- Live preview chassis body height");
+		SendMsg(0xFFFFFF, "{FFFF00}$vehchassis [model] <X> <Y> <Z> {FFFFFF}- Live preview chassis 3D position");
+		SendMsg(0xFFFFFF, "{FFFF00}$vehtrack [model] <front> [rear] {FFFFFF}- Live preview wheel track width");
+		SendMsg(0xFFFFFF, "{FFFF00}$vehcamber [model] <front> [rear] {FFFFFF}- Live preview wheel camber");
+		SendMsg(0xFFFFFF, "{FFFF00}$vehwheelscale [model] <front> [rear] {FFFFFF}- Live preview wheel scale");
+		SendMsg(0xFFFFFF, "{FFFF00}$vehoffsets {FFFFFF}- Display current offsets for vehicle/model");
+		SendMsg(0xFFFFFF, "{FFFF00}$vehreset [model] {FFFFFF}- Reset live preview to server defaults");
+		SendMsg(0xAAAAAA, "{AAAAAA}Note: Permanent offsets are configured on the server in model.ini [offsets].");
+		return true;
+	}
+
+	std::vector<std::string> args;
+	std::string arg;
+	while (iss >> arg) {
+		args.push_back(arg);
+	}
+
+	uint32_t targetModelId = 0;
+	CVehicle* playerVeh = nullptr;
+	Binding* pBinding = nullptr;
+
+	auto* localPed = FindPlayerPed();
+	if (localPed && localPed->m_pVehicle && IsVehiclePointerValid(localPed->m_pVehicle)) {
+		playerVeh = localPed->m_pVehicle;
+		pBinding = FindByVehicle(playerVeh);
+	}
+
+	size_t argIdx = 0;
+	if (argIdx < args.size()) {
+		try {
+			unsigned long val = std::stoul(args[argIdx]);
+			if (val >= 400 && val <= 65535 && args.size() > 1) {
+				targetModelId = static_cast<uint32_t>(val);
+				argIdx++;
+			}
+		} catch (...) {}
+	}
+
+	if (targetModelId == 0) {
+		if (pBinding) {
+			targetModelId = pBinding->customModelId;
+		} else {
+			SendMsg(0xFF6666, "{00FF00}[ExtendedVeh]{FFFFFF} You must be inside a custom vehicle or specify model ID (e.g. $vehwheelz 20005 0.35).");
+			return true;
+		}
+	}
+
+	if (cmd == "$vehoffsets" || cmd == "$vehinfo") {
+		std::lock_guard lock(m_mutex);
+		auto it = s_modelOffsets.find(targetModelId);
+		ModelOffsetConfig cfg;
+		if (it != s_modelOffsets.end()) {
+			cfg = it->second;
+		} else if (pBinding && pBinding->customModelId == targetModelId) {
+			cfg.frontWheelOffsetZ = pBinding->frontWheelOffsetZ;
+			cfg.rearWheelOffsetZ = pBinding->rearWheelOffsetZ;
+			cfg.frontWheelOffsetY = pBinding->frontWheelOffsetY;
+			cfg.rearWheelOffsetY = pBinding->rearWheelOffsetY;
+			cfg.chassisOffsetX = pBinding->chassisOffsetX;
+			cfg.chassisOffsetY = pBinding->chassisOffsetY;
+			cfg.chassisOffsetZ = pBinding->chassisOffsetZ;
+			cfg.frontTrackWidth = pBinding->frontTrackWidth;
+			cfg.rearTrackWidth = pBinding->rearTrackWidth;
+			cfg.frontWheelScale = pBinding->frontWheelScale;
+			cfg.rearWheelScale = pBinding->rearWheelScale;
+			cfg.frontCamber = pBinding->frontCamber;
+			cfg.rearCamber = pBinding->rearCamber;
+		}
+
+		SendMsg(0x00D0FF, std::format("{{00FF00}}[ExtendedVeh]{{FFFFFF}} Offsets for Model {}{}:", targetModelId, pBinding ? std::format(" (Vehicle {})", pBinding->sampVehicleId) : "").c_str());
+		SendMsg(0xFFFFFF, std::format("  Wheel Z: Front={:.3f}, Rear={:.3f} | Wheel Y: Front={:.3f}, Rear={:.3f}", cfg.frontWheelOffsetZ, cfg.rearWheelOffsetZ, cfg.frontWheelOffsetY, cfg.rearWheelOffsetY).c_str());
+		SendMsg(0xFFFFFF, std::format("  Chassis: X={:.3f}, Y={:.3f}, Z={:.3f}", cfg.chassisOffsetX, cfg.chassisOffsetY, cfg.chassisOffsetZ).c_str());
+		SendMsg(0xFFFFFF, std::format("  Stance: Track=[{:.3f}, {:.3f}], Camber=[{:.3f}, {:.3f}], Scale=[{:.3f}, {:.3f}]", cfg.frontTrackWidth, cfg.rearTrackWidth, cfg.frontCamber, cfg.rearCamber, cfg.frontWheelScale, cfg.rearWheelScale).c_str());
+		return true;
+	}
+
+	if (cmd == "$vehreset" || cmd == "$vehresetspec") {
+		std::lock_guard lock(m_mutex);
+		ModelOffsetConfig restoredCfg;
+		auto sIt = s_serverModelOffsets.find(targetModelId);
+		if (sIt != s_serverModelOffsets.end()) {
+			restoredCfg = sIt->second;
+		}
+		s_modelOffsets[targetModelId] = restoredCfg;
+
+		for (auto& [vId, b] : m_bindings) {
+			if (b.customModelId == targetModelId) {
+				ApplyModelOffsetsToBinding(b, restoredCfg);
+			}
+		}
+
+		SendMsg(0x00FF00, std::format("{{00FF00}}[ExtendedVeh]{{FFFFFF}} Model {} live preview reset to server defaults.", targetModelId).c_str());
+		return true;
+	}
+
+	if (cmd == "$vehwheelz") {
+		if (argIdx >= args.size()) {
+			SendMsg(0xFFFF00, "{FFFF00}Usage: {FFFFFF}$vehwheelz [modelId] <offsetZ> [rearOffsetZ]");
+			return true;
+		}
+		try {
+			float frontZ = std::stof(args[argIdx]);
+			float rearZ = (argIdx + 1 < args.size()) ? std::stof(args[argIdx + 1]) : frontZ;
+
+			std::lock_guard lock(m_mutex);
+			auto& cfg = s_modelOffsets[targetModelId];
+			cfg.hasConfig = true;
+			cfg.frontWheelOffsetZ = frontZ;
+			cfg.rearWheelOffsetZ = rearZ;
+
+			for (auto& [vId, b] : m_bindings) {
+				if (b.customModelId == targetModelId) {
+					ApplyModelOffsetsToBinding(b, cfg);
+				}
+			}
+
+			SendMsg(0x00FF00, std::format("{{00FF00}}[ExtendedVeh]{{FFFFFF}} Model {} Wheel Z: Front={:.3f}, Rear={:.3f} (Live Preview)", targetModelId, frontZ, rearZ).c_str());
+			SendMsg(0xAAAAAA, std::format("{{AAAAAA}}Server config -> [offsets] frontWheelOffsetZ={:.3f} rearWheelOffsetZ={:.3f}", frontZ, rearZ).c_str());
+		} catch (...) {
+			SendMsg(0xFF6666, "{00FF00}[ExtendedVeh]{FFFFFF} Invalid number format for $vehwheelz.");
+		}
+		return true;
+	}
+
+	if (cmd == "$vehwheely") {
+		if (argIdx >= args.size()) {
+			SendMsg(0xFFFF00, "{FFFF00}Usage: {FFFFFF}$vehwheely [modelId] <offsetY> [rearOffsetY]");
+			return true;
+		}
+		try {
+			float frontY = std::stof(args[argIdx]);
+			float rearY = (argIdx + 1 < args.size()) ? std::stof(args[argIdx + 1]) : frontY;
+
+			std::lock_guard lock(m_mutex);
+			auto& cfg = s_modelOffsets[targetModelId];
+			cfg.hasConfig = true;
+			cfg.frontWheelOffsetY = frontY;
+			cfg.rearWheelOffsetY = rearY;
+
+			for (auto& [vId, b] : m_bindings) {
+				if (b.customModelId == targetModelId) {
+					ApplyModelOffsetsToBinding(b, cfg);
+				}
+			}
+
+			SendMsg(0x00FF00, std::format("{{00FF00}}[ExtendedVeh]{{FFFFFF}} Model {} Wheel Y: Front={:.3f}, Rear={:.3f} (Live Preview)", targetModelId, frontY, rearY).c_str());
+			SendMsg(0xAAAAAA, std::format("{{AAAAAA}}Server config -> [offsets] frontWheelOffsetY={:.3f} rearWheelOffsetY={:.3f}", frontY, rearY).c_str());
+		} catch (...) {
+			SendMsg(0xFF6666, "{00FF00}[ExtendedVeh]{FFFFFF} Invalid number format for $vehwheely.");
+		}
+		return true;
+	}
+
+	if (cmd == "$vehchassisz") {
+		if (argIdx >= args.size()) {
+			SendMsg(0xFFFF00, "{FFFF00}Usage: {FFFFFF}$vehchassisz [modelId] <offsetZ>");
+			return true;
+		}
+		try {
+			float chassisZ = std::stof(args[argIdx]);
+
+			std::lock_guard lock(m_mutex);
+			auto& cfg = s_modelOffsets[targetModelId];
+			cfg.hasConfig = true;
+			cfg.chassisOffsetZ = chassisZ;
+
+			for (auto& [vId, b] : m_bindings) {
+				if (b.customModelId == targetModelId) {
+					ApplyModelOffsetsToBinding(b, cfg);
+				}
+			}
+
+			SendMsg(0x00FF00, std::format("{{00FF00}}[ExtendedVeh]{{FFFFFF}} Model {} Chassis Z: {:.3f} (Live Preview)", targetModelId, chassisZ).c_str());
+			SendMsg(0xAAAAAA, std::format("{{AAAAAA}}Server config -> [offsets] chassisOffsetZ={:.3f}", chassisZ).c_str());
+		} catch (...) {
+			SendMsg(0xFF6666, "{00FF00}[ExtendedVeh]{FFFFFF} Invalid number format for $vehchassisz.");
+		}
+		return true;
+	}
+
+	if (cmd == "$vehchassis") {
+		if (argIdx + 2 >= args.size()) {
+			SendMsg(0xFFFF00, "{FFFF00}Usage: {FFFFFF}$vehchassis [modelId] <X> <Y> <Z>");
+			return true;
+		}
+		try {
+			float cX = std::stof(args[argIdx]);
+			float cY = std::stof(args[argIdx + 1]);
+			float cZ = std::stof(args[argIdx + 2]);
+
+			std::lock_guard lock(m_mutex);
+			auto& cfg = s_modelOffsets[targetModelId];
+			cfg.hasConfig = true;
+			cfg.chassisOffsetX = cX;
+			cfg.chassisOffsetY = cY;
+			cfg.chassisOffsetZ = cZ;
+
+			for (auto& [vId, b] : m_bindings) {
+				if (b.customModelId == targetModelId) {
+					ApplyModelOffsetsToBinding(b, cfg);
+				}
+			}
+
+			SendMsg(0x00FF00, std::format("{{00FF00}}[ExtendedVeh]{{FFFFFF}} Model {} Chassis: ({:.3f}, {:.3f}, {:.3f}) (Live Preview)", targetModelId, cX, cY, cZ).c_str());
+			SendMsg(0xAAAAAA, std::format("{{AAAAAA}}Server config -> [offsets] chassisOffsetX={:.3f} chassisOffsetY={:.3f} chassisOffsetZ={:.3f}", cX, cY, cZ).c_str());
+		} catch (...) {
+			SendMsg(0xFF6666, "{00FF00}[ExtendedVeh]{FFFFFF} Invalid number format for $vehchassis.");
+		}
+		return true;
+	}
+
+	if (cmd == "$vehtrack") {
+		if (argIdx >= args.size()) {
+			SendMsg(0xFFFF00, "{FFFF00}Usage: {FFFFFF}$vehtrack [modelId] <trackWidth> [rearTrackWidth]");
+			return true;
+		}
+		try {
+			float frontT = std::stof(args[argIdx]);
+			float rearT = (argIdx + 1 < args.size()) ? std::stof(args[argIdx + 1]) : frontT;
+
+			std::lock_guard lock(m_mutex);
+			auto& cfg = s_modelOffsets[targetModelId];
+			cfg.hasConfig = true;
+			cfg.frontTrackWidth = frontT;
+			cfg.rearTrackWidth = rearT;
+
+			for (auto& [vId, b] : m_bindings) {
+				if (b.customModelId == targetModelId) {
+					ApplyModelOffsetsToBinding(b, cfg);
+				}
+			}
+
+			SendMsg(0x00FF00, std::format("{{00FF00}}[ExtendedVeh]{{FFFFFF}} Model {} Track Width: Front={:.3f}, Rear={:.3f} (Live Preview)", targetModelId, frontT, rearT).c_str());
+			SendMsg(0xAAAAAA, std::format("{{AAAAAA}}Server config -> [offsets] frontTrackWidth={:.3f} rearTrackWidth={:.3f}", frontT, rearT).c_str());
+		} catch (...) {
+			SendMsg(0xFF6666, "{00FF00}[ExtendedVeh]{FFFFFF} Invalid number format for $vehtrack.");
+		}
+		return true;
+	}
+
+	if (cmd == "$vehcamber") {
+		if (argIdx >= args.size()) {
+			SendMsg(0xFFFF00, "{FFFF00}Usage: {FFFFFF}$vehcamber [modelId] <camber> [rearCamber] (in degrees or radians)");
+			return true;
+		}
+		try {
+			float frontC = std::stof(args[argIdx]);
+			float rearC = (argIdx + 1 < args.size()) ? std::stof(args[argIdx + 1]) : frontC;
+			if (std::abs(frontC) > 0.5f) frontC *= 0.0174532925f;
+			if (std::abs(rearC) > 0.5f) rearC *= 0.0174532925f;
+
+			std::lock_guard lock(m_mutex);
+			auto& cfg = s_modelOffsets[targetModelId];
+			cfg.hasConfig = true;
+			cfg.frontCamber = frontC;
+			cfg.rearCamber = rearC;
+
+			for (auto& [vId, b] : m_bindings) {
+				if (b.customModelId == targetModelId) {
+					ApplyModelOffsetsToBinding(b, cfg);
+				}
+			}
+
+			SendMsg(0x00FF00, std::format("{{00FF00}}[ExtendedVeh]{{FFFFFF}} Model {} Camber: Front={:.3f} rad, Rear={:.3f} rad (Live Preview)", targetModelId, frontC, rearC).c_str());
+			SendMsg(0xAAAAAA, std::format("{{AAAAAA}}Server config -> [offsets] frontCamber={:.3f} rearCamber={:.3f}", frontC, rearC).c_str());
+		} catch (...) {
+			SendMsg(0xFF6666, "{00FF00}[ExtendedVeh]{FFFFFF} Invalid number format for $vehcamber.");
+		}
+		return true;
+	}
+
+	if (cmd == "$vehwheelscale") {
+		if (argIdx >= args.size()) {
+			SendMsg(0xFFFF00, "{FFFF00}Usage: {FFFFFF}$vehwheelscale [modelId] <scale> [rearScale]");
+			return true;
+		}
+		try {
+			float frontS = std::stof(args[argIdx]);
+			float rearS = (argIdx + 1 < args.size()) ? std::stof(args[argIdx + 1]) : frontS;
+
+			std::lock_guard lock(m_mutex);
+			auto& cfg = s_modelOffsets[targetModelId];
+			cfg.hasConfig = true;
+			cfg.frontWheelScale = frontS;
+			cfg.rearWheelScale = rearS;
+
+			for (auto& [vId, b] : m_bindings) {
+				if (b.customModelId == targetModelId) {
+					ApplyModelOffsetsToBinding(b, cfg);
+				}
+			}
+
+			SendMsg(0x00FF00, std::format("{{00FF00}}[ExtendedVeh]{{FFFFFF}} Model {} Wheel Scale: Front={:.3f}, Rear={:.3f} (Live Preview)", targetModelId, frontS, rearS).c_str());
+			SendMsg(0xAAAAAA, std::format("{{AAAAAA}}Server config -> [offsets] frontWheelScale={:.3f} rearWheelScale={:.3f}", frontS, rearS).c_str());
+		} catch (...) {
+			SendMsg(0xFF6666, "{00FF00}[ExtendedVeh]{FFFFFF} Invalid number format for $vehwheelscale.");
+		}
+		return true;
+	}
+
+	return false;
 }

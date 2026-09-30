@@ -285,6 +285,32 @@ public:
 		}
 	}
 
+	static void NormalizeFrameNamesRecursive(RwFrame* frame)
+	{
+		if (!frame)
+			return;
+
+		char* name = GetFrameNodeName(frame);
+		if (name && *name) {
+			std::string s(name);
+			bool modified = false;
+			for (char& c : s) {
+				if (c == ' ') {
+					c = '_';
+					modified = true;
+				}
+			}
+			if (modified) {
+				SetFrameNodeName(frame, s.c_str());
+				ClientLog(LogLevel::Debug, std::format("Normalized frame name: '{}' -> '{}'", name, s));
+			}
+		}
+
+		for (RwFrame* child = frame->child; child != nullptr; child = child->next) {
+			NormalizeFrameNamesRecursive(child);
+		}
+	}
+
 	static bool FinalizeClump(CVehicleModelInfo* pInfo, RpClump* pClump, CVehicleModelInfo* pBaseInfo = nullptr)
 	{
 		if (!pInfo || !pClump)
@@ -312,6 +338,12 @@ public:
 			pInfo->m_pVehicleStruct = nullptr;
 			ClientLog(LogLevel::Debug, "FinalizeClump -> vehicle struct released");
 		}
+
+		RwFrame* rootFrame = RpClumpGetFrame(pClump);
+		if (rootFrame) {
+			NormalizeFrameNamesRecursive(rootFrame);
+		}
+
 		ClientLog(LogLevel::Debug, "FinalizeClump -> BEFORE SetupVehicleVariables");
 		CVisibilityPlugins::SetupVehicleVariables(pClump);
 		ClientLog(LogLevel::Debug, "FinalizeClump -> AFTER SetupVehicleVariables");

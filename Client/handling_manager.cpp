@@ -1595,6 +1595,17 @@ bool HandlingManager::ProcessAction(CustomVehAction action, RakNet::BitStream* b
 		}
 		return true;
 	}
+	case static_cast<CustomVehAction>(CustomVeh::Protocol::Action::SetVehicleOffsets): {
+		CustomVeh::Protocol::VehicleOffsetsPacket pkt {};
+		if (bs->Read(reinterpret_cast<char*>(&pkt), sizeof(pkt))) {
+			ClientLog(LogLevel::Info, std::format("SetVehicleOffsets: vehId={}, frontZ={:.2f}, rearZ={:.2f}, frontY={:.2f}, rearY={:.2f}, chassis=({:.2f}, {:.2f}, {:.2f})", pkt.sampVehicleId, pkt.frontWheelOffsetZ, pkt.rearWheelOffsetZ, pkt.frontWheelOffsetY, pkt.rearWheelOffsetY, pkt.chassisOffsetX, pkt.chassisOffsetY, pkt.chassisOffsetZ));
+			CustomVehicleBindingManager::Instance().SetVehicleInstanceOffsets(
+				pkt.sampVehicleId, pkt.frontWheelOffsetZ, pkt.rearWheelOffsetZ,
+				pkt.frontWheelOffsetY, pkt.rearWheelOffsetY,
+				pkt.chassisOffsetX, pkt.chassisOffsetY, pkt.chassisOffsetZ);
+		}
+		return true;
+	}
 	case static_cast<CustomVehAction>(CustomVeh::Protocol::Action::SetVehicleExtras): {
 		CustomVeh::Protocol::VehicleExtrasPacket extras {};
 		if (bs->Read(reinterpret_cast<char*>(&extras), sizeof(extras))) {

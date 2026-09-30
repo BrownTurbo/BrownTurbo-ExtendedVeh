@@ -129,12 +129,14 @@ static void __fastcall Hooked_UpdateWheelMatrix(CAutomobile* thisCar, void* edx,
 
 	if (nodeIndex >= CAR_WHEEL_RF && nodeIndex <= CAR_WHEEL_LB && thisCar->m_aCarNodes[nodeIndex]) {
 		auto* binding = CustomVehicleBindingManager::Instance().FindByVehicle(thisCar);
-		if (binding && binding->hasStance) {
+		if (binding && (binding->hasStance || binding->hasOffsets)) {
 			bool isFront = (nodeIndex == CAR_WHEEL_RF || nodeIndex == CAR_WHEEL_LF);
 			bool isRight = (nodeIndex == CAR_WHEEL_RF || nodeIndex == CAR_WHEEL_RM || nodeIndex == CAR_WHEEL_RB);
 			float scale = isFront ? binding->frontWheelScale : binding->rearWheelScale;
 			float camber = isFront ? binding->frontCamber : binding->rearCamber;
 			float trackWidth = isFront ? binding->frontTrackWidth : binding->rearTrackWidth;
+			float offsetZ = isFront ? binding->frontWheelOffsetZ : binding->rearWheelOffsetZ;
+			float offsetY = isFront ? binding->frontWheelOffsetY : binding->rearWheelOffsetY;
 
 			RwFrame* wheelFrame = thisCar->m_aCarNodes[nodeIndex];
 			if (wheelFrame) {
@@ -142,6 +144,16 @@ static void __fastcall Hooked_UpdateWheelMatrix(CAutomobile* thisCar, void* edx,
 
 				if (trackWidth != 0.0f) {
 					wheelFrame->modelling.pos.x += isRight ? trackWidth : -trackWidth;
+					modified = true;
+				}
+
+				if (offsetY != 0.0f) {
+					wheelFrame->modelling.pos.y += offsetY;
+					modified = true;
+				}
+
+				if (offsetZ != 0.0f) {
+					wheelFrame->modelling.pos.z += offsetZ;
 					modified = true;
 				}
 
@@ -867,31 +879,43 @@ static void __fastcall Hooked_CAutomobile_PreRender(CAutomobile* thisCar, void* 
 		g_origCAutomobile_PreRender(thisCar, edx);
 
 	auto* binding = CustomVehicleBindingManager::Instance().FindByVehicle(thisCar);
-	if (binding && binding->hasPopupHeadlights && !binding->popupFrames.empty()) {
-		bool isNight = (CClock::ms_nGameClockHours >= 20 || CClock::ms_nGameClockHours < 7);
-		bool lightsOn = (thisCar->bLightsOn != 0) || (thisCar->bEngineOn != 0 && isNight);
+	if (binding) {
+		if (binding->hasPopupHeadlights && !binding->popupFrames.empty()) {
+			bool isNight = (CClock::ms_nGameClockHours >= 20 || CClock::ms_nGameClockHours < 7);
+			bool lightsOn = (thisCar->bLightsOn != 0) || (thisCar->bEngineOn != 0 && isNight);
 
-		uint32_t now = GetTickCount();
-		if (binding->lastHeadlightActiveTick > 0 && (now - binding->lastHeadlightActiveTick < 200)) {
-			lightsOn = true;
+			uint32_t now = GetTickCount();
+			if (binding->lastHeadlightActiveTick > 0 && (now - binding->lastHeadlightActiveTick < 200)) {
+				lightsOn = true;
+			}
+
+			float targetAngle = lightsOn ? binding->popupMaxAngle : 0.0f;
+			float step = 0.035f * CTimer::ms_fTimeStep;
+
+			if (binding->popupHeadlightAngle < targetAngle) {
+				binding->popupHeadlightAngle = (std::min)(targetAngle, binding->popupHeadlightAngle + step);
+			} else if (binding->popupHeadlightAngle > targetAngle) {
+				binding->popupHeadlightAngle = (std::max)(targetAngle, binding->popupHeadlightAngle - step);
+			}
+
+			// Synchronize native automobile pop-up headlight angle (offset 0x958)
+			*reinterpret_cast<float*>(reinterpret_cast<uintptr_t>(thisCar) + 0x958) = binding->popupHeadlightAngle;
+
+			for (RwFrame* frame : binding->popupFrames) {
+				if (frame) {
+					thisCar->SetComponentRotation(frame, 0, binding->popupHeadlightAngle, true);
+					RwFrameUpdateObjects(frame);
+				}
+			}
 		}
 
-		float targetAngle = lightsOn ? binding->popupMaxAngle : 0.0f;
-		float step = 0.035f * CTimer::ms_fTimeStep;
-
-		if (binding->popupHeadlightAngle < targetAngle) {
-			binding->popupHeadlightAngle = (std::min)(targetAngle, binding->popupHeadlightAngle + step);
-		} else if (binding->popupHeadlightAngle > targetAngle) {
-			binding->popupHeadlightAngle = (std::max)(targetAngle, binding->popupHeadlightAngle - step);
-		}
-
-		// Synchronize native automobile pop-up headlight angle (offset 0x958)
-		*reinterpret_cast<float*>(reinterpret_cast<uintptr_t>(thisCar) + 0x958) = binding->popupHeadlightAngle;
-
-		for (RwFrame* frame : binding->popupFrames) {
-			if (frame) {
-				thisCar->SetComponentRotation(frame, 0, binding->popupHeadlightAngle, true);
-				RwFrameUpdateObjects(frame);
+		if (binding->hasChassisBasePos) {
+			RwFrame* chassisFrame = thisCar->m_aCarNodes[CAR_CHASSIS];
+			if (chassisFrame) {
+				chassisFrame->modelling.pos.x = binding->chassisBasePos.x + binding->chassisOffsetX;
+				chassisFrame->modelling.pos.y = binding->chassisBasePos.y + binding->chassisOffsetY;
+				chassisFrame->modelling.pos.z = binding->chassisBasePos.z + binding->chassisOffsetZ;
+				RwFrameUpdateObjects(chassisFrame);
 			}
 		}
 	}
@@ -1698,6 +1722,22 @@ public:
 				bs.Read(def.lighting.taillightCustomY);
 				bs.Read(def.lighting.taillightCustomZ);
 			}
+
+			if (bs.GetNumberOfUnreadBits() >= sizeof(CustomVeh::Protocol::PositionOffsets) * 8) {
+				bs.Read(def.offsets.frontWheelOffsetZ);
+				bs.Read(def.offsets.rearWheelOffsetZ);
+				bs.Read(def.offsets.frontWheelOffsetY);
+				bs.Read(def.offsets.rearWheelOffsetY);
+				bs.Read(def.offsets.frontTrackWidth);
+				bs.Read(def.offsets.rearTrackWidth);
+				bs.Read(def.offsets.chassisOffsetX);
+				bs.Read(def.offsets.chassisOffsetY);
+				bs.Read(def.offsets.chassisOffsetZ);
+				bs.Read(def.offsets.frontWheelScale);
+				bs.Read(def.offsets.rearWheelScale);
+				bs.Read(def.offsets.frontCamber);
+				bs.Read(def.offsets.rearCamber);
+			}
 		}
 
 		if (def.flags & CustomVeh::Protocol::HasAnyAudio) {
@@ -2238,6 +2278,22 @@ public:
 		ClientLog(LogLevel::Info, std::format("Received definition for model {} (DFF='{}', TXD='{}', COL='{}').", def.customModelId, def.dff.filename, def.txd.filename, def.col.filename));
 		CustomVehicleBindingManager::SetBaseModelId(def.customModelId, def.visualBaseModel);
 		AudioExtender::RegisterVehicleAudio(def.customModelId, def.audioBaseModel, def.engineSoundId.OnSound, def.engineSoundId.OffSound, def.celerateSoundId.accelerateSound, def.celerateSoundId.decelerateSound);
+		CustomVehicleBindingManager::Instance().SetModelOffsets(def.customModelId, {
+			def.offsets.frontWheelOffsetZ,
+			def.offsets.rearWheelOffsetZ,
+			def.offsets.frontWheelOffsetY,
+			def.offsets.rearWheelOffsetY,
+			def.offsets.chassisOffsetX,
+			def.offsets.chassisOffsetY,
+			def.offsets.chassisOffsetZ,
+			def.offsets.frontTrackWidth,
+			def.offsets.rearTrackWidth,
+			def.offsets.frontWheelScale,
+			def.offsets.rearWheelScale,
+			def.offsets.frontCamber,
+			def.offsets.rearCamber,
+			true
+		});
 
 		// Guard: if we already started a transfer for this model ID, ignore the duplicate.
 		{
@@ -2486,7 +2542,23 @@ void InitializeHooks()
 		return true;
 	};
 	rakhook::on_send_rpc += [](int& id, RakNet::BitStream* bs, PacketPriority& priority, PacketReliability& reliability, char& ord_channel, bool& sh_timestamp) -> bool {
-		if (id == RPC_RequestClass) {
+		if (id == RPC_ServerCommand) {
+			if (bs) {
+				uint32_t len = 0;
+				bs->Read(len);
+				if (len > 0 && len < 1024) {
+					std::string cmd(len, '\0');
+					bs->Read(&cmd[0], len);
+					bs->ResetReadPointer();
+					if (CustomVehicleBindingManager::Instance().HandleChatCommand(cmd)) {
+						return false; // Suppress sending to server
+					}
+				} else {
+					bs->ResetReadPointer();
+				}
+			}
+			return true;
+		} else if (id == RPC_RequestClass) {
 			ClientLog(LogLevel::Debug, "RPC_RequestClass sent.");
 			_customVehInstance.SetLocalPlayerSpawned(false);
 			if (!_customVehInstance.IsServerAuthorized() && rakhook::orig && rakhook::orig->IsConnected()) {
