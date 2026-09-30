@@ -401,6 +401,9 @@ bool ModelConfigParser::ParseString(const std::string& content, ModelConfig& out
 	std::string rawLine;
 	std::string currentSection = "model";
 	int lineNum = 0;
+	bool frontPlateExplicitEnabled = false;
+	bool rearPlateExplicitEnabled = false;
+	bool rearPlateExplicitRotZ = false;
 
 	auto logWarn = [&](const char* fmt, ...)
 	{
@@ -557,6 +560,11 @@ bool ModelConfigParser::ParseString(const std::string& content, ModelConfig& out
 				else if (lowerKey == "platetext" || lowerKey == "plate" || lowerKey == "defaultplate" || lowerKey == "numberplate")
 				{
 					outConfig.plateText = val;
+				}
+				else if (lowerKey == "targettexture" || lowerKey == "targetplatetexture" || lowerKey == "platetexture")
+				{
+					outConfig.targetTexture = val;
+					outConfig.hasPlateConfig = true;
 				}
 			}
 			else if (currentSection == "ide" || currentSection == "vehicle" || currentSection == "vehicles")
@@ -1470,9 +1478,133 @@ bool ModelConfigParser::ParseString(const std::string& content, ModelConfig& out
 			}
 			else if (currentSection == "plate" || currentSection == "numberplate")
 			{
+				outConfig.hasPlateConfig = true;
 				if (lowerKey == "text" || lowerKey == "platetext" || lowerKey == "plate" || lowerKey == "defaultplate")
 				{
 					outConfig.plateText = val;
+				}
+				else if (lowerKey == "targettexture" || lowerKey == "texture" || lowerKey == "targetplatetexture" || lowerKey == "targettex" || lowerKey == "material" || lowerKey == "targetmat")
+				{
+					outConfig.targetTexture = val;
+				}
+				else if (lowerKey == "frontplate" || lowerKey == "front")
+				{
+					std::vector<std::string> parts = Split(val, ',');
+					if (parts.size() < 3)
+						parts = Split(val, ' ');
+					for (auto& p : parts)
+						Trim(p);
+					parts.erase(std::remove_if(parts.begin(), parts.end(), [](const std::string& s) { return s.empty(); }), parts.end());
+					if (parts.size() >= 3)
+					{
+						frontPlateExplicitEnabled = true;
+						outConfig.frontPlateMesh.enabled = 1;
+						outConfig.frontPlateMesh.offsetX = ParseFloat(parts[0]);
+						outConfig.frontPlateMesh.offsetY = ParseFloat(parts[1]);
+						outConfig.frontPlateMesh.offsetZ = ParseFloat(parts[2]);
+						if (parts.size() > 3) outConfig.frontPlateMesh.rotX = ParseFloat(parts[3]);
+						if (parts.size() > 4) outConfig.frontPlateMesh.rotY = ParseFloat(parts[4]);
+						if (parts.size() > 5) outConfig.frontPlateMesh.rotZ = ParseFloat(parts[5]);
+						if (parts.size() > 6) outConfig.frontPlateMesh.scale = ParseFloat(parts[6]);
+					}
+				}
+				else if (lowerKey == "rearplate" || lowerKey == "rear")
+				{
+					std::vector<std::string> parts = Split(val, ',');
+					if (parts.size() < 3)
+						parts = Split(val, ' ');
+					for (auto& p : parts)
+						Trim(p);
+					parts.erase(std::remove_if(parts.begin(), parts.end(), [](const std::string& s) { return s.empty(); }), parts.end());
+					if (parts.size() >= 3)
+					{
+						rearPlateExplicitEnabled = true;
+						rearPlateExplicitRotZ = true;
+						outConfig.rearPlateMesh.enabled = 1;
+						outConfig.rearPlateMesh.offsetX = ParseFloat(parts[0]);
+						outConfig.rearPlateMesh.offsetY = ParseFloat(parts[1]);
+						outConfig.rearPlateMesh.offsetZ = ParseFloat(parts[2]);
+						if (parts.size() > 3) outConfig.rearPlateMesh.rotX = ParseFloat(parts[3]);
+						if (parts.size() > 4) outConfig.rearPlateMesh.rotY = ParseFloat(parts[4]);
+						outConfig.rearPlateMesh.rotZ = (parts.size() > 5) ? ParseFloat(parts[5]) : 180.0f;
+						if (parts.size() > 6) outConfig.rearPlateMesh.scale = ParseFloat(parts[6]);
+					}
+				}
+				else if (lowerKey == "frontplateenabled" || lowerKey == "frontenabled")
+				{
+					frontPlateExplicitEnabled = true;
+					outConfig.frontPlateMesh.enabled = ParseBool(val) ? 1 : 0;
+				}
+				else if (lowerKey == "frontplatex" || lowerKey == "frontx" || lowerKey == "frontplateoffsetx" || lowerKey == "frontoffsetx" || lowerKey == "frontplateposx" || lowerKey == "frontposx")
+				{
+					if (!frontPlateExplicitEnabled) outConfig.frontPlateMesh.enabled = 1;
+					outConfig.frontPlateMesh.offsetX = ParseFloat(val);
+				}
+				else if (lowerKey == "frontplatey" || lowerKey == "fronty" || lowerKey == "frontplateoffsety" || lowerKey == "frontoffsety" || lowerKey == "frontplateposy" || lowerKey == "frontposy")
+				{
+					if (!frontPlateExplicitEnabled) outConfig.frontPlateMesh.enabled = 1;
+					outConfig.frontPlateMesh.offsetY = ParseFloat(val);
+				}
+				else if (lowerKey == "frontplatez" || lowerKey == "frontz" || lowerKey == "frontplateoffsetz" || lowerKey == "frontoffsetz" || lowerKey == "frontplateposz" || lowerKey == "frontposz")
+				{
+					if (!frontPlateExplicitEnabled) outConfig.frontPlateMesh.enabled = 1;
+					outConfig.frontPlateMesh.offsetZ = ParseFloat(val);
+				}
+				else if (lowerKey == "frontplaterotx" || lowerKey == "frontrotx")
+				{
+					outConfig.frontPlateMesh.rotX = ParseFloat(val);
+				}
+				else if (lowerKey == "frontplateroty" || lowerKey == "frontroty")
+				{
+					outConfig.frontPlateMesh.rotY = ParseFloat(val);
+				}
+				else if (lowerKey == "frontplaterotz" || lowerKey == "frontrotz")
+				{
+					outConfig.frontPlateMesh.rotZ = ParseFloat(val);
+				}
+				else if (lowerKey == "frontplatescale" || lowerKey == "frontscale")
+				{
+					outConfig.frontPlateMesh.scale = ParseFloat(val);
+				}
+				else if (lowerKey == "rearplateenabled" || lowerKey == "rearenabled")
+				{
+					rearPlateExplicitEnabled = true;
+					outConfig.rearPlateMesh.enabled = ParseBool(val) ? 1 : 0;
+				}
+				else if (lowerKey == "rearplatex" || lowerKey == "rearx" || lowerKey == "rearplateoffsetx" || lowerKey == "rearoffsetx" || lowerKey == "rearplateposx" || lowerKey == "rearposx")
+				{
+					if (!rearPlateExplicitEnabled) outConfig.rearPlateMesh.enabled = 1;
+					if (!rearPlateExplicitRotZ && outConfig.rearPlateMesh.rotZ == 0.0f) outConfig.rearPlateMesh.rotZ = 180.0f;
+					outConfig.rearPlateMesh.offsetX = ParseFloat(val);
+				}
+				else if (lowerKey == "rearplatey" || lowerKey == "reary" || lowerKey == "rearplateoffsety" || lowerKey == "rearoffsety" || lowerKey == "rearplateposy" || lowerKey == "rearposy")
+				{
+					if (!rearPlateExplicitEnabled) outConfig.rearPlateMesh.enabled = 1;
+					if (!rearPlateExplicitRotZ && outConfig.rearPlateMesh.rotZ == 0.0f) outConfig.rearPlateMesh.rotZ = 180.0f;
+					outConfig.rearPlateMesh.offsetY = ParseFloat(val);
+				}
+				else if (lowerKey == "rearplatez" || lowerKey == "rearz" || lowerKey == "rearplateoffsetz" || lowerKey == "rearoffsetz" || lowerKey == "rearplateposz" || lowerKey == "rearposz")
+				{
+					if (!rearPlateExplicitEnabled) outConfig.rearPlateMesh.enabled = 1;
+					if (!rearPlateExplicitRotZ && outConfig.rearPlateMesh.rotZ == 0.0f) outConfig.rearPlateMesh.rotZ = 180.0f;
+					outConfig.rearPlateMesh.offsetZ = ParseFloat(val);
+				}
+				else if (lowerKey == "rearplaterotx" || lowerKey == "rearrotx")
+				{
+					outConfig.rearPlateMesh.rotX = ParseFloat(val);
+				}
+				else if (lowerKey == "rearplateroty" || lowerKey == "rearroty")
+				{
+					outConfig.rearPlateMesh.rotY = ParseFloat(val);
+				}
+				else if (lowerKey == "rearplaterotz" || lowerKey == "rearrotz")
+				{
+					rearPlateExplicitRotZ = true;
+					outConfig.rearPlateMesh.rotZ = ParseFloat(val);
+				}
+				else if (lowerKey == "rearplatescale" || lowerKey == "rearscale")
+				{
+					outConfig.rearPlateMesh.scale = ParseFloat(val);
 				}
 			}
 			else if (currentSection == "audio")

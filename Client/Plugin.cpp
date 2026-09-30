@@ -1743,6 +1743,19 @@ public:
 				bs.Read(def.defaultPlateText, sizeof(def.defaultPlateText));
 				def.defaultPlateText[sizeof(def.defaultPlateText) - 1] = '\0';
 			}
+
+			if (bs.GetNumberOfUnreadBits() >= sizeof(def.targetPlateTexture) * 8) {
+				bs.Read(def.targetPlateTexture, sizeof(def.targetPlateTexture));
+				def.targetPlateTexture[sizeof(def.targetPlateTexture) - 1] = '\0';
+			}
+
+			if (bs.GetNumberOfUnreadBits() >= sizeof(def.frontPlate) * 8) {
+				bs.Read(reinterpret_cast<char*>(&def.frontPlate), sizeof(def.frontPlate));
+			}
+
+			if (bs.GetNumberOfUnreadBits() >= sizeof(def.rearPlate) * 8) {
+				bs.Read(reinterpret_cast<char*>(&def.rearPlate), sizeof(def.rearPlate));
+			}
 		}
 
 		if (def.flags & CustomVeh::Protocol::HasAnyAudio) {
@@ -2302,6 +2315,17 @@ public:
 
 		if (def.defaultPlateText[0] != '\0') {
 			CustomVehicleBindingManager::SetModelDefaultPlateText(def.customModelId, def.defaultPlateText);
+		}
+
+		{
+			CustomVehicleBindingManager::ModelPlateConfig plateCfg;
+			plateCfg.hasConfig = true;
+			if (def.targetPlateTexture[0] != '\0') {
+				plateCfg.targetTexture = def.targetPlateTexture;
+			}
+			plateCfg.frontPlate = def.frontPlate;
+			plateCfg.rearPlate = def.rearPlate;
+			CustomVehicleBindingManager::SetModelPlateConfig(def.customModelId, plateCfg);
 		}
 
 		// Guard: if we already started a transfer for this model ID, ignore the duplicate.

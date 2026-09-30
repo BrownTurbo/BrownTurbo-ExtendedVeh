@@ -433,6 +433,36 @@ void ExtendedVehCompo::SyncCustomVehicleToPlayer(IVehicle& vehicle, IPlayer& pla
 	{
 		CustomVehicleTransport::SendVehiclePlate(player, *plateOpt);
 	}
+
+	auto fMeshOpt = CustomVehicleBindingRegistry::Instance().GetPlateMesh(vId, false);
+	if (fMeshOpt)
+	{
+		CustomVeh::Protocol::VehiclePlateMeshPacket pkt {};
+		pkt.sampVehicleId = vId;
+		pkt.isRear = 0;
+		pkt.config = *fMeshOpt;
+		CustomVehicleTransport::SendVehiclePlateMesh(player, pkt);
+	}
+
+	auto rMeshOpt = CustomVehicleBindingRegistry::Instance().GetPlateMesh(vId, true);
+	if (rMeshOpt)
+	{
+		CustomVeh::Protocol::VehiclePlateMeshPacket pkt {};
+		pkt.sampVehicleId = vId;
+		pkt.isRear = 1;
+		pkt.config = *rMeshOpt;
+		CustomVehicleTransport::SendVehiclePlateMesh(player, pkt);
+	}
+
+	auto texOpt = CustomVehicleBindingRegistry::Instance().GetPlateTexture(vId);
+	if (texOpt)
+	{
+		CustomVeh::Protocol::VehiclePlateTexturePacket pkt {};
+		pkt.sampVehicleId = vId;
+		std::strncpy(pkt.targetTexture, texOpt->c_str(), sizeof(pkt.targetTexture) - 1);
+		pkt.targetTexture[sizeof(pkt.targetTexture) - 1] = '\0';
+		CustomVehicleTransport::SendVehiclePlateTexture(player, pkt);
+	}
 }
 
 void ExtendedVehCompo::SyncCustomVehiclesToPlayer(IPlayer& player)

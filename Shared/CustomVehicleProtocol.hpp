@@ -43,6 +43,9 @@ namespace CustomVeh::Protocol {
 		SetVehicleOffsets = 71,
 		SetVehiclePlate = 72,
 		SetDebugMode = 73,
+		SetVehiclePlateMesh = 74,
+		SetModelPlateConfig = 75,
+		SetVehiclePlateTexture = 76,
 		AssetManifest = 50,
 		AssetRequest = 51,
 		AssetResume = 52,
@@ -183,6 +186,17 @@ namespace CustomVeh::Protocol {
 		float rearCamber = 0.0f;
 	};
 
+	struct PlateMeshConfig {
+		uint8_t enabled = 0;
+		float offsetX = 0.0f;
+		float offsetY = 0.0f;
+		float offsetZ = 0.0f;
+		float rotX = 0.0f;
+		float rotY = 0.0f;
+		float rotZ = 0.0f;
+		float scale = 1.0f;
+	};
+
 	// Full custom vehicle definition sent server->client.
 	struct VehicleDefinition {
 		uint32_t customModelId = 0;
@@ -205,6 +219,9 @@ namespace CustomVeh::Protocol {
 		LightingOffsets lighting = {};
 		PositionOffsets offsets = {};
 		char defaultPlateText[32] = {};
+		char targetPlateTexture[32] = {};
+		PlateMeshConfig frontPlate = {};
+		PlateMeshConfig rearPlate = {};
 	};
 
 	struct VehicleBinding {
@@ -245,6 +262,24 @@ namespace CustomVeh::Protocol {
 	struct VehiclePlatePacket {
 		uint16_t sampVehicleId = 0;
 		char plateText[32] = {};
+	};
+
+	struct VehiclePlateMeshPacket {
+		uint16_t sampVehicleId = 0;
+		uint8_t isRear = 0; // 0 = front, 1 = rear
+		PlateMeshConfig config = {};
+	};
+
+	struct ModelPlateConfigPacket {
+		uint32_t customModelId = 0;
+		char targetTexture[32] = {};
+		PlateMeshConfig frontPlate = {};
+		PlateMeshConfig rearPlate = {};
+	};
+
+	struct VehiclePlateTexturePacket {
+		uint16_t sampVehicleId = 0;
+		char targetTexture[32] = {};
 	};
 
 	struct DebugModePacket {

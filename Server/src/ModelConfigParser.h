@@ -2,6 +2,7 @@
 
 #include "HandlingEnum.h"
 #include "HandlingStruct.h"
+#include "../../Shared/CustomVehicleProtocol.hpp"
 
 #include <array>
 #include <cstdint>
@@ -27,6 +28,10 @@ struct ModelConfig
 	int16_t accelerateSound = -1;
 	int16_t decelerateSound = -1;
 	std::string plateText;
+	std::string targetTexture;
+	CustomVeh::Protocol::PlateMeshConfig frontPlateMesh = {};
+	CustomVeh::Protocol::PlateMeshConfig rearPlateMesh = {};
+	bool hasPlateConfig = false;
 
 	// [ide]
 	bool hasIde = false;

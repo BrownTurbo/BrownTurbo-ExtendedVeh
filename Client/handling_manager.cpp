@@ -1615,6 +1615,40 @@ bool HandlingManager::ProcessAction(CustomVehAction action, RakNet::BitStream* b
 		}
 		return true;
 	}
+	case static_cast<CustomVehAction>(CustomVeh::Protocol::Action::SetVehiclePlateMesh): {
+		CustomVeh::Protocol::VehiclePlateMeshPacket pkt {};
+		if (bs->Read(reinterpret_cast<char*>(&pkt), sizeof(pkt))) {
+			ClientLog(LogLevel::Info, std::format("SetVehiclePlateMesh: vehId={}, isRear={}, enabled={}, pos=({:.2f}, {:.2f}, {:.2f}), rot=({:.2f}, {:.2f}, {:.2f}), scale={:.2f}",
+				pkt.sampVehicleId, pkt.isRear != 0, pkt.config.enabled != 0,
+				pkt.config.offsetX, pkt.config.offsetY, pkt.config.offsetZ,
+				pkt.config.rotX, pkt.config.rotY, pkt.config.rotZ, pkt.config.scale));
+			CustomVehicleBindingManager::Instance().SetVehiclePlateMesh(pkt.sampVehicleId, pkt.isRear != 0, pkt.config);
+		}
+		return true;
+	}
+	case static_cast<CustomVehAction>(CustomVeh::Protocol::Action::SetModelPlateConfig): {
+		CustomVeh::Protocol::ModelPlateConfigPacket pkt {};
+		if (bs->Read(reinterpret_cast<char*>(&pkt), sizeof(pkt))) {
+			pkt.targetTexture[sizeof(pkt.targetTexture) - 1] = '\0';
+			ClientLog(LogLevel::Info, std::format("SetModelPlateConfig: modelId={}, targetTexture='{}'", pkt.customModelId, pkt.targetTexture));
+			CustomVehicleBindingManager::ModelPlateConfig cfg;
+			cfg.hasConfig = true;
+			cfg.targetTexture = pkt.targetTexture;
+			cfg.frontPlate = pkt.frontPlate;
+			cfg.rearPlate = pkt.rearPlate;
+			CustomVehicleBindingManager::SetModelPlateConfig(pkt.customModelId, cfg);
+		}
+		return true;
+	}
+	case static_cast<CustomVehAction>(CustomVeh::Protocol::Action::SetVehiclePlateTexture): {
+		CustomVeh::Protocol::VehiclePlateTexturePacket pkt {};
+		if (bs->Read(reinterpret_cast<char*>(&pkt), sizeof(pkt))) {
+			pkt.targetTexture[sizeof(pkt.targetTexture) - 1] = '\0';
+			ClientLog(LogLevel::Info, std::format("SetVehiclePlateTexture: vehId={}, targetTexture='{}'", pkt.sampVehicleId, pkt.targetTexture));
+			CustomVehicleBindingManager::Instance().SetVehiclePlateTexture(pkt.sampVehicleId, pkt.targetTexture);
+		}
+		return true;
+	}
 	case static_cast<CustomVehAction>(CustomVeh::Protocol::Action::SetVehicleExtras): {
 		CustomVeh::Protocol::VehicleExtrasPacket extras {};
 		if (bs->Read(reinterpret_cast<char*>(&extras), sizeof(extras))) {

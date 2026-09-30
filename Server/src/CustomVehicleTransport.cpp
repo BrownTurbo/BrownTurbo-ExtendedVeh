@@ -133,6 +133,30 @@ void SendVehiclePlate(IPlayer& player, const CustomVeh::Protocol::VehiclePlatePa
 	player.sendPacket(Span<uint8_t>(reinterpret_cast<uint8_t*>(pkt.data.GetData()), pkt.data.GetNumberOfBitsUsed()), 0, true);
 }
 
+void SendVehiclePlateMesh(IPlayer& player, const CustomVeh::Protocol::VehiclePlateMeshPacket& meshPkt)
+{
+	CustomVehActionPacket pkt(CustomVeh::Protocol::Action::SetVehiclePlateMesh);
+	pkt.data.Write(reinterpret_cast<const char*>(&meshPkt), sizeof(meshPkt));
+
+	player.sendPacket(Span<uint8_t>(reinterpret_cast<uint8_t*>(pkt.data.GetData()), pkt.data.GetNumberOfBitsUsed()), 0, true);
+}
+
+void SendModelPlateConfig(IPlayer& player, const CustomVeh::Protocol::ModelPlateConfigPacket& modelPkt)
+{
+	CustomVehActionPacket pkt(CustomVeh::Protocol::Action::SetModelPlateConfig);
+	pkt.data.Write(reinterpret_cast<const char*>(&modelPkt), sizeof(modelPkt));
+
+	player.sendPacket(Span<uint8_t>(reinterpret_cast<uint8_t*>(pkt.data.GetData()), pkt.data.GetNumberOfBitsUsed()), 0, true);
+}
+
+void SendVehiclePlateTexture(IPlayer& player, const CustomVeh::Protocol::VehiclePlateTexturePacket& texPkt)
+{
+	CustomVehActionPacket pkt(CustomVeh::Protocol::Action::SetVehiclePlateTexture);
+	pkt.data.Write(reinterpret_cast<const char*>(&texPkt), sizeof(texPkt));
+
+	player.sendPacket(Span<uint8_t>(reinterpret_cast<uint8_t*>(pkt.data.GetData()), pkt.data.GetNumberOfBitsUsed()), 0, true);
+}
+
 void SendDebugMode(IPlayer& player, bool enabled)
 {
 	CustomVeh::Protocol::DebugModePacket dbg {};

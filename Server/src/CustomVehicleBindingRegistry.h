@@ -37,6 +37,12 @@ public:
 		bool hasCustomOffsets { false };
 		CustomVeh::Protocol::VehiclePlatePacket plate {};
 		bool hasCustomPlate { false };
+		CustomVeh::Protocol::PlateMeshConfig frontPlateMesh {};
+		CustomVeh::Protocol::PlateMeshConfig rearPlateMesh {};
+		bool hasFrontPlateMesh { false };
+		bool hasRearPlateMesh { false };
+		std::string targetPlateTexture;
+		bool hasTargetPlateTexture { false };
 	};
 
 	struct ModelAudioDefaults
@@ -337,6 +343,49 @@ public:
 		auto it = m_states.find(sampVehicleId);
 		if (it != m_states.end() && it->second.hasCustomPlate)
 			return it->second.plate;
+		return std::nullopt;
+	}
+
+	void SetPlateMesh(uint16_t sampVehicleId, bool isRear, const CustomVeh::Protocol::PlateMeshConfig& cfg)
+	{
+		std::lock_guard<std::mutex> lock(m_mutex);
+		auto& state = m_states[sampVehicleId];
+		if (isRear) {
+			state.rearPlateMesh = cfg;
+			state.hasRearPlateMesh = true;
+		} else {
+			state.frontPlateMesh = cfg;
+			state.hasFrontPlateMesh = true;
+		}
+	}
+
+	std::optional<CustomVeh::Protocol::PlateMeshConfig> GetPlateMesh(uint16_t sampVehicleId, bool isRear) const
+	{
+		std::lock_guard<std::mutex> lock(m_mutex);
+		auto it = m_states.find(sampVehicleId);
+		if (it != m_states.end()) {
+			if (isRear && it->second.hasRearPlateMesh)
+				return it->second.rearPlateMesh;
+			if (!isRear && it->second.hasFrontPlateMesh)
+				return it->second.frontPlateMesh;
+		}
+		return std::nullopt;
+	}
+
+	void SetPlateTexture(uint16_t sampVehicleId, const std::string& textureName)
+	{
+		std::lock_guard<std::mutex> lock(m_mutex);
+		auto& state = m_states[sampVehicleId];
+		state.targetPlateTexture = textureName;
+		state.hasTargetPlateTexture = true;
+	}
+
+	std::optional<std::string> GetPlateTexture(uint16_t sampVehicleId) const
+	{
+		std::lock_guard<std::mutex> lock(m_mutex);
+		auto it = m_states.find(sampVehicleId);
+		if (it != m_states.end() && it->second.hasTargetPlateTexture)
+			return it->second.targetPlateTexture;
 		return std::nullopt;
 	}
 

@@ -291,6 +291,12 @@ native bool:GetCustomVehicleModelStance(customModelId, &Float:frontScale, &Float
 native bool:SetCustomVehicleModelPlateText(customModelId, const plateText[]);
 native bool:GetCustomVehicleModelPlateText(customModelId, plateText[], maxlen = sizeof(plateText));
 
+native bool:SetCustomVehicleModelPlateTexture(customModelId, const textureName[]);
+native bool:GetCustomVehicleModelPlateTexture(customModelId, textureName[], maxlen = sizeof(textureName));
+
+native bool:SetCustomVehicleModelPlateMesh(customModelId, bool:isRear, bool:enabled, Float:x, Float:y, Float:z, Float:rx = 0.0, Float:ry = 0.0, Float:rz = 0.0, Float:scale = 1.0);
+native bool:GetCustomVehicleModelPlateMesh(customModelId, bool:isRear, &bool:enabled, &Float:x, &Float:y, &Float:z, &Float:rx, &Float:ry, &Float:rz, &Float:scale);
+
 /*
  * Custom Vehicle Instance Customization Natives
  *
@@ -317,6 +323,12 @@ native bool:GetCustomVehicleChassisOffset(vehicleid, &Float:chassisX, &Float:cha
 
 native bool:SetCustomVehicleNumberPlate(vehicleid, const numberplate[]);
 native bool:GetCustomVehicleNumberPlate(vehicleid, numberplate[], maxlen = sizeof(numberplate));
+
+native bool:SetCustomVehiclePlateMesh(vehicleid, bool:isRear, bool:enabled, Float:x, Float:y, Float:z, Float:rx = 0.0, Float:ry = 0.0, Float:rz = 0.0, Float:scale = 1.0);
+native bool:GetCustomVehiclePlateMesh(vehicleid, bool:isRear, &bool:enabled, &Float:x, &Float:y, &Float:z, &Float:rx, &Float:ry, &Float:rz, &Float:scale);
+
+native bool:SetCustomVehiclePlateTexture(vehicleid, const textureName[]);
+native bool:GetCustomVehiclePlateTexture(vehicleid, textureName[], maxlen = sizeof(textureName));
 
 native bool:SetCustomVehicleExtras(vehicleid, extrasMask);
 native bool:GetCustomVehicleExtras(vehicleid, &extrasMask);
@@ -433,6 +445,14 @@ native bool:SetCustomVehicleAllDoorsMissing(vehicleid, bool:missing);
 #define GetCustomVehiclePlateText           GetCustomVehicleNumberPlate
 #define SetVehicleModelPlateText            SetCustomVehicleModelPlateText
 #define GetVehicleModelPlateText            GetCustomVehicleModelPlateText
+#define SetVehiclePlateMesh                 SetCustomVehiclePlateMesh
+#define GetVehiclePlateMesh                 GetCustomVehiclePlateMesh
+#define SetVehiclePlateTexture              SetCustomVehiclePlateTexture
+#define GetVehiclePlateTexture              GetCustomVehiclePlateTexture
+#define SetVehicleModelPlateMesh            SetCustomVehicleModelPlateMesh
+#define GetVehicleModelPlateMesh            GetCustomVehicleModelPlateMesh
+#define SetVehicleModelPlateTexture         SetCustomVehicleModelPlateTexture
+#define GetVehicleModelPlateTexture         GetCustomVehicleModelPlateTexture
 #define SetVehicleModelHorn                 SetCustomVehicleModelHorn
 #define GetVehicleModelHorn                 GetCustomVehicleModelHorn
 #define SetVehicleModelSiren                SetCustomVehicleModelSiren

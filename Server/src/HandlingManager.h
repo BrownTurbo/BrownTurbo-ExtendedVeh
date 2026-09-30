@@ -148,4 +148,13 @@ bool GetCustomVehicleModelStance(uint32_t customModelId, float& frontScale, floa
 
 bool SetCustomVehicleModelPlateText(uint32_t customModelId, const std::string& plateText);
 bool GetCustomVehicleModelPlateText(uint32_t customModelId, std::string& plateText);
+
+bool SetCustomVehicleModelPlateTexture(uint32_t customModelId, const std::string& textureName);
+bool GetCustomVehicleModelPlateTexture(uint32_t customModelId, std::string& textureName);
+
+bool SetCustomVehicleModelPlateMesh(uint32_t customModelId, bool isRear, const CustomVeh::Protocol::PlateMeshConfig& cfg);
+bool GetCustomVehicleModelPlateMesh(uint32_t customModelId, bool isRear, CustomVeh::Protocol::PlateMeshConfig& cfg);
+
+void SendModelPlateConfigToPlayer(IPlayer& player, uint32_t customModelId);
+void SendModelPlateConfigToAll(uint32_t customModelId);
 }

@@ -182,6 +182,22 @@ void CustomVehicleBindingManager::Bind(uint16_t vehicleId, uint32_t customModelI
 		ApplyModelOffsetsToBinding(binding, offsetIt->second);
 	}
 
+	auto plateIt = s_modelPlateConfigs.find(customModelId);
+	if (plateIt != s_modelPlateConfigs.end()) {
+		if (plateIt->second.frontPlate.enabled) {
+			binding.frontPlateMesh = plateIt->second.frontPlate;
+			binding.hasFrontPlateMesh = true;
+		}
+		if (plateIt->second.rearPlate.enabled) {
+			binding.rearPlateMesh = plateIt->second.rearPlate;
+			binding.hasRearPlateMesh = true;
+		}
+		if (!plateIt->second.targetTexture.empty()) {
+			strncpy_s(binding.targetPlateTexture, sizeof(binding.targetPlateTexture), plateIt->second.targetTexture.c_str(), _TRUNCATE);
+			binding.hasTargetPlateTexture = true;
+		}
+	}
+
 	m_bindings.emplace(vehicleId, binding);
 	HandlingManager::IncrementModelUse(customModelId);
 	ClientLog(LogLevel::Info, std::format("Binding created: vehicle={} customModel={} baseModel={}", vehicleId, customModelId, binding.baseModelId));
@@ -472,7 +488,10 @@ void CustomVehicleBindingManager::Process()
 				if (binding.sampVehicleId > 0) {
 					UpdateSampVehiclePlateText(binding.sampVehicleId, plateText);
 				}
-				ApplyPlateToClump(newClump, model, plateText, nullptr);
+				const char* targetTex = (binding.hasTargetPlateTexture && binding.targetPlateTexture[0] != '\0') ? binding.targetPlateTexture : nullptr;
+				const CustomVeh::Protocol::PlateMeshConfig* pFrontPlate = binding.hasFrontPlateMesh ? &binding.frontPlateMesh : nullptr;
+				const CustomVeh::Protocol::PlateMeshConfig* pRearPlate = binding.hasRearPlateMesh ? &binding.rearPlateMesh : nullptr;
+				ApplyPlateToClump(newClump, model, plateText, nullptr, binding.customModelId, targetTex, pFrontPlate, pRearPlate);
 
 				if (binding.hasExtras) {
 					ApplyExtrasToClump(newClump, binding.extrasMask);
@@ -906,10 +925,322 @@ void CustomVehicleBindingManager::SetVehiclePlateText(uint16_t vehicleId, const 
 	}
 }
 
+void CustomVehicleBindingManager::SetModelPlateConfig(uint32_t customModelId, const ModelPlateConfig& cfg)
+{
+	std::lock_guard lock(m_mutex);
+	s_serverModelPlateConfigs[customModelId] = cfg;
+	s_modelPlateConfigs[customModelId] = cfg;
+
+	for (auto& [vehicleId, binding] : m_bindings) {
+		if (binding.customModelId == customModelId) {
+			if (!binding.hasFrontPlateMesh && cfg.frontPlate.enabled) {
+				binding.frontPlateMesh = cfg.frontPlate;
+				binding.hasFrontPlateMesh = true;
+			}
+			if (!binding.hasRearPlateMesh && cfg.rearPlate.enabled) {
+				binding.rearPlateMesh = cfg.rearPlate;
+				binding.hasRearPlateMesh = true;
+			}
+			if (!binding.hasTargetPlateTexture && !cfg.targetTexture.empty()) {
+				strncpy_s(binding.targetPlateTexture, sizeof(binding.targetPlateTexture), cfg.targetTexture.c_str(), _TRUNCATE);
+				binding.hasTargetPlateTexture = true;
+			}
+
+			if (binding.appliedGameVehicle && IsVehiclePointerValid(binding.appliedGameVehicle)) {
+				Instance().ApplyPlateToVehicle(binding.appliedGameVehicle, binding.hasCustomPlateText ? binding.customPlateText : nullptr);
+			}
+		}
+	}
+}
+
+bool CustomVehicleBindingManager::GetModelPlateConfig(uint32_t customModelId, ModelPlateConfig& outCfg)
+{
+	std::lock_guard lock(m_mutex);
+	auto it = s_modelPlateConfigs.find(customModelId);
+	if (it != s_modelPlateConfigs.end()) {
+		outCfg = it->second;
+		return true;
+	}
+	return false;
+}
+
+void CustomVehicleBindingManager::SetModelTargetPlateTexture(uint32_t customModelId, const std::string& textureName)
+{
+	std::lock_guard lock(m_mutex);
+	s_modelPlateConfigs[customModelId].targetTexture = textureName;
+	s_modelPlateConfigs[customModelId].hasConfig = true;
+
+	for (auto& [vehicleId, binding] : m_bindings) {
+		if (binding.customModelId == customModelId) {
+			if (!binding.hasTargetPlateTexture) {
+				strncpy_s(binding.targetPlateTexture, sizeof(binding.targetPlateTexture), textureName.c_str(), _TRUNCATE);
+			}
+			if (binding.appliedGameVehicle && IsVehiclePointerValid(binding.appliedGameVehicle)) {
+				Instance().ApplyPlateToVehicle(binding.appliedGameVehicle, binding.hasCustomPlateText ? binding.customPlateText : nullptr);
+			}
+		}
+	}
+}
+
+std::string CustomVehicleBindingManager::GetModelTargetPlateTexture(uint32_t customModelId)
+{
+	std::lock_guard lock(m_mutex);
+	auto it = s_modelPlateConfigs.find(customModelId);
+	return (it != s_modelPlateConfigs.end()) ? it->second.targetTexture : "";
+}
+
+void CustomVehicleBindingManager::SetVehiclePlateMesh(uint16_t vehicleId, bool isRear, const CustomVeh::Protocol::PlateMeshConfig& cfg)
+{
+	std::lock_guard lock(m_mutex);
+	auto it = m_bindings.find(vehicleId);
+	if (it == m_bindings.end())
+		return;
+
+	if (isRear) {
+		it->second.rearPlateMesh = cfg;
+		it->second.hasRearPlateMesh = true;
+	} else {
+		it->second.frontPlateMesh = cfg;
+		it->second.hasFrontPlateMesh = true;
+	}
+
+	if (it->second.appliedGameVehicle && IsVehiclePointerValid(it->second.appliedGameVehicle)) {
+		RpClump* clump = reinterpret_cast<RpClump*>(it->second.appliedGameVehicle->m_pRwObject);
+		if (clump) {
+			const char* plateText = it->second.hasCustomPlateText && it->second.customPlateText[0] != '\0'
+				? it->second.customPlateText
+				: (it->second.lastPlateText[0] != '\0' ? it->second.lastPlateText : "SAN ANDREAS");
+			CreatePlateQuadAtomic(clump, cfg, plateText, isRear);
+		}
+	}
+}
+
+void CustomVehicleBindingManager::SetVehiclePlateTexture(uint16_t vehicleId, const char* textureName)
+{
+	std::lock_guard lock(m_mutex);
+	auto it = m_bindings.find(vehicleId);
+	if (it == m_bindings.end())
+		return;
+
+	if (textureName && textureName[0] != '\0') {
+		strncpy_s(it->second.targetPlateTexture, sizeof(it->second.targetPlateTexture), textureName, _TRUNCATE);
+		it->second.hasTargetPlateTexture = true;
+	} else {
+		it->second.targetPlateTexture[0] = '\0';
+		it->second.hasTargetPlateTexture = false;
+	}
+
+	if (it->second.appliedGameVehicle && IsVehiclePointerValid(it->second.appliedGameVehicle)) {
+		ApplyPlateToVehicle(it->second.appliedGameVehicle, it->second.hasCustomPlateText ? it->second.customPlateText : nullptr);
+	}
+}
+
+RpAtomic* CustomVehicleBindingManager::CreatePlateQuadAtomic(
+	RpClump* clump,
+	const CustomVeh::Protocol::PlateMeshConfig& cfg,
+	const char* plateText,
+	bool isRear)
+{
+	if (!clump)
+		return nullptr;
+
+	const char* nodeName = isRear ? "bt_platerear" : "bt_platefront";
+	RwFrame* existingFrame = CClumpModelInfo::GetFrameFromName(clump, nodeName);
+
+	if (!cfg.enabled) {
+		if (existingFrame) {
+			struct FindAtomicCtx {
+				RwFrame* targetFrame;
+				RpAtomic* foundAtomic;
+			} ctx { existingFrame, nullptr };
+
+			RpClumpForAllAtomics(clump, [](RpAtomic* atomic, void* data) -> RpAtomic* {
+				auto* c = reinterpret_cast<FindAtomicCtx*>(data);
+				if (RpAtomicGetFrame(atomic) == c->targetFrame) {
+					c->foundAtomic = atomic;
+					return nullptr;
+				}
+				return atomic;
+			}, &ctx);
+
+			if (ctx.foundAtomic) {
+				RpClumpRemoveAtomic(clump, ctx.foundAtomic);
+				RpAtomicDestroy(ctx.foundAtomic);
+			}
+			RwFrame* parent = RwFrameGetParent(existingFrame);
+			if (parent) {
+				RwFrameRemoveChild(existingFrame);
+			}
+			RwFrameDestroy(existingFrame);
+		}
+		return nullptr;
+	}
+
+	// If atomic already exists on clump, update its transform and plate texture
+	if (existingFrame) {
+		RwFrameSetIdentity(existingFrame);
+		RwV3d axisX = { 1.0f, 0.0f, 0.0f };
+		RwV3d axisY = { 0.0f, 1.0f, 0.0f };
+		RwV3d axisZ = { 0.0f, 0.0f, 1.0f };
+		if (cfg.rotX != 0.0f) RwFrameRotate(existingFrame, const_cast<const RwV3d*>(&axisX), cfg.rotX, rwCOMBINEPOSTCONCAT);
+		if (cfg.rotY != 0.0f) RwFrameRotate(existingFrame, const_cast<const RwV3d*>(&axisY), cfg.rotY, rwCOMBINEPOSTCONCAT);
+		if (cfg.rotZ != 0.0f) RwFrameRotate(existingFrame, const_cast<const RwV3d*>(&axisZ), cfg.rotZ, rwCOMBINEPOSTCONCAT);
+		RwV3d pos = { cfg.offsetX, cfg.offsetY, cfg.offsetZ };
+		RwFrameTranslate(existingFrame, &pos, rwCOMBINEPOSTCONCAT);
+		RwFrameUpdateObjects(existingFrame);
+
+		struct FindAtomicCtx {
+			RwFrame* targetFrame;
+			RpAtomic* foundAtomic;
+		} ctx { existingFrame, nullptr };
+
+		RpClumpForAllAtomics(clump, [](RpAtomic* atomic, void* data) -> RpAtomic* {
+			auto* c = reinterpret_cast<FindAtomicCtx*>(data);
+			if (RpAtomicGetFrame(atomic) == c->targetFrame) {
+				c->foundAtomic = atomic;
+				return nullptr;
+			}
+			return atomic;
+		}, &ctx);
+
+		if (ctx.foundAtomic) {
+			RpGeometry* geom = RpAtomicGetGeometry(ctx.foundAtomic);
+			if (geom) {
+				float s = (cfg.scale > 0.001f) ? cfg.scale : 1.0f;
+				const float halfW = 0.225f * s;
+				const float halfH = 0.090f * s;
+				RpGeometryLock(geom, rpGEOMETRYLOCKALL);
+				RwV3d* verts = geom->morphTarget[0].verts;
+				verts[0] = {  halfW, 0.0f,  halfH }; // Top-Left
+				verts[1] = { -halfW, 0.0f,  halfH }; // Top-Right
+				verts[2] = { -halfW, 0.0f, -halfH }; // Bottom-Right
+				verts[3] = {  halfW, 0.0f, -halfH }; // Bottom-Left
+				geom->morphTarget[0].boundingSphere.center = { 0.0f, 0.0f, 0.0f };
+				geom->morphTarget[0].boundingSphere.radius = std::sqrt(halfW * halfW + halfH * halfH) + 0.1f;
+				RpGeometryUnlock(geom);
+
+				if (plateText && plateText[0] != '\0' && geom->matList.materials && geom->matList.numMaterials > 0) {
+					CCustomCarPlateMgr::SetupMaterialPlateTexture(geom->matList.materials[0], const_cast<char*>(plateText), 0);
+				}
+			}
+		}
+		ClientLog(LogLevel::Info, std::format("CreatePlateQuadAtomic: Updated {} 3D plate quad on clump (pos={:.2f}, {:.2f}, {:.2f}, rot={:.1f}, {:.1f}, {:.1f}, scale={:.2f})", isRear ? "rear" : "front", cfg.offsetX, cfg.offsetY, cfg.offsetZ, cfg.rotX, cfg.rotY, cfg.rotZ, cfg.scale));
+		return ctx.foundAtomic;
+	}
+
+	// Create new 3D plate quad atomic
+	RpGeometry* geom = RpGeometryCreate(4, 4, rpGEOMETRYPOSITIONS | rpGEOMETRYTEXTURED | rpGEOMETRYNORMALS | rpGEOMETRYMODULATEMATERIALCOLOR | rpGEOMETRYPRELIT);
+	if (!geom)
+		return nullptr;
+
+	RpMaterial* mat = RpMaterialCreate();
+	if (!mat) {
+		RpGeometryDestroy(geom);
+		return nullptr;
+	}
+	RwRGBA white = { 255, 255, 255, 255 };
+	RpMaterialSetColor(mat, &white);
+	if (plateText && plateText[0] != '\0') {
+		CCustomCarPlateMgr::SetupMaterialPlateTexture(mat, const_cast<char*>(plateText), 0);
+	}
+
+	float s = (cfg.scale > 0.001f) ? cfg.scale : 1.0f;
+	const float halfW = 0.225f * s;
+	const float halfH = 0.090f * s;
+
+	RpGeometryLock(geom, rpGEOMETRYLOCKALL);
+
+	RwV3d* verts = geom->morphTarget[0].verts;
+	verts[0] = {  halfW, 0.0f,  halfH }; // Top-Left
+	verts[1] = { -halfW, 0.0f,  halfH }; // Top-Right
+	verts[2] = { -halfW, 0.0f, -halfH }; // Bottom-Right
+	verts[3] = {  halfW, 0.0f, -halfH }; // Bottom-Left
+
+	RwV3d* normals = geom->morphTarget[0].normals;
+	normals[0] = { 0.0f, 1.0f, 0.0f };
+	normals[1] = { 0.0f, 1.0f, 0.0f };
+	normals[2] = { 0.0f, 1.0f, 0.0f };
+	normals[3] = { 0.0f, 1.0f, 0.0f };
+
+	RwTexCoords* uvs = geom->texCoords[0];
+	uvs[0] = { 0.0f, 0.0f }; // Top-Left
+	uvs[1] = { 1.0f, 0.0f }; // Top-Right
+	uvs[2] = { 1.0f, 1.0f }; // Bottom-Right
+	uvs[3] = { 0.0f, 1.0f }; // Bottom-Left
+
+	geom->morphTarget[0].boundingSphere.center = { 0.0f, 0.0f, 0.0f };
+	geom->morphTarget[0].boundingSphere.radius = std::sqrt(halfW * halfW + halfH * halfH) + 0.1f;
+
+	if (geom->preLitLum) {
+		for (int i = 0; i < 4; ++i) {
+			geom->preLitLum[i] = { 255, 255, 255, 255 };
+		}
+	}
+
+	RpTriangle* tris = geom->triangles;
+	// Front faces (clockwise when viewed from front)
+	RpGeometryTriangleSetVertexIndices(geom, &tris[0], 0, 1, 2);
+	RpGeometryTriangleSetMaterial(geom, &tris[0], mat);
+
+	RpGeometryTriangleSetVertexIndices(geom, &tris[1], 0, 2, 3);
+	RpGeometryTriangleSetMaterial(geom, &tris[1], mat);
+
+	// Back faces (reverse winding so visible if viewed from behind)
+	RpGeometryTriangleSetVertexIndices(geom, &tris[2], 2, 1, 0);
+	RpGeometryTriangleSetMaterial(geom, &tris[2], mat);
+
+	RpGeometryTriangleSetVertexIndices(geom, &tris[3], 3, 2, 0);
+	RpGeometryTriangleSetMaterial(geom, &tris[3], mat);
+
+	RpGeometryUnlock(geom);
+	RpMaterialDestroy(mat); // Decrement initial ref count; geom holds ref
+
+	RpAtomic* atomic = RpAtomicCreate();
+	if (!atomic) {
+		RpGeometryDestroy(geom);
+		return nullptr;
+	}
+	RpAtomicSetGeometry(atomic, geom, 0);
+	RpGeometryDestroy(geom); // Decrement initial ref count; atomic holds ref
+
+	RwFrame* frame = RwFrameCreate();
+	if (!frame) {
+		RpAtomicDestroy(atomic);
+		return nullptr;
+	}
+	SetFrameNodeName(frame, nodeName);
+
+	RwFrameSetIdentity(frame);
+	RwV3d axisX = { 1.0f, 0.0f, 0.0f };
+	RwV3d axisY = { 0.0f, 1.0f, 0.0f };
+	RwV3d axisZ = { 0.0f, 0.0f, 1.0f };
+	if (cfg.rotX != 0.0f) RwFrameRotate(frame, const_cast<const RwV3d*>(&axisX), cfg.rotX, rwCOMBINEPOSTCONCAT);
+	if (cfg.rotY != 0.0f) RwFrameRotate(frame, const_cast<const RwV3d*>(&axisY), cfg.rotY, rwCOMBINEPOSTCONCAT);
+	if (cfg.rotZ != 0.0f) RwFrameRotate(frame, const_cast<const RwV3d*>(&axisZ), cfg.rotZ, rwCOMBINEPOSTCONCAT);
+	RwV3d pos = { cfg.offsetX, cfg.offsetY, cfg.offsetZ };
+	RwFrameTranslate(frame, &pos, rwCOMBINEPOSTCONCAT);
+
+	RpAtomicSetFrame(atomic, frame);
+
+	RwFrame* parentFrame = CClumpModelInfo::GetFrameFromName(clump, "chassis_dummy");
+	if (!parentFrame) parentFrame = CClumpModelInfo::GetFrameFromName(clump, "chassis");
+	if (!parentFrame) parentFrame = reinterpret_cast<RwFrame*>(RpClumpGetFrame(clump));
+	if (parentFrame) {
+		RwFrameAddChild(parentFrame, frame);
+	}
+	RwFrameUpdateObjects(parentFrame ? parentFrame : frame);
+
+	RpClumpAddAtomic(clump, atomic);
+	ClientLog(LogLevel::Info, std::format("CreatePlateQuadAtomic: Created {} 3D plate quad on clump (pos={:.2f}, {:.2f}, {:.2f}, rot={:.1f}, {:.1f}, {:.1f}, scale={:.2f})",
+		isRear ? "rear" : "front", cfg.offsetX, cfg.offsetY, cfg.offsetZ, cfg.rotX, cfg.rotY, cfg.rotZ, cfg.scale));
+	return atomic;
+}
+
 std::vector<CustomVehicleBindingManager::PlateMaterialInfo> CustomVehicleBindingManager::FindVehiclePlateMaterials(
 	RpClump* clump,
 	CVehicleModelInfo* customModel,
-	const char* lastKnownPlateText)
+	const char* lastKnownPlateText,
+	const char* targetTexture)
 {
 	std::vector<PlateMaterialInfo> results;
 	if (!clump)
@@ -965,6 +1296,7 @@ std::vector<CustomVehicleBindingManager::PlateMaterialInfo> CustomVehicleBinding
 		int targetMatIdx { -1 };
 		const char* lastPlate { nullptr };
 		const char* modelPlate { nullptr };
+		const char* targetTexture { nullptr };
 		std::vector<PlateMaterialInfo>* pResults { nullptr };
 		decltype(containsCi)* pContainsCi { nullptr };
 		decltype(equalsCi)* pEqualsCi { nullptr };
@@ -974,6 +1306,7 @@ std::vector<CustomVehicleBindingManager::PlateMaterialInfo> CustomVehicleBinding
 	ctx.targetMatIdx = targetMatIdx;
 	ctx.lastPlate = lastKnownPlateText;
 	ctx.modelPlate = (customModel && customModel->m_szPlateText[0] != '\0') ? customModel->m_szPlateText : nullptr;
+	ctx.targetTexture = targetTexture;
 	ctx.pResults = &results;
 	ctx.pContainsCi = &containsCi;
 	ctx.pEqualsCi = &equalsCi;
@@ -996,6 +1329,17 @@ std::vector<CustomVehicleBindingManager::PlateMaterialInfo> CustomVehicleBinding
 			}
 		}
 
+		std::string fhLower = frameHierarchy;
+		std::transform(fhLower.begin(), fhLower.end(), fhLower.begin(), ::tolower);
+
+		// Never match materials on wheels, tyres, suspension, brakes, or rotors as license plates
+		if (fhLower.find("wheel") != std::string::npos || fhLower.find("tyre") != std::string::npos ||
+			fhLower.find("tire") != std::string::npos || fhLower.find("brake") != std::string::npos ||
+			fhLower.find("disc") != std::string::npos || fhLower.find("susp") != std::string::npos) {
+			c->currentAtomicIdx++;
+			return atomic;
+		}
+
 		for (int m = 0; m < geom->matList.numMaterials; ++m) {
 			RpMaterial* mat = geom->matList.materials[m];
 			if (!mat)
@@ -1012,15 +1356,31 @@ std::vector<CustomVehicleBindingManager::PlateMaterialInfo> CustomVehicleBinding
 				const char* texName = mat->texture->name;
 				if (texName && *texName) {
 					std::string tn = texName;
-					if ((*c->pEqualsCi)(texName, "carplate")) {
+					std::string tnLower = tn;
+					std::transform(tnLower.begin(), tnLower.end(), tnLower.begin(), ::tolower);
+
+					// Exclude template, wheel, tire, rim, brake textures
+					if (tnLower.find("template") != std::string::npos || tnLower.find("wheel") != std::string::npos ||
+						tnLower.find("tyre") != std::string::npos || tnLower.find("tire") != std::string::npos ||
+						tnLower.find("rim") != std::string::npos || tnLower.find("brake") != std::string::npos ||
+						tnLower.find("disc") != std::string::npos) {
+						continue;
+					}
+
+					if (c->targetTexture && c->targetTexture[0] != '\0' && (*c->pEqualsCi)(texName, c->targetTexture)) {
+						isPlate = true;
+						isBg = false;
+					} else if ((*c->pEqualsCi)(texName, "carplate")) {
 						isPlate = true;
 						isBg = false;
 					} else if ((*c->pEqualsCi)(texName, "carpback") || (*c->pContainsCi)(tn, "plateback")) {
 						isPlate = true;
 						isBg = true;
 					} else if ((*c->pContainsCi)(tn, "carplate") || (*c->pContainsCi)(tn, "numberplate") ||
-							   (*c->pContainsCi)(tn, "license") || (*c->pContainsCi)(tn, "licence") ||
-							   (*c->pContainsCi)(tn, "nomer") || (*c->pContainsCi)(tn, "plate")) {
+							   (*c->pContainsCi)(tn, "license_plate") || (*c->pContainsCi)(tn, "licence_plate") ||
+							   (*c->pContainsCi)(tn, "licenseplate") || (*c->pContainsCi)(tn, "licenceplate") ||
+							   (*c->pContainsCi)(tn, "custom_plate") || (*c->pContainsCi)(tn, "nomer") ||
+							   tnLower == "plate" || tnLower == "license" || tnLower == "licence") {
 						isPlate = true;
 						isBg = false;
 					} else if (c->lastPlate && c->lastPlate[0] != '\0' && (*c->pEqualsCi)(texName, c->lastPlate)) {
@@ -1033,8 +1393,10 @@ std::vector<CustomVehicleBindingManager::PlateMaterialInfo> CustomVehicleBinding
 				}
 			}
 
-			if (!isPlate && !frameHierarchy.empty()) {
-				if ((*c->pContainsCi)(frameHierarchy, "plate") || (*c->pContainsCi)(frameHierarchy, "nomer") || (*c->pContainsCi)(frameHierarchy, "license")) {
+			if (!isPlate && !fhLower.empty()) {
+				if (fhLower.find("bt_plate") != std::string::npos || fhLower.find("carplate") != std::string::npos ||
+					fhLower.find("numberplate") != std::string::npos || fhLower.find("license_plate") != std::string::npos ||
+					fhLower.find("licence_plate") != std::string::npos || fhLower.find("numplate") != std::string::npos) {
 					isPlate = true;
 					isBg = false;
 				}
@@ -1065,12 +1427,51 @@ bool CustomVehicleBindingManager::ApplyPlateToClump(
 	RpClump* clump,
 	CVehicleModelInfo* customModel,
 	const char* plateText,
-	const char* lastKnownText)
+	const char* lastKnownText,
+	uint32_t customModelId,
+	const char* targetTexture,
+	const CustomVeh::Protocol::PlateMeshConfig* frontPlate,
+	const CustomVeh::Protocol::PlateMeshConfig* rearPlate)
 {
 	if (!clump || !plateText || plateText[0] == '\0')
 		return false;
 
-	auto plateMaterials = FindVehiclePlateMaterials(clump, customModel, lastKnownText);
+	// Resolve model plate config if customModelId provided and explicit config not passed
+	ModelPlateConfig modelCfg;
+	bool hasModelCfg = false;
+	if (customModelId > 0) {
+		std::lock_guard lock(m_mutex);
+		auto it = s_modelPlateConfigs.find(customModelId);
+		if (it != s_modelPlateConfigs.end()) {
+			modelCfg = it->second;
+			hasModelCfg = true;
+		}
+	}
+
+	const char* effTargetTex = (targetTexture && targetTexture[0] != '\0')
+		? targetTexture
+		: (hasModelCfg && !modelCfg.targetTexture.empty() ? modelCfg.targetTexture.c_str() : nullptr);
+
+	const CustomVeh::Protocol::PlateMeshConfig* effFrontPlate = frontPlate;
+	if (!effFrontPlate && hasModelCfg && modelCfg.frontPlate.enabled) {
+		effFrontPlate = &modelCfg.frontPlate;
+	}
+
+	const CustomVeh::Protocol::PlateMeshConfig* effRearPlate = rearPlate;
+	if (!effRearPlate && hasModelCfg && modelCfg.rearPlate.enabled) {
+		effRearPlate = &modelCfg.rearPlate;
+	}
+
+	// 1. Create or update 3D plate quad atomics if configured
+	if (effFrontPlate) {
+		CreatePlateQuadAtomic(clump, *effFrontPlate, plateText, false);
+	}
+	if (effRearPlate) {
+		CreatePlateQuadAtomic(clump, *effRearPlate, plateText, true);
+	}
+
+	// 2. Find plate materials (matching standard names, targetTexture, and attached plate quad atomics)
+	auto plateMaterials = FindVehiclePlateMaterials(clump, customModel, lastKnownText, effTargetTex);
 
 	int textPlatesApplied = 0;
 	int bgPlatesApplied = 0;
@@ -1144,18 +1545,34 @@ void CustomVehicleBindingManager::ApplyPlateToVehicle(CVehicle* vehicle, const c
 	CVehicleModelInfo* customModel = nullptr;
 	const char* lastKnownText = nullptr;
 	uint16_t sampVehicleId = 0;
+	uint32_t customModelId = 0;
+	const char* targetTex = nullptr;
+	const CustomVeh::Protocol::PlateMeshConfig* pFrontPlate = nullptr;
+	const CustomVeh::Protocol::PlateMeshConfig* pRearPlate = nullptr;
+
 	if (binding) {
 		customModel = StreamingExtender::GetCustomModel(binding->customModelId);
 		lastKnownText = binding->lastPlateText;
 		sampVehicleId = binding->sampVehicleId;
+		customModelId = binding->customModelId;
 		strncpy_s(binding->lastPlateText, sizeof(binding->lastPlateText), finalPlate, _TRUNCATE);
+
+		if (binding->hasTargetPlateTexture && binding->targetPlateTexture[0] != '\0') {
+			targetTex = binding->targetPlateTexture;
+		}
+		if (binding->hasFrontPlateMesh) {
+			pFrontPlate = &binding->frontPlateMesh;
+		}
+		if (binding->hasRearPlateMesh) {
+			pRearPlate = &binding->rearPlateMesh;
+		}
 	}
 
 	if (sampVehicleId > 0) {
 		UpdateSampVehiclePlateText(sampVehicleId, finalPlate);
 	}
 
-	ApplyPlateToClump(clump, customModel, finalPlate, lastKnownText);
+	ApplyPlateToClump(clump, customModel, finalPlate, lastKnownText, customModelId, targetTex, pFrontPlate, pRearPlate);
 }
 
 void CustomVehicleBindingManager::ApplyPaintjobToVehicle(CVehicle* vehicle, int paintjobIndex)
@@ -1504,7 +1921,8 @@ bool CustomVehicleBindingManager::HandleChatCommand(const std::string& fullCmd)
 	static const std::unordered_set<std::string> s_knownCommands = {
 		"$vehwheelz", "$vehwheely", "$vehtrack", "$vehcamber", "$vehwheelscale",
 		"$vehchassisz", "$vehchassis", "$vehoffsets", "$vehinfo",
-		"$vehresetspec", "$vehreset", "$vehhelp", "$customvehhelp", "$vehplate"
+		"$vehresetspec", "$vehreset", "$vehhelp", "$customvehhelp", "$vehplate",
+		"$vehplatefront", "$vehplaterear", "$vehtargettex"
 	};
 
 	if (s_knownCommands.find(cmd) == s_knownCommands.end())
@@ -1522,6 +1940,9 @@ bool CustomVehicleBindingManager::HandleChatCommand(const std::string& fullCmd)
 		SendMsg(0xFFFFFF, "{FFFF00}$vehcamber [model] <front> [rear] {FFFFFF}- Live preview wheel camber");
 		SendMsg(0xFFFFFF, "{FFFF00}$vehwheelscale [model] <front> [rear] {FFFFFF}- Live preview wheel scale");
 		SendMsg(0xFFFFFF, "{FFFF00}$vehplate [model] <text> {FFFFFF}- Live preview license plate text");
+		SendMsg(0xFFFFFF, "{FFFF00}$vehplatefront [model] <X> <Y> <Z> [rotX] [rotY] [rotZ] [scale] {FFFFFF}- Live preview 3D front plate mesh (or 'off')");
+		SendMsg(0xFFFFFF, "{FFFF00}$vehplaterear [model] <X> <Y> <Z> [rotX] [rotY] [rotZ] [scale] {FFFFFF}- Live preview 3D rear plate mesh (or 'off')");
+		SendMsg(0xFFFFFF, "{FFFF00}$vehtargettex [model] <textureName> {FFFFFF}- Set custom target texture for plate text");
 		SendMsg(0xFFFFFF, "{FFFF00}$vehoffsets {FFFFFF}- Display current offsets for vehicle/model");
 		SendMsg(0xFFFFFF, "{FFFF00}$vehreset [model] {FFFFFF}- Reset live preview to server defaults");
 		SendMsg(0xAAAAAA, "{AAAAAA}Note: Permanent offsets are configured on the server in model.ini [offsets].");
@@ -1840,6 +2261,96 @@ bool CustomVehicleBindingManager::HandleChatCommand(const std::string& fullCmd)
 
 		SendMsg(0x00FF00, std::format("{{00FF00}}[ExtendedVeh]{{FFFFFF}} Model {} Plate Text: '{}' (Live Preview)", targetModelId, newPlate).c_str());
 		SendMsg(0xAAAAAA, std::format("{{AAAAAA}}Server config -> [model] plateText={}", newPlate).c_str());
+		return true;
+	}
+
+	if (cmd == "$vehplatefront" || cmd == "$vehplaterear") {
+		bool isRear = (cmd == "$vehplaterear");
+		if (argIdx >= args.size()) {
+			SendMsg(0xFFFF00, std::format("{{FFFF00}}Usage: {{FFFFFF}}{} [modelId] <X> <Y> <Z> [rotX] [rotY] [rotZ] [scale] (or 'off')", cmd).c_str());
+			return true;
+		}
+
+		CustomVeh::Protocol::PlateMeshConfig cfg {};
+		std::string firstArg = args[argIdx];
+		std::transform(firstArg.begin(), firstArg.end(), firstArg.begin(), ::tolower);
+
+		if (firstArg == "off" || firstArg == "disable" || firstArg == "none") {
+			cfg.enabled = 0;
+		} else {
+			if (argIdx + 2 >= args.size()) {
+				SendMsg(0xFFFF00, std::format("{{FFFF00}}Usage: {{FFFFFF}}{} [modelId] <X> <Y> <Z> [rotX] [rotY] [rotZ] [scale]", cmd).c_str());
+				return true;
+			}
+			try {
+				cfg.enabled = 1;
+				cfg.offsetX = std::stof(args[argIdx]);
+				cfg.offsetY = std::stof(args[argIdx + 1]);
+				cfg.offsetZ = std::stof(args[argIdx + 2]);
+				cfg.rotX = (argIdx + 3 < args.size()) ? std::stof(args[argIdx + 3]) : 0.0f;
+				cfg.rotY = (argIdx + 4 < args.size()) ? std::stof(args[argIdx + 4]) : 0.0f;
+				cfg.rotZ = (argIdx + 5 < args.size()) ? std::stof(args[argIdx + 5]) : (isRear ? 180.0f : 0.0f);
+				cfg.scale = (argIdx + 6 < args.size()) ? std::stof(args[argIdx + 6]) : 1.0f;
+			} catch (...) {
+				SendMsg(0xFF6666, "{00FF00}[ExtendedVeh]{FFFFFF} Invalid number format for plate mesh offsets.");
+				return true;
+			}
+		}
+
+		{
+			std::lock_guard lock(m_mutex);
+			auto& modelCfg = s_modelPlateConfigs[targetModelId];
+			modelCfg.hasConfig = true;
+			if (isRear) {
+				modelCfg.rearPlate = cfg;
+			} else {
+				modelCfg.frontPlate = cfg;
+			}
+
+			for (auto& [vId, b] : m_bindings) {
+				if (b.customModelId == targetModelId) {
+					if (isRear) {
+						b.rearPlateMesh = cfg;
+						b.hasRearPlateMesh = true;
+					} else {
+						b.frontPlateMesh = cfg;
+						b.hasFrontPlateMesh = true;
+					}
+
+					if (b.appliedGameVehicle && IsVehiclePointerValid(b.appliedGameVehicle)) {
+						RpClump* clump = reinterpret_cast<RpClump*>(b.appliedGameVehicle->m_pRwObject);
+						if (clump) {
+							const char* plateText = b.hasCustomPlateText && b.customPlateText[0] != '\0'
+								? b.customPlateText
+								: (b.lastPlateText[0] != '\0' ? b.lastPlateText : "SAN ANDREAS");
+							CreatePlateQuadAtomic(clump, cfg, plateText, isRear);
+						}
+					}
+				}
+			}
+		}
+
+		if (cfg.enabled) {
+			SendMsg(0x00FF00, std::format("{{00FF00}}[ExtendedVeh]{{FFFFFF}} Model {} {} Plate: pos=({:.3f}, {:.3f}, {:.3f}), rot=({:.1f}, {:.1f}, {:.1f}), scale={:.2f} (Live Preview)",
+				targetModelId, isRear ? "Rear" : "Front", cfg.offsetX, cfg.offsetY, cfg.offsetZ, cfg.rotX, cfg.rotY, cfg.rotZ, cfg.scale).c_str());
+			SendMsg(0xAAAAAA, std::format("{{AAAAAA}}Server config -> [plate] {0}PlateX={1:.3f} {0}PlateY={2:.3f} {0}PlateZ={3:.3f} {0}PlateRotZ={4:.1f}",
+				isRear ? "rear" : "front", cfg.offsetX, cfg.offsetY, cfg.offsetZ, cfg.rotZ).c_str());
+		} else {
+			SendMsg(0x00FF00, std::format("{{00FF00}}[ExtendedVeh]{{FFFFFF}} Model {} {} Plate disabled.", targetModelId, isRear ? "Rear" : "Front").c_str());
+		}
+		return true;
+	}
+
+	if (cmd == "$vehtargettex") {
+		if (argIdx >= args.size()) {
+			SendMsg(0xFFFF00, "{FFFF00}Usage: {FFFFFF}$vehtargettex [modelId] <textureName>");
+			return true;
+		}
+		std::string texName = args[argIdx];
+		SetModelTargetPlateTexture(targetModelId, texName);
+
+		SendMsg(0x00FF00, std::format("{{00FF00}}[ExtendedVeh]{{FFFFFF}} Model {} Target Plate Texture: '{}' (Live Preview)", targetModelId, texName).c_str());
+		SendMsg(0xAAAAAA, std::format("{{AAAAAA}}Server config -> [plate] targetTexture={}", texName).c_str());
 		return true;
 	}
 

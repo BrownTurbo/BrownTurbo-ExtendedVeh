@@ -7,6 +7,7 @@
 #include <vector>
 #include <game_sa/rw/rwcore.h>
 #include <game_sa/rw/rpworld.h>
+#include "../Shared/CustomVehicleProtocol.hpp"
 
 class CVehicle;
 class CColModel;
@@ -30,6 +31,13 @@ public:
 		float frontCamber { 0.0f };
 		float rearCamber { 0.0f };
 		bool hasConfig { false };
+	};
+
+	struct ModelPlateConfig {
+		bool hasConfig { false };
+		std::string targetTexture;
+		CustomVeh::Protocol::PlateMeshConfig frontPlate {};
+		CustomVeh::Protocol::PlateMeshConfig rearPlate {};
 	};
 
 	struct Binding {
@@ -113,6 +121,12 @@ public:
 		bool hasCustomPlateText { false };
 		char customPlateText[32] = {};
 		char lastPlateText[32] = {};
+		bool hasTargetPlateTexture { false };
+		char targetPlateTexture[32] = {};
+		bool hasFrontPlateMesh { false };
+		CustomVeh::Protocol::PlateMeshConfig frontPlateMesh {};
+		bool hasRearPlateMesh { false };
+		CustomVeh::Protocol::PlateMeshConfig rearPlateMesh {};
 	};
 
 	static CustomVehicleBindingManager& Instance()
@@ -186,6 +200,8 @@ public:
 	void ApplyAudioSettingsToVehicle(CVehicle* vehicle);
 	void ApplyPlateToVehicle(CVehicle* vehicle, const char* text = nullptr);
 	void SetVehiclePlateText(uint16_t vehicleId, const char* text);
+	void SetVehiclePlateMesh(uint16_t vehicleId, bool isRear, const CustomVeh::Protocol::PlateMeshConfig& cfg);
+	void SetVehiclePlateTexture(uint16_t vehicleId, const char* textureName);
 
 	struct PlateMaterialInfo {
 		RpMaterial* material { nullptr };
@@ -195,16 +211,32 @@ public:
 	static std::vector<PlateMaterialInfo> FindVehiclePlateMaterials(
 		RpClump* clump,
 		CVehicleModelInfo* customModel,
-		const char* lastKnownPlateText = nullptr);
+		const char* lastKnownPlateText = nullptr,
+		const char* targetTexture = nullptr);
 
 	static bool ApplyPlateToClump(
 		RpClump* clump,
 		CVehicleModelInfo* customModel,
 		const char* plateText,
-		const char* lastKnownText = nullptr);
+		const char* lastKnownText = nullptr,
+		uint32_t customModelId = 0,
+		const char* targetTexture = nullptr,
+		const CustomVeh::Protocol::PlateMeshConfig* frontPlate = nullptr,
+		const CustomVeh::Protocol::PlateMeshConfig* rearPlate = nullptr);
 
 	static void SetModelDefaultPlateText(uint32_t customModelId, const std::string& plateText);
 	static std::string GetModelDefaultPlateText(uint32_t customModelId);
+
+	static void SetModelPlateConfig(uint32_t customModelId, const ModelPlateConfig& cfg);
+	static bool GetModelPlateConfig(uint32_t customModelId, ModelPlateConfig& outCfg);
+	static void SetModelTargetPlateTexture(uint32_t customModelId, const std::string& textureName);
+	static std::string GetModelTargetPlateTexture(uint32_t customModelId);
+
+	static RpAtomic* CreatePlateQuadAtomic(
+		RpClump* clump,
+		const CustomVeh::Protocol::PlateMeshConfig& cfg,
+		const char* plateText,
+		bool isRear);
 
 	static bool GetModelOffsets(uint32_t customModelId, ModelOffsetConfig& outCfg);
 	static void SetModelOffsets(uint32_t customModelId, const ModelOffsetConfig& cfg);
@@ -224,4 +256,6 @@ private:
 	static inline std::unordered_map<uint32_t, ModelOffsetConfig> s_modelOffsets;
 	static inline std::unordered_map<uint32_t, ModelOffsetConfig> s_serverModelOffsets;
 	static inline std::unordered_map<uint32_t, std::string> s_modelDefaultPlateText;
+	static inline std::unordered_map<uint32_t, ModelPlateConfig> s_modelPlateConfigs;
+	static inline std::unordered_map<uint32_t, ModelPlateConfig> s_serverModelPlateConfigs;
 };

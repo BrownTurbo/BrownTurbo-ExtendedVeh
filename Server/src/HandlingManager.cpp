@@ -7,6 +7,7 @@
 #include "extendedveh.h"
 #include "ModelTransferManager.h"
 #include "CustomVehicleBindingRegistry.h"
+#include "CustomVehicleTransport.h"
 
 #include <cstring>
 #include <type_traits>
@@ -1418,6 +1419,9 @@ void SendCustomVehicleDefToPlayer(IPlayer& player, uint32_t modelId)
 	bs.Write(def.offsets.frontCamber);
 	bs.Write(def.offsets.rearCamber);
 	writeToStream(def.defaultPlateText, sizeof(def.defaultPlateText));
+	writeToStream(def.targetPlateTexture, sizeof(def.targetPlateTexture));
+	bs.Write(reinterpret_cast<const char*>(&def.frontPlate), sizeof(def.frontPlate));
+	bs.Write(reinterpret_cast<const char*>(&def.rearPlate), sizeof(def.rearPlate));
 
 	if (def.flags & CustomVeh::Protocol::HasAnyAudio)
 	{
@@ -1721,6 +1725,19 @@ bool LoadCustomVehicleConfig(uint32_t customModelId, const ModelConfig* preParse
 			{
 				std::strncpy(def.defaultPlateText, config.plateText.c_str(), sizeof(def.defaultPlateText) - 1);
 				def.defaultPlateText[sizeof(def.defaultPlateText) - 1] = '\0';
+			}
+			if (!config.targetTexture.empty())
+			{
+				std::strncpy(def.targetPlateTexture, config.targetTexture.c_str(), sizeof(def.targetPlateTexture) - 1);
+				def.targetPlateTexture[sizeof(def.targetPlateTexture) - 1] = '\0';
+			}
+			if (config.frontPlateMesh.enabled)
+			{
+				def.frontPlate = config.frontPlateMesh;
+			}
+			if (config.rearPlateMesh.enabled)
+			{
+				def.rearPlate = config.rearPlateMesh;
 			}
 		};
 
@@ -2289,6 +2306,108 @@ bool GetCustomVehicleModelPlateText(uint32_t customModelId, std::string& plateTe
 	if (itStaged != stagedCustomVehicleDefs.end())
 	{
 		plateText = itStaged->second.defaultPlateText;
+		return true;
+	}
+	return false;
+}
+
+void SendModelPlateConfigToPlayer(IPlayer& player, uint32_t customModelId)
+{
+	auto it = customVehicleDefs.find(customModelId);
+	if (it == customVehicleDefs.end())
+		return;
+
+	CustomVeh::Protocol::ModelPlateConfigPacket pkt {};
+	pkt.customModelId = customModelId;
+	std::strncpy(pkt.targetTexture, it->second.targetPlateTexture, sizeof(pkt.targetTexture) - 1);
+	pkt.targetTexture[sizeof(pkt.targetTexture) - 1] = '\0';
+	pkt.frontPlate = it->second.frontPlate;
+	pkt.rearPlate = it->second.rearPlate;
+
+	CustomVehicleTransport::SendModelPlateConfig(player, pkt);
+}
+
+void SendModelPlateConfigToAll(uint32_t customModelId)
+{
+	ExtendedVehCompo* compo = ExtendedVehCompo::get();
+	ICore* core_ = compo ? compo->getCore() : nullptr;
+	if (core_)
+	{
+		for (IPlayer* player : core_->getPlayers().players())
+		{
+			if (player && gPlayers.HasExtendedVeh(player->getID()))
+			{
+				SendModelPlateConfigToPlayer(*player, customModelId);
+			}
+		}
+	}
+}
+
+bool SetCustomVehicleModelPlateTexture(uint32_t customModelId, const std::string& textureName)
+{
+	auto itStaged = stagedCustomVehicleDefs.find(customModelId);
+	if (itStaged != stagedCustomVehicleDefs.end())
+	{
+		std::strncpy(itStaged->second.targetPlateTexture, textureName.c_str(), sizeof(itStaged->second.targetPlateTexture) - 1);
+		itStaged->second.targetPlateTexture[sizeof(itStaged->second.targetPlateTexture) - 1] = '\0';
+	}
+	auto itComm = customVehicleDefs.find(customModelId);
+	if (itComm != customVehicleDefs.end())
+	{
+		std::strncpy(itComm->second.targetPlateTexture, textureName.c_str(), sizeof(itComm->second.targetPlateTexture) - 1);
+		itComm->second.targetPlateTexture[sizeof(itComm->second.targetPlateTexture) - 1] = '\0';
+		SendModelPlateConfigToAll(customModelId);
+	}
+	return itStaged != stagedCustomVehicleDefs.end() || itComm != customVehicleDefs.end();
+}
+
+bool GetCustomVehicleModelPlateTexture(uint32_t customModelId, std::string& textureName)
+{
+	auto itComm = customVehicleDefs.find(customModelId);
+	if (itComm != customVehicleDefs.end())
+	{
+		textureName = itComm->second.targetPlateTexture;
+		return true;
+	}
+	auto itStaged = stagedCustomVehicleDefs.find(customModelId);
+	if (itStaged != stagedCustomVehicleDefs.end())
+	{
+		textureName = itStaged->second.targetPlateTexture;
+		return true;
+	}
+	return false;
+}
+
+bool SetCustomVehicleModelPlateMesh(uint32_t customModelId, bool isRear, const CustomVeh::Protocol::PlateMeshConfig& cfg)
+{
+	auto itStaged = stagedCustomVehicleDefs.find(customModelId);
+	if (itStaged != stagedCustomVehicleDefs.end())
+	{
+		if (isRear) itStaged->second.rearPlate = cfg;
+		else itStaged->second.frontPlate = cfg;
+	}
+	auto itComm = customVehicleDefs.find(customModelId);
+	if (itComm != customVehicleDefs.end())
+	{
+		if (isRear) itComm->second.rearPlate = cfg;
+		else itComm->second.frontPlate = cfg;
+		SendModelPlateConfigToAll(customModelId);
+	}
+	return itStaged != stagedCustomVehicleDefs.end() || itComm != customVehicleDefs.end();
+}
+
+bool GetCustomVehicleModelPlateMesh(uint32_t customModelId, bool isRear, CustomVeh::Protocol::PlateMeshConfig& cfg)
+{
+	auto itComm = customVehicleDefs.find(customModelId);
+	if (itComm != customVehicleDefs.end())
+	{
+		cfg = isRear ? itComm->second.rearPlate : itComm->second.frontPlate;
+		return true;
+	}
+	auto itStaged = stagedCustomVehicleDefs.find(customModelId);
+	if (itStaged != stagedCustomVehicleDefs.end())
+	{
+		cfg = isRear ? itStaged->second.rearPlate : itStaged->second.frontPlate;
 		return true;
 	}
 	return false;

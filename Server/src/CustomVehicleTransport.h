@@ -21,5 +21,8 @@ void SendVehicleLights(IPlayer& player, const CustomVeh::Protocol::VehicleLights
 void SendVehicleWheel(IPlayer& player, const CustomVeh::Protocol::VehicleWheelPacket& wheel);
 void SendVehicleOffsets(IPlayer& player, const CustomVeh::Protocol::VehicleOffsetsPacket& offsets);
 void SendVehiclePlate(IPlayer& player, const CustomVeh::Protocol::VehiclePlatePacket& plate);
+void SendVehiclePlateMesh(IPlayer& player, const CustomVeh::Protocol::VehiclePlateMeshPacket& pkt);
+void SendModelPlateConfig(IPlayer& player, const CustomVeh::Protocol::ModelPlateConfigPacket& pkt);
+void SendVehiclePlateTexture(IPlayer& player, const CustomVeh::Protocol::VehiclePlateTexturePacket& pkt);
 void SendDebugMode(IPlayer& player, bool enabled);
 }

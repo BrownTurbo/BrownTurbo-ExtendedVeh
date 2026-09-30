@@ -2400,6 +2400,113 @@ inline bool GetCustomVehicleNumberPlate(IVehicle& vehicle, std::string& numberpl
 	}
 	return false;
 }
+
+inline bool SetCustomVehiclePlateMesh(IVehicle& vehicle, bool isRear, bool enabled, float x, float y, float z, float rx, float ry, float rz, float scale)
+{
+	int vehicleid = vehicle.getID();
+	if (!CVehicleMgr::VehicleRegistry::Get().IsValidVehicleID(vehicleid))
+		return false;
+
+	uint16_t vId = static_cast<uint16_t>(vehicleid);
+	CustomVeh::Protocol::PlateMeshConfig cfg {};
+	cfg.enabled = enabled ? 1 : 0;
+	cfg.offsetX = x;
+	cfg.offsetY = y;
+	cfg.offsetZ = z;
+	cfg.rotX = rx;
+	cfg.rotY = ry;
+	cfg.rotZ = rz;
+	cfg.scale = (scale > 0.001f) ? scale : 1.0f;
+
+	CustomVehicleBindingRegistry::Instance().SetPlateMesh(vId, isRear, cfg);
+
+	CustomVeh::Protocol::VehiclePlateMeshPacket pkt {};
+	pkt.sampVehicleId = vId;
+	pkt.isRear = isRear ? 1 : 0;
+	pkt.config = cfg;
+
+	ExtendedVehCompo* compo = ExtendedVehCompo::get();
+	ICore* core_ = compo ? compo->getCore() : nullptr;
+	if (core_)
+	{
+		for (IPlayer* player : core_->getPlayers().players())
+		{
+			if (player && gPlayers.HasExtendedVeh(player->getID()) && vehicle.isStreamedInForPlayer(*player))
+			{
+				CustomVehicleTransport::SendVehiclePlateMesh(*player, pkt);
+			}
+		}
+	}
+	return true;
+}
+
+inline bool GetCustomVehiclePlateMesh(IVehicle& vehicle, bool isRear, bool& enabled, float& x, float& y, float& z, float& rx, float& ry, float& rz, float& scale)
+{
+	int vehicleid = vehicle.getID();
+	if (!CVehicleMgr::VehicleRegistry::Get().IsValidVehicleID(vehicleid))
+		return false;
+
+	uint16_t vId = static_cast<uint16_t>(vehicleid);
+	auto meshOpt = CustomVehicleBindingRegistry::Instance().GetPlateMesh(vId, isRear);
+	if (meshOpt)
+	{
+		enabled = meshOpt->enabled != 0;
+		x = meshOpt->offsetX;
+		y = meshOpt->offsetY;
+		z = meshOpt->offsetZ;
+		rx = meshOpt->rotX;
+		ry = meshOpt->rotY;
+		rz = meshOpt->rotZ;
+		scale = meshOpt->scale;
+		return true;
+	}
+	return false;
+}
+
+inline bool SetCustomVehiclePlateTexture(IVehicle& vehicle, const std::string& textureName)
+{
+	int vehicleid = vehicle.getID();
+	if (!CVehicleMgr::VehicleRegistry::Get().IsValidVehicleID(vehicleid))
+		return false;
+
+	uint16_t vId = static_cast<uint16_t>(vehicleid);
+	CustomVehicleBindingRegistry::Instance().SetPlateTexture(vId, textureName);
+
+	CustomVeh::Protocol::VehiclePlateTexturePacket pkt {};
+	pkt.sampVehicleId = vId;
+	std::strncpy(pkt.targetTexture, textureName.c_str(), sizeof(pkt.targetTexture) - 1);
+	pkt.targetTexture[sizeof(pkt.targetTexture) - 1] = '\0';
+
+	ExtendedVehCompo* compo = ExtendedVehCompo::get();
+	ICore* core_ = compo ? compo->getCore() : nullptr;
+	if (core_)
+	{
+		for (IPlayer* player : core_->getPlayers().players())
+		{
+			if (player && gPlayers.HasExtendedVeh(player->getID()) && vehicle.isStreamedInForPlayer(*player))
+			{
+				CustomVehicleTransport::SendVehiclePlateTexture(*player, pkt);
+			}
+		}
+	}
+	return true;
+}
+
+inline bool GetCustomVehiclePlateTexture(IVehicle& vehicle, std::string& textureName)
+{
+	int vehicleid = vehicle.getID();
+	if (!CVehicleMgr::VehicleRegistry::Get().IsValidVehicleID(vehicleid))
+		return false;
+
+	uint16_t vId = static_cast<uint16_t>(vehicleid);
+	auto texOpt = CustomVehicleBindingRegistry::Instance().GetPlateTexture(vId);
+	if (texOpt)
+	{
+		textureName = *texOpt;
+		return true;
+	}
+	return false;
+}
 }
 
 // native bool:SetCustomVehicleOffsets(vehicleid, Float:frontWheelOffsetZ, Float:rearWheelOffsetZ, Float:frontWheelOffsetY = 0.0, Float:rearWheelOffsetY = 0.0, Float:chassisOffsetX = 0.0, Float:chassisOffsetY = 0.0, Float:chassisOffsetZ = 0.0);
@@ -2537,6 +2644,139 @@ SCRIPT_API(SetVehicleModelPlateText, bool(int customModelId, const std::string& 
 SCRIPT_API(GetVehicleModelPlateText, bool(int customModelId, std::string& plateText))
 {
 	return HandlingMgr::GetCustomVehicleModelPlateText(static_cast<uint32_t>(customModelId), plateText);
+}
+
+// native bool:SetCustomVehiclePlateMesh(vehicleid, bool:isRear, bool:enabled, Float:x, Float:y, Float:z, Float:rx = 0.0, Float:ry = 0.0, Float:rz = 0.0, Float:scale = 1.0);
+SCRIPT_API(SetCustomVehiclePlateMesh, bool(IVehicle& vehicle, bool isRear, bool enabled, float x, float y, float z, float rx, float ry, float rz, float scale))
+{
+	return CustomVehicleNatives::SetCustomVehiclePlateMesh(vehicle, isRear, enabled, x, y, z, rx, ry, rz, scale);
+}
+
+// native bool:GetCustomVehiclePlateMesh(vehicleid, bool:isRear, &bool:enabled, &Float:x, &Float:y, &Float:z, &Float:rx, &Float:ry, &Float:rz, &Float:scale);
+SCRIPT_API(GetCustomVehiclePlateMesh, bool(IVehicle& vehicle, bool isRear, bool& enabled, float& x, float& y, float& z, float& rx, float& ry, float& rz, float& scale))
+{
+	return CustomVehicleNatives::GetCustomVehiclePlateMesh(vehicle, isRear, enabled, x, y, z, rx, ry, rz, scale);
+}
+
+// native bool:SetCustomVehiclePlateTexture(vehicleid, const textureName[]);
+SCRIPT_API(SetCustomVehiclePlateTexture, bool(IVehicle& vehicle, const std::string& textureName))
+{
+	return CustomVehicleNatives::SetCustomVehiclePlateTexture(vehicle, textureName);
+}
+
+// native bool:GetCustomVehiclePlateTexture(vehicleid, textureName[], maxlen = sizeof(textureName));
+SCRIPT_API(GetCustomVehiclePlateTexture, bool(IVehicle& vehicle, std::string& textureName))
+{
+	return CustomVehicleNatives::GetCustomVehiclePlateTexture(vehicle, textureName);
+}
+
+// native bool:SetCustomVehicleModelPlateMesh(customModelId, bool:isRear, bool:enabled, Float:x, Float:y, Float:z, Float:rx = 0.0, Float:ry = 0.0, Float:rz = 0.0, Float:scale = 1.0);
+SCRIPT_API(SetCustomVehicleModelPlateMesh, bool(int customModelId, bool isRear, bool enabled, float x, float y, float z, float rx, float ry, float rz, float scale))
+{
+	CustomVeh::Protocol::PlateMeshConfig cfg {};
+	cfg.enabled = enabled ? 1 : 0;
+	cfg.offsetX = x;
+	cfg.offsetY = y;
+	cfg.offsetZ = z;
+	cfg.rotX = rx;
+	cfg.rotY = ry;
+	cfg.rotZ = rz;
+	cfg.scale = (scale > 0.001f) ? scale : 1.0f;
+	return HandlingMgr::SetCustomVehicleModelPlateMesh(static_cast<uint32_t>(customModelId), isRear, cfg);
+}
+
+// native bool:GetCustomVehicleModelPlateMesh(customModelId, bool:isRear, &bool:enabled, &Float:x, &Float:y, &Float:z, &Float:rx, &Float:ry, &Float:rz, &Float:scale);
+SCRIPT_API(GetCustomVehicleModelPlateMesh, bool(int customModelId, bool isRear, bool& enabled, float& x, float& y, float& z, float& rx, float& ry, float& rz, float& scale))
+{
+	CustomVeh::Protocol::PlateMeshConfig cfg {};
+	if (HandlingMgr::GetCustomVehicleModelPlateMesh(static_cast<uint32_t>(customModelId), isRear, cfg))
+	{
+		enabled = cfg.enabled != 0;
+		x = cfg.offsetX;
+		y = cfg.offsetY;
+		z = cfg.offsetZ;
+		rx = cfg.rotX;
+		ry = cfg.rotY;
+		rz = cfg.rotZ;
+		scale = cfg.scale;
+		return true;
+	}
+	return false;
+}
+
+// native bool:SetCustomVehicleModelPlateTexture(customModelId, const textureName[]);
+SCRIPT_API(SetCustomVehicleModelPlateTexture, bool(int customModelId, const std::string& textureName))
+{
+	return HandlingMgr::SetCustomVehicleModelPlateTexture(static_cast<uint32_t>(customModelId), textureName);
+}
+
+// native bool:GetCustomVehicleModelPlateTexture(customModelId, textureName[], maxlen = sizeof(textureName));
+SCRIPT_API(GetCustomVehicleModelPlateTexture, bool(int customModelId, std::string& textureName))
+{
+	return HandlingMgr::GetCustomVehicleModelPlateTexture(static_cast<uint32_t>(customModelId), textureName);
+}
+
+// Aliases
+SCRIPT_API(SetVehiclePlateMesh, bool(IVehicle& vehicle, bool isRear, bool enabled, float x, float y, float z, float rx, float ry, float rz, float scale))
+{
+	return CustomVehicleNatives::SetCustomVehiclePlateMesh(vehicle, isRear, enabled, x, y, z, rx, ry, rz, scale);
+}
+
+SCRIPT_API(GetVehiclePlateMesh, bool(IVehicle& vehicle, bool isRear, bool& enabled, float& x, float& y, float& z, float& rx, float& ry, float& rz, float& scale))
+{
+	return CustomVehicleNatives::GetCustomVehiclePlateMesh(vehicle, isRear, enabled, x, y, z, rx, ry, rz, scale);
+}
+
+SCRIPT_API(SetVehiclePlateTexture, bool(IVehicle& vehicle, const std::string& textureName))
+{
+	return CustomVehicleNatives::SetCustomVehiclePlateTexture(vehicle, textureName);
+}
+
+SCRIPT_API(GetVehiclePlateTexture, bool(IVehicle& vehicle, std::string& textureName))
+{
+	return CustomVehicleNatives::GetCustomVehiclePlateTexture(vehicle, textureName);
+}
+
+SCRIPT_API(SetVehicleModelPlateMesh, bool(int customModelId, bool isRear, bool enabled, float x, float y, float z, float rx, float ry, float rz, float scale))
+{
+	CustomVeh::Protocol::PlateMeshConfig cfg {};
+	cfg.enabled = enabled ? 1 : 0;
+	cfg.offsetX = x;
+	cfg.offsetY = y;
+	cfg.offsetZ = z;
+	cfg.rotX = rx;
+	cfg.rotY = ry;
+	cfg.rotZ = rz;
+	cfg.scale = (scale > 0.001f) ? scale : 1.0f;
+	return HandlingMgr::SetCustomVehicleModelPlateMesh(static_cast<uint32_t>(customModelId), isRear, cfg);
+}
+
+SCRIPT_API(GetVehicleModelPlateMesh, bool(int customModelId, bool isRear, bool& enabled, float& x, float& y, float& z, float& rx, float& ry, float& rz, float& scale))
+{
+	CustomVeh::Protocol::PlateMeshConfig cfg {};
+	if (HandlingMgr::GetCustomVehicleModelPlateMesh(static_cast<uint32_t>(customModelId), isRear, cfg))
+	{
+		enabled = cfg.enabled != 0;
+		x = cfg.offsetX;
+		y = cfg.offsetY;
+		z = cfg.offsetZ;
+		rx = cfg.rotX;
+		ry = cfg.rotY;
+		rz = cfg.rotZ;
+		scale = cfg.scale;
+		return true;
+	}
+	return false;
+}
+
+SCRIPT_API(SetVehicleModelPlateTexture, bool(int customModelId, const std::string& textureName))
+{
+	return HandlingMgr::SetCustomVehicleModelPlateTexture(static_cast<uint32_t>(customModelId), textureName);
+}
+
+SCRIPT_API(GetVehicleModelPlateTexture, bool(int customModelId, std::string& textureName))
+{
+	return HandlingMgr::GetCustomVehicleModelPlateTexture(static_cast<uint32_t>(customModelId), textureName);
 }
 
 namespace CustomVehicleNatives
