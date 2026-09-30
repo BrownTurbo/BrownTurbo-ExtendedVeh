@@ -88,6 +88,6 @@ inline constexpr bool IsValidFileKind(uint8_t kindByte) noexcept
 	return IsValidFileKind(static_cast<ModelFileKind>(kindByte));
 }
 
-inline constexpr int kFileTransferChannel = 1;
+inline constexpr int kFileTransferChannel = 0;
 inline constexpr uint32_t kFileChunkSize = 4096;
 inline constexpr uint32_t kChunksPerPlayerPerTick = 4;

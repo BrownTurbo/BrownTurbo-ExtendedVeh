@@ -217,9 +217,7 @@ void OnRequestFile(IPlayer& player, uint32_t modelId, ModelFileKind kind)
 		CustomVehActionPacket cancel(ACTION_ASSET_CANCEL);
 		cancel.data.Write(modelId);
 		cancel.data.Write(static_cast<uint8_t>(kind));
-		player.sendPacket(
-			Span<uint8_t>(cancel.data.GetData(), cancel.data.GetNumberOfBitsUsed()),
-			kFileTransferChannel, true);
+		player.sendPacket(Span<uint8_t>(cancel.data.GetData(), cancel.data.GetNumberOfBitsUsed()), kFileTransferChannel, true);
 		ExtendedVehCompo* compo = ExtendedVehCompo::get();
 		if (compo)
 		{
@@ -238,9 +236,7 @@ void OnRequestFile(IPlayer& player, uint32_t modelId, ModelFileKind kind)
 		CustomVehActionPacket cancel(ACTION_ASSET_CANCEL);
 		cancel.data.Write(modelId);
 		cancel.data.Write(static_cast<uint8_t>(kind));
-		player.sendPacket(
-			Span<uint8_t>(cancel.data.GetData(), cancel.data.GetNumberOfBitsUsed()),
-			kFileTransferChannel, true);
+		player.sendPacket(Span<uint8_t>(cancel.data.GetData(), cancel.data.GetNumberOfBitsUsed()), kFileTransferChannel, true);
 
 		ExtendedVehCompo* compo = ExtendedVehCompo::get();
 		ICore* core = compo ? compo->getCore() : nullptr;
@@ -264,9 +260,7 @@ void OnRequestFile(IPlayer& player, uint32_t modelId, ModelFileKind kind)
 	begin.data.Write(totalChunks);
 	begin.data.Write(cached->sha256Hex.c_str(),
 		static_cast<int>(cached->sha256Hex.size()) + 1); // NUL-terminated
-	player.sendPacket(
-		Span<uint8_t>(begin.data.GetData(), begin.data.GetNumberOfBitsUsed()),
-		kFileTransferChannel, true);
+	player.sendPacket(Span<uint8_t>(begin.data.GetData(), begin.data.GetNumberOfBitsUsed()), kFileTransferChannel, true);
 
 	ActiveTransfer transfer;
 	transfer.playerId = player.getID();
@@ -370,9 +364,7 @@ void ProcessTick()
 			CustomVehActionPacket end(ACTION_ASSET_END);
 			end.data.Write(transfer.modelId);
 			end.data.Write(static_cast<uint8_t>(transfer.kind));
-			player->sendPacket(
-				Span<uint8_t>(end.data.GetData(), end.data.GetNumberOfBitsUsed()),
-				kFileTransferChannel, true);
+			player->sendPacket(Span<uint8_t>(end.data.GetData(), end.data.GetNumberOfBitsUsed()), kFileTransferChannel, true);
 			// done
 		}
 		else

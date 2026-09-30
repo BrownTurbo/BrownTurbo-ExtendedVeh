@@ -138,5 +138,5 @@ private:
 	std::atomic<bool> m_workerStarted { false };
 
 	// Retry/backoff policy (tweakable)
-	static constexpr int kRequestChannel = 1; // must match server kFileTransferChannel
+	static constexpr int kRequestChannel = 0; // must match server kFileTransferChannel
 };
