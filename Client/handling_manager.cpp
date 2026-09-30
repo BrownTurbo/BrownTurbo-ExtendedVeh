@@ -1618,10 +1618,7 @@ bool HandlingManager::ProcessAction(CustomVehAction action, RakNet::BitStream* b
 	case static_cast<CustomVehAction>(CustomVeh::Protocol::Action::SetVehiclePlateMesh): {
 		CustomVeh::Protocol::VehiclePlateMeshPacket pkt {};
 		if (bs->Read(reinterpret_cast<char*>(&pkt), sizeof(pkt))) {
-			ClientLog(LogLevel::Info, std::format("SetVehiclePlateMesh: vehId={}, isRear={}, enabled={}, pos=({:.2f}, {:.2f}, {:.2f}), rot=({:.2f}, {:.2f}, {:.2f}), scale={:.2f}",
-				pkt.sampVehicleId, pkt.isRear != 0, pkt.config.enabled != 0,
-				pkt.config.offsetX, pkt.config.offsetY, pkt.config.offsetZ,
-				pkt.config.rotX, pkt.config.rotY, pkt.config.rotZ, pkt.config.scale));
+			ClientLog(LogLevel::Info, std::format("SetVehiclePlateMesh: vehId={}, isRear={}, enabled={}, pos=({:.2f}, {:.2f}, {:.2f}), rot=({:.2f}, {:.2f}, {:.2f}), scale={:.2f}", pkt.sampVehicleId, pkt.isRear != 0, pkt.config.enabled != 0, pkt.config.offsetX, pkt.config.offsetY, pkt.config.offsetZ, pkt.config.rotX, pkt.config.rotY, pkt.config.rotZ, pkt.config.scale));
 			CustomVehicleBindingManager::Instance().SetVehiclePlateMesh(pkt.sampVehicleId, pkt.isRear != 0, pkt.config);
 		}
 		return true;

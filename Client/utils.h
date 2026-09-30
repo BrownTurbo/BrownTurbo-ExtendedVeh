@@ -5,8 +5,8 @@
 #include <sampapi/CLocalPlayer.h>
 #include <sampapi/CNetGame.h>
 #include <sampapi/CPlayerPool.h>
-#include <sampapi/CVehiclePool.h>
 #include <sampapi/CVehicle.h>
+#include <sampapi/CVehiclePool.h>
 #include <sampapi/sampapi.h>
 
 #include <RakHook/rakhook.hpp>

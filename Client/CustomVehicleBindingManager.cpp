@@ -1061,7 +1061,8 @@ RpAtomic* CustomVehicleBindingManager::CreatePlateQuadAtomic(
 					return nullptr;
 				}
 				return atomic;
-			}, &ctx);
+			},
+				&ctx);
 
 			if (ctx.foundAtomic) {
 				RpClumpRemoveAtomic(clump, ctx.foundAtomic);
@@ -1082,9 +1083,12 @@ RpAtomic* CustomVehicleBindingManager::CreatePlateQuadAtomic(
 		RwV3d axisX = { 1.0f, 0.0f, 0.0f };
 		RwV3d axisY = { 0.0f, 1.0f, 0.0f };
 		RwV3d axisZ = { 0.0f, 0.0f, 1.0f };
-		if (cfg.rotX != 0.0f) RwFrameRotate(existingFrame, const_cast<const RwV3d*>(&axisX), cfg.rotX, rwCOMBINEPOSTCONCAT);
-		if (cfg.rotY != 0.0f) RwFrameRotate(existingFrame, const_cast<const RwV3d*>(&axisY), cfg.rotY, rwCOMBINEPOSTCONCAT);
-		if (cfg.rotZ != 0.0f) RwFrameRotate(existingFrame, const_cast<const RwV3d*>(&axisZ), cfg.rotZ, rwCOMBINEPOSTCONCAT);
+		if (cfg.rotX != 0.0f)
+			RwFrameRotate(existingFrame, const_cast<const RwV3d*>(&axisX), cfg.rotX, rwCOMBINEPOSTCONCAT);
+		if (cfg.rotY != 0.0f)
+			RwFrameRotate(existingFrame, const_cast<const RwV3d*>(&axisY), cfg.rotY, rwCOMBINEPOSTCONCAT);
+		if (cfg.rotZ != 0.0f)
+			RwFrameRotate(existingFrame, const_cast<const RwV3d*>(&axisZ), cfg.rotZ, rwCOMBINEPOSTCONCAT);
 		RwV3d pos = { cfg.offsetX, cfg.offsetY, cfg.offsetZ };
 		RwFrameTranslate(existingFrame, &pos, rwCOMBINEPOSTCONCAT);
 		RwFrameUpdateObjects(existingFrame);
@@ -1101,7 +1105,8 @@ RpAtomic* CustomVehicleBindingManager::CreatePlateQuadAtomic(
 				return nullptr;
 			}
 			return atomic;
-		}, &ctx);
+		},
+			&ctx);
 
 		if (ctx.foundAtomic) {
 			RpGeometry* geom = RpAtomicGetGeometry(ctx.foundAtomic);
@@ -1111,10 +1116,10 @@ RpAtomic* CustomVehicleBindingManager::CreatePlateQuadAtomic(
 				const float halfH = 0.090f * s;
 				RpGeometryLock(geom, rpGEOMETRYLOCKALL);
 				RwV3d* verts = geom->morphTarget[0].verts;
-				verts[0] = {  halfW, 0.0f,  halfH }; // Top-Left
-				verts[1] = { -halfW, 0.0f,  halfH }; // Top-Right
+				verts[0] = { halfW, 0.0f, halfH }; // Top-Left
+				verts[1] = { -halfW, 0.0f, halfH }; // Top-Right
 				verts[2] = { -halfW, 0.0f, -halfH }; // Bottom-Right
-				verts[3] = {  halfW, 0.0f, -halfH }; // Bottom-Left
+				verts[3] = { halfW, 0.0f, -halfH }; // Bottom-Left
 				geom->morphTarget[0].boundingSphere.center = { 0.0f, 0.0f, 0.0f };
 				geom->morphTarget[0].boundingSphere.radius = std::sqrt(halfW * halfW + halfH * halfH) + 0.1f;
 				RpGeometryUnlock(geom);
@@ -1151,10 +1156,10 @@ RpAtomic* CustomVehicleBindingManager::CreatePlateQuadAtomic(
 	RpGeometryLock(geom, rpGEOMETRYLOCKALL);
 
 	RwV3d* verts = geom->morphTarget[0].verts;
-	verts[0] = {  halfW, 0.0f,  halfH }; // Top-Left
-	verts[1] = { -halfW, 0.0f,  halfH }; // Top-Right
+	verts[0] = { halfW, 0.0f, halfH }; // Top-Left
+	verts[1] = { -halfW, 0.0f, halfH }; // Top-Right
 	verts[2] = { -halfW, 0.0f, -halfH }; // Bottom-Right
-	verts[3] = {  halfW, 0.0f, -halfH }; // Bottom-Left
+	verts[3] = { halfW, 0.0f, -halfH }; // Bottom-Left
 
 	RwV3d* normals = geom->morphTarget[0].normals;
 	normals[0] = { 0.0f, 1.0f, 0.0f };
@@ -1214,25 +1219,29 @@ RpAtomic* CustomVehicleBindingManager::CreatePlateQuadAtomic(
 	RwV3d axisX = { 1.0f, 0.0f, 0.0f };
 	RwV3d axisY = { 0.0f, 1.0f, 0.0f };
 	RwV3d axisZ = { 0.0f, 0.0f, 1.0f };
-	if (cfg.rotX != 0.0f) RwFrameRotate(frame, const_cast<const RwV3d*>(&axisX), cfg.rotX, rwCOMBINEPOSTCONCAT);
-	if (cfg.rotY != 0.0f) RwFrameRotate(frame, const_cast<const RwV3d*>(&axisY), cfg.rotY, rwCOMBINEPOSTCONCAT);
-	if (cfg.rotZ != 0.0f) RwFrameRotate(frame, const_cast<const RwV3d*>(&axisZ), cfg.rotZ, rwCOMBINEPOSTCONCAT);
+	if (cfg.rotX != 0.0f)
+		RwFrameRotate(frame, const_cast<const RwV3d*>(&axisX), cfg.rotX, rwCOMBINEPOSTCONCAT);
+	if (cfg.rotY != 0.0f)
+		RwFrameRotate(frame, const_cast<const RwV3d*>(&axisY), cfg.rotY, rwCOMBINEPOSTCONCAT);
+	if (cfg.rotZ != 0.0f)
+		RwFrameRotate(frame, const_cast<const RwV3d*>(&axisZ), cfg.rotZ, rwCOMBINEPOSTCONCAT);
 	RwV3d pos = { cfg.offsetX, cfg.offsetY, cfg.offsetZ };
 	RwFrameTranslate(frame, &pos, rwCOMBINEPOSTCONCAT);
 
 	RpAtomicSetFrame(atomic, frame);
 
 	RwFrame* parentFrame = CClumpModelInfo::GetFrameFromName(clump, "chassis_dummy");
-	if (!parentFrame) parentFrame = CClumpModelInfo::GetFrameFromName(clump, "chassis");
-	if (!parentFrame) parentFrame = reinterpret_cast<RwFrame*>(RpClumpGetFrame(clump));
+	if (!parentFrame)
+		parentFrame = CClumpModelInfo::GetFrameFromName(clump, "chassis");
+	if (!parentFrame)
+		parentFrame = reinterpret_cast<RwFrame*>(RpClumpGetFrame(clump));
 	if (parentFrame) {
 		RwFrameAddChild(parentFrame, frame);
 	}
 	RwFrameUpdateObjects(parentFrame ? parentFrame : frame);
 
 	RpClumpAddAtomic(clump, atomic);
-	ClientLog(LogLevel::Info, std::format("CreatePlateQuadAtomic: Created {} 3D plate quad on clump (pos={:.2f}, {:.2f}, {:.2f}, rot={:.1f}, {:.1f}, {:.1f}, scale={:.2f})",
-		isRear ? "rear" : "front", cfg.offsetX, cfg.offsetY, cfg.offsetZ, cfg.rotX, cfg.rotY, cfg.rotZ, cfg.scale));
+	ClientLog(LogLevel::Info, std::format("CreatePlateQuadAtomic: Created {} 3D plate quad on clump (pos={:.2f}, {:.2f}, {:.2f}, rot={:.1f}, {:.1f}, {:.1f}, scale={:.2f})", isRear ? "rear" : "front", cfg.offsetX, cfg.offsetY, cfg.offsetZ, cfg.rotX, cfg.rotY, cfg.rotZ, cfg.scale));
 	return atomic;
 }
 
@@ -1250,12 +1259,15 @@ std::vector<CustomVehicleBindingManager::PlateMaterialInfo> CustomVehicleBinding
 		auto it = std::search(
 			haystack.begin(), haystack.end(),
 			needle.begin(), needle.end(),
-			[](char ch1, char ch2) { return std::tolower(static_cast<unsigned char>(ch1)) == std::tolower(static_cast<unsigned char>(ch2)); });
+			[](char ch1, char ch2) {
+				return std::tolower(static_cast<unsigned char>(ch1)) == std::tolower(static_cast<unsigned char>(ch2));
+			});
 		return it != haystack.end();
 	};
 
 	auto equalsCi = [](const char* s1, const char* s2) -> bool {
-		if (!s1 || !s2) return false;
+		if (!s1 || !s2)
+			return false;
 		return _stricmp(s1, s2) == 0;
 	};
 
@@ -1284,7 +1296,8 @@ std::vector<CustomVehicleBindingManager::PlateMaterialInfo> CustomVehicleBinding
 			}
 			sc->currentAIdx++;
 			return atomic;
-		}, &searchCtx);
+		},
+			&searchCtx);
 
 		targetAtomicIdx = searchCtx.foundAIdx;
 		targetMatIdx = searchCtx.foundMIdx;
@@ -1333,9 +1346,7 @@ std::vector<CustomVehicleBindingManager::PlateMaterialInfo> CustomVehicleBinding
 		std::transform(fhLower.begin(), fhLower.end(), fhLower.begin(), ::tolower);
 
 		// Never match materials on wheels, tyres, suspension, brakes, or rotors as license plates
-		if (fhLower.find("wheel") != std::string::npos || fhLower.find("tyre") != std::string::npos ||
-			fhLower.find("tire") != std::string::npos || fhLower.find("brake") != std::string::npos ||
-			fhLower.find("disc") != std::string::npos || fhLower.find("susp") != std::string::npos) {
+		if (fhLower.find("wheel") != std::string::npos || fhLower.find("tyre") != std::string::npos || fhLower.find("tire") != std::string::npos || fhLower.find("brake") != std::string::npos || fhLower.find("disc") != std::string::npos || fhLower.find("susp") != std::string::npos) {
 			c->currentAtomicIdx++;
 			return atomic;
 		}
@@ -1360,10 +1371,7 @@ std::vector<CustomVehicleBindingManager::PlateMaterialInfo> CustomVehicleBinding
 					std::transform(tnLower.begin(), tnLower.end(), tnLower.begin(), ::tolower);
 
 					// Exclude template, wheel, tire, rim, brake textures
-					if (tnLower.find("template") != std::string::npos || tnLower.find("wheel") != std::string::npos ||
-						tnLower.find("tyre") != std::string::npos || tnLower.find("tire") != std::string::npos ||
-						tnLower.find("rim") != std::string::npos || tnLower.find("brake") != std::string::npos ||
-						tnLower.find("disc") != std::string::npos) {
+					if (tnLower.find("template") != std::string::npos || tnLower.find("wheel") != std::string::npos || tnLower.find("tyre") != std::string::npos || tnLower.find("tire") != std::string::npos || tnLower.find("rim") != std::string::npos || tnLower.find("brake") != std::string::npos || tnLower.find("disc") != std::string::npos) {
 						continue;
 					}
 
@@ -1376,11 +1384,7 @@ std::vector<CustomVehicleBindingManager::PlateMaterialInfo> CustomVehicleBinding
 					} else if ((*c->pEqualsCi)(texName, "carpback") || (*c->pContainsCi)(tn, "plateback")) {
 						isPlate = true;
 						isBg = true;
-					} else if ((*c->pContainsCi)(tn, "carplate") || (*c->pContainsCi)(tn, "numberplate") ||
-							   (*c->pContainsCi)(tn, "license_plate") || (*c->pContainsCi)(tn, "licence_plate") ||
-							   (*c->pContainsCi)(tn, "licenseplate") || (*c->pContainsCi)(tn, "licenceplate") ||
-							   (*c->pContainsCi)(tn, "custom_plate") || (*c->pContainsCi)(tn, "nomer") ||
-							   tnLower == "plate" || tnLower == "license" || tnLower == "licence") {
+					} else if ((*c->pContainsCi)(tn, "carplate") || (*c->pContainsCi)(tn, "numberplate") || (*c->pContainsCi)(tn, "license_plate") || (*c->pContainsCi)(tn, "licence_plate") || (*c->pContainsCi)(tn, "licenseplate") || (*c->pContainsCi)(tn, "licenceplate") || (*c->pContainsCi)(tn, "custom_plate") || (*c->pContainsCi)(tn, "nomer") || tnLower == "plate" || tnLower == "license" || tnLower == "licence") {
 						isPlate = true;
 						isBg = false;
 					} else if (c->lastPlate && c->lastPlate[0] != '\0' && (*c->pEqualsCi)(texName, c->lastPlate)) {
@@ -1394,9 +1398,7 @@ std::vector<CustomVehicleBindingManager::PlateMaterialInfo> CustomVehicleBinding
 			}
 
 			if (!isPlate && !fhLower.empty()) {
-				if (fhLower.find("bt_plate") != std::string::npos || fhLower.find("carplate") != std::string::npos ||
-					fhLower.find("numberplate") != std::string::npos || fhLower.find("license_plate") != std::string::npos ||
-					fhLower.find("licence_plate") != std::string::npos || fhLower.find("numplate") != std::string::npos) {
+				if (fhLower.find("bt_plate") != std::string::npos || fhLower.find("carplate") != std::string::npos || fhLower.find("numberplate") != std::string::npos || fhLower.find("license_plate") != std::string::npos || fhLower.find("licence_plate") != std::string::npos || fhLower.find("numplate") != std::string::npos) {
 					isPlate = true;
 					isBg = false;
 				}
@@ -1418,7 +1420,8 @@ std::vector<CustomVehicleBindingManager::PlateMaterialInfo> CustomVehicleBinding
 
 		c->currentAtomicIdx++;
 		return atomic;
-	}, &ctx);
+	},
+		&ctx);
 
 	return results;
 }
@@ -1874,8 +1877,10 @@ void CustomVehicleBindingManager::ApplyModelOffsetsToBinding(Binding& binding, c
 		binding.hasStance = true;
 		binding.frontTrackWidth = cfg.frontTrackWidth;
 		binding.rearTrackWidth = cfg.rearTrackWidth;
-		if (cfg.frontWheelScale > 0.01f) binding.frontWheelScale = cfg.frontWheelScale;
-		if (cfg.rearWheelScale > 0.01f) binding.rearWheelScale = cfg.rearWheelScale;
+		if (cfg.frontWheelScale > 0.01f)
+			binding.frontWheelScale = cfg.frontWheelScale;
+		if (cfg.rearWheelScale > 0.01f)
+			binding.rearWheelScale = cfg.rearWheelScale;
 		binding.frontCamber = cfg.frontCamber;
 		binding.rearCamber = cfg.rearCamber;
 	}
@@ -1973,7 +1978,8 @@ bool CustomVehicleBindingManager::HandleChatCommand(const std::string& fullCmd)
 				targetModelId = static_cast<uint32_t>(val);
 				argIdx++;
 			}
-		} catch (...) {}
+		} catch (...) {
+		}
 	}
 
 	if (targetModelId == 0) {
@@ -2186,8 +2192,10 @@ bool CustomVehicleBindingManager::HandleChatCommand(const std::string& fullCmd)
 		try {
 			float frontC = std::stof(args[argIdx]);
 			float rearC = (argIdx + 1 < args.size()) ? std::stof(args[argIdx + 1]) : frontC;
-			if (std::abs(frontC) > 0.5f) frontC *= 0.0174532925f;
-			if (std::abs(rearC) > 0.5f) rearC *= 0.0174532925f;
+			if (std::abs(frontC) > 0.5f)
+				frontC *= 0.0174532925f;
+			if (std::abs(rearC) > 0.5f)
+				rearC *= 0.0174532925f;
 
 			std::lock_guard lock(m_mutex);
 			auto& cfg = s_modelOffsets[targetModelId];
@@ -2331,10 +2339,8 @@ bool CustomVehicleBindingManager::HandleChatCommand(const std::string& fullCmd)
 		}
 
 		if (cfg.enabled) {
-			SendMsg(0x00FF00, std::format("{{00FF00}}[ExtendedVeh]{{FFFFFF}} Model {} {} Plate: pos=({:.3f}, {:.3f}, {:.3f}), rot=({:.1f}, {:.1f}, {:.1f}), scale={:.2f} (Live Preview)",
-				targetModelId, isRear ? "Rear" : "Front", cfg.offsetX, cfg.offsetY, cfg.offsetZ, cfg.rotX, cfg.rotY, cfg.rotZ, cfg.scale).c_str());
-			SendMsg(0xAAAAAA, std::format("{{AAAAAA}}Server config -> [plate] {0}PlateX={1:.3f} {0}PlateY={2:.3f} {0}PlateZ={3:.3f} {0}PlateRotZ={4:.1f}",
-				isRear ? "rear" : "front", cfg.offsetX, cfg.offsetY, cfg.offsetZ, cfg.rotZ).c_str());
+			SendMsg(0x00FF00, std::format("{{00FF00}}[ExtendedVeh]{{FFFFFF}} Model {} {} Plate: pos=({:.3f}, {:.3f}, {:.3f}), rot=({:.1f}, {:.1f}, {:.1f}), scale={:.2f} (Live Preview)", targetModelId, isRear ? "Rear" : "Front", cfg.offsetX, cfg.offsetY, cfg.offsetZ, cfg.rotX, cfg.rotY, cfg.rotZ, cfg.scale).c_str());
+			SendMsg(0xAAAAAA, std::format("{{AAAAAA}}Server config -> [plate] {0}PlateX={1:.3f} {0}PlateY={2:.3f} {0}PlateZ={3:.3f} {0}PlateRotZ={4:.1f}", isRear ? "rear" : "front", cfg.offsetX, cfg.offsetY, cfg.offsetZ, cfg.rotZ).c_str());
 		} else {
 			SendMsg(0x00FF00, std::format("{{00FF00}}[ExtendedVeh]{{FFFFFF}} Model {} {} Plate disabled.", targetModelId, isRear ? "Rear" : "Front").c_str());
 		}

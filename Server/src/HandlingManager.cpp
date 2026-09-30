@@ -2383,14 +2383,18 @@ bool SetCustomVehicleModelPlateMesh(uint32_t customModelId, bool isRear, const C
 	auto itStaged = stagedCustomVehicleDefs.find(customModelId);
 	if (itStaged != stagedCustomVehicleDefs.end())
 	{
-		if (isRear) itStaged->second.rearPlate = cfg;
-		else itStaged->second.frontPlate = cfg;
+		if (isRear)
+			itStaged->second.rearPlate = cfg;
+		else
+			itStaged->second.frontPlate = cfg;
 	}
 	auto itComm = customVehicleDefs.find(customModelId);
 	if (itComm != customVehicleDefs.end())
 	{
-		if (isRear) itComm->second.rearPlate = cfg;
-		else itComm->second.frontPlate = cfg;
+		if (isRear)
+			itComm->second.rearPlate = cfg;
+		else
+			itComm->second.frontPlate = cfg;
 		SendModelPlateConfigToAll(customModelId);
 	}
 	return itStaged != stagedCustomVehicleDefs.end() || itComm != customVehicleDefs.end();

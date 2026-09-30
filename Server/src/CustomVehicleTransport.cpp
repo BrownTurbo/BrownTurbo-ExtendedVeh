@@ -168,4 +168,3 @@ void SendDebugMode(IPlayer& player, bool enabled)
 	player.sendPacket(Span<uint8_t>(reinterpret_cast<uint8_t*>(pkt.data.GetData()), pkt.data.GetNumberOfBitsUsed()), 0, true);
 }
 };
-

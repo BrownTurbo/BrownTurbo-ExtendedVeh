@@ -1,9 +1,9 @@
 #include "utils.h"
 #include <plugin_sa.h>
 #include "CryptoUtility.h"
+#include <atomic>
 #include <fstream>
 #include <mutex>
-#include <atomic>
 
 static std::atomic<bool> s_clientDebugMode { false };
 

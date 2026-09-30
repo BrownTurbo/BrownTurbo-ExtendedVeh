@@ -2296,22 +2296,7 @@ public:
 		ClientLog(LogLevel::Info, std::format("Received definition for model {} (DFF='{}', TXD='{}', COL='{}').", def.customModelId, def.dff.filename, def.txd.filename, def.col.filename));
 		CustomVehicleBindingManager::SetBaseModelId(def.customModelId, def.visualBaseModel);
 		AudioExtender::RegisterVehicleAudio(def.customModelId, def.audioBaseModel, def.engineSoundId.OnSound, def.engineSoundId.OffSound, def.celerateSoundId.accelerateSound, def.celerateSoundId.decelerateSound);
-		CustomVehicleBindingManager::Instance().SetModelOffsets(def.customModelId, {
-			def.offsets.frontWheelOffsetZ,
-			def.offsets.rearWheelOffsetZ,
-			def.offsets.frontWheelOffsetY,
-			def.offsets.rearWheelOffsetY,
-			def.offsets.chassisOffsetX,
-			def.offsets.chassisOffsetY,
-			def.offsets.chassisOffsetZ,
-			def.offsets.frontTrackWidth,
-			def.offsets.rearTrackWidth,
-			def.offsets.frontWheelScale,
-			def.offsets.rearWheelScale,
-			def.offsets.frontCamber,
-			def.offsets.rearCamber,
-			true
-		});
+		CustomVehicleBindingManager::Instance().SetModelOffsets(def.customModelId, { def.offsets.frontWheelOffsetZ, def.offsets.rearWheelOffsetZ, def.offsets.frontWheelOffsetY, def.offsets.rearWheelOffsetY, def.offsets.chassisOffsetX, def.offsets.chassisOffsetY, def.offsets.chassisOffsetZ, def.offsets.frontTrackWidth, def.offsets.rearTrackWidth, def.offsets.frontWheelScale, def.offsets.rearWheelScale, def.offsets.frontCamber, def.offsets.rearCamber, true });
 
 		if (def.defaultPlateText[0] != '\0') {
 			CustomVehicleBindingManager::SetModelDefaultPlateText(def.customModelId, def.defaultPlateText);

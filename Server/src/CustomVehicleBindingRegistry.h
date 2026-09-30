@@ -350,10 +350,13 @@ public:
 	{
 		std::lock_guard<std::mutex> lock(m_mutex);
 		auto& state = m_states[sampVehicleId];
-		if (isRear) {
+		if (isRear)
+		{
 			state.rearPlateMesh = cfg;
 			state.hasRearPlateMesh = true;
-		} else {
+		}
+		else
+		{
 			state.frontPlateMesh = cfg;
 			state.hasFrontPlateMesh = true;
 		}
@@ -363,7 +366,8 @@ public:
 	{
 		std::lock_guard<std::mutex> lock(m_mutex);
 		auto it = m_states.find(sampVehicleId);
-		if (it != m_states.end()) {
+		if (it != m_states.end())
+		{
 			if (isRear && it->second.hasRearPlateMesh)
 				return it->second.rearPlateMesh;
 			if (!isRear && it->second.hasFrontPlateMesh)

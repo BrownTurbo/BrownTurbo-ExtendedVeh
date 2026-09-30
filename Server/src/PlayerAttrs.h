@@ -14,7 +14,11 @@ public:
 	void sethasExtendedVeh() { this->_hasExtendedVeh = true; }
 	bool isDebugMode() const { return this->_debugMode; }
 	void setDebugMode(bool enabled) { this->_debugMode = enabled; }
-	void Reset() { this->_hasExtendedVeh = false; this->_debugMode = false; }
+	void Reset()
+	{
+		this->_hasExtendedVeh = false;
+		this->_debugMode = false;
+	}
 };
 
 class PlayerAttrsMap

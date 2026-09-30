@@ -378,9 +378,7 @@ public:
 				}
 				std::transform(frameHierarchy.begin(), frameHierarchy.end(), frameHierarchy.begin(), ::tolower);
 
-				if (frameHierarchy.find("wheel") != std::string::npos || frameHierarchy.find("tyre") != std::string::npos ||
-					frameHierarchy.find("tire") != std::string::npos || frameHierarchy.find("brake") != std::string::npos ||
-					frameHierarchy.find("disc") != std::string::npos || frameHierarchy.find("susp") != std::string::npos) {
+				if (frameHierarchy.find("wheel") != std::string::npos || frameHierarchy.find("tyre") != std::string::npos || frameHierarchy.find("tire") != std::string::npos || frameHierarchy.find("brake") != std::string::npos || frameHierarchy.find("disc") != std::string::npos || frameHierarchy.find("susp") != std::string::npos) {
 					return atomic;
 				}
 
@@ -393,16 +391,8 @@ public:
 					if (mat->texture && mat->texture->name && mat->texture->name[0]) {
 						std::string tn = mat->texture->name;
 						std::transform(tn.begin(), tn.end(), tn.begin(), ::tolower);
-						if (tn.find("template") == std::string::npos && tn.find("wheel") == std::string::npos &&
-							tn.find("tyre") == std::string::npos && tn.find("tire") == std::string::npos &&
-							tn.find("rim") == std::string::npos && tn.find("brake") == std::string::npos &&
-							tn.find("disc") == std::string::npos) {
-							if (tn == "carplate" || tn == "numberplate" || tn == "number_plate" ||
-								tn.find("carplate") != std::string::npos || tn.find("numberplate") != std::string::npos ||
-								tn.find("license_plate") != std::string::npos || tn.find("licence_plate") != std::string::npos ||
-								tn.find("licenseplate") != std::string::npos || tn.find("licenceplate") != std::string::npos ||
-								tn.find("custom_plate") != std::string::npos || tn.find("nomer") != std::string::npos ||
-								tn == "plate" || tn == "license" || tn == "licence") {
+						if (tn.find("template") == std::string::npos && tn.find("wheel") == std::string::npos && tn.find("tyre") == std::string::npos && tn.find("tire") == std::string::npos && tn.find("rim") == std::string::npos && tn.find("brake") == std::string::npos && tn.find("disc") == std::string::npos) {
+							if (tn == "carplate" || tn == "numberplate" || tn == "number_plate" || tn.find("carplate") != std::string::npos || tn.find("numberplate") != std::string::npos || tn.find("license_plate") != std::string::npos || tn.find("licence_plate") != std::string::npos || tn.find("licenseplate") != std::string::npos || tn.find("licenceplate") != std::string::npos || tn.find("custom_plate") != std::string::npos || tn.find("nomer") != std::string::npos || tn == "plate" || tn == "license" || tn == "licence") {
 								if (tn.find("carpback") == std::string::npos && tn.find("plateback") == std::string::npos) {
 									isPlate = true;
 								}
@@ -419,7 +409,8 @@ public:
 					}
 				}
 				return atomic;
-			}, &pfc);
+			},
+				&pfc);
 
 			if (pfc.foundMat) {
 				char defaultPlate[] = "SAN ANDREAS";
