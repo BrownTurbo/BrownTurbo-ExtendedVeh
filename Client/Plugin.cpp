@@ -7,9 +7,9 @@
 #include <game_sa/CCamera.h>
 #include <game_sa/CCheat.h>
 #include <game_sa/CClock.h>
+#include <game_sa/CColModel.h>
 #include <game_sa/CCoronas.h>
 #include <game_sa/CHandlingDataMgr.h>
-#include <game_sa/CColModel.h>
 #include <game_sa/CModelInfo.h>
 #include <game_sa/CPad.h>
 #include <game_sa/CPlayerPed.h>
@@ -826,7 +826,7 @@ static void __fastcall Hooked_DoVehicleLights(CVehicle* thisVehicle, void* edx, 
 }
 
 static bool s_bLoadingCustomVehicleDff = false;
-static RwStream* (__cdecl* g_origClumpCollisionRead)(RwStream* stream, unsigned int length, void* object, int offsetInObject) = nullptr;
+static RwStream*(__cdecl* g_origClumpCollisionRead)(RwStream* stream, unsigned int length, void* object, int offsetInObject) = nullptr;
 
 static RwStream* __cdecl Hooked_ClumpCollisionRead(RwStream* stream, unsigned int length, void* object, int offsetInObject)
 {
@@ -853,8 +853,7 @@ static void __fastcall Hooked_CAutomobile_PreRender(CAutomobile* thisCar, void* 
 	auto* binding = CustomVehicleBindingManager::Instance().FindByVehicle(thisCar);
 	if (binding && binding->hasPopupHeadlights && !binding->popupFrames.empty()) {
 		bool isNight = (CClock::ms_nGameClockHours >= 20 || CClock::ms_nGameClockHours < 7);
-		bool lightsOn = (thisCar->bLightsOn != 0) ||
-			(thisCar->bEngineOn != 0 && isNight);
+		bool lightsOn = (thisCar->bLightsOn != 0) || (thisCar->bEngineOn != 0 && isNight);
 
 		uint32_t now = GetTickCount();
 		if (binding->lastHeadlightActiveTick > 0 && (now - binding->lastHeadlightActiveTick < 200)) {
@@ -1453,8 +1452,8 @@ static void __cdecl Hooked_StoreCarLightShadow(
 }
 
 #include <game_sa/CColLine.h>
-#include <game_sa/CCollisionData.h>
 #include <game_sa/CColModel.h>
+#include <game_sa/CCollisionData.h>
 
 using GetColModelFn = CColModel*(__thiscall*)(CEntity*);
 static GetColModelFn g_origGetColModel = nullptr;

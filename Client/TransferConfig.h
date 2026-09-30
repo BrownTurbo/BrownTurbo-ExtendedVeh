@@ -34,7 +34,7 @@ public:
 	int WorkerSleepMs = 250;
 
 	uint32_t clientMaxUncompressedSize = 200u * 1024u * 1024u; // 200 MB
-	uint32_t clientMaxCompressedSize = 160u * 1024u * 1024u;   // 160 MB
+	uint32_t clientMaxCompressedSize = 160u * 1024u * 1024u; // 160 MB
 
 	static TransferConfig& Instance()
 	{
@@ -104,13 +104,10 @@ public:
 			RequestChannel = static_cast<int>(GetRangedInt64("RequestChannel", RequestChannel, 0, 31, filename));
 			WorkerSleepMs = static_cast<int>(GetRangedInt64("WorkerSleepMs", WorkerSleepMs, 10, 5000, filename));
 
-			ClientLog(LogLevel::Info, std::format("[TransferConfig] Loaded configuration from '{}' (CacheEnabled={}, MaxCacheMB={}, MaxConcurrent={}, Workers={}ms)",
-				path.string(), cacheEnabled, maxCacheSizeMB, maxConcurrentTransfers, WorkerSleepMs));
-		}
-		catch (const std::exception& ex) {
+			ClientLog(LogLevel::Info, std::format("[TransferConfig] Loaded configuration from '{}' (CacheEnabled={}, MaxCacheMB={}, MaxConcurrent={}, Workers={}ms)", path.string(), cacheEnabled, maxCacheSizeMB, maxConcurrentTransfers, WorkerSleepMs));
+		} catch (const std::exception& ex) {
 			ClientLog(LogLevel::Error, std::format("[TransferConfig] Exception while loading configuration: {}", ex.what()));
-		}
-		catch (...) {
+		} catch (...) {
 			ClientLog(LogLevel::Error, "[TransferConfig] Unknown exception while loading configuration.");
 		}
 	}
@@ -160,7 +157,7 @@ private:
 			 << "RetryMaxBackoffMs=60000\n"
 			 << "RetryResponseTimeoutMs=8000\n"
 			 << "ClientMaxUncompressedSize=209715200\n" // 200 * 1024 * 1024
-			 << "ClientMaxCompressedSize=167772160\n"   // 160 * 1024 * 1024
+			 << "ClientMaxCompressedSize=167772160\n" // 160 * 1024 * 1024
 			 << "WorkerSleepMs=250\n"
 			 << "RequestChannel=1\n";
 	}
@@ -193,14 +190,12 @@ private:
 			size_t processed = 0;
 			long long val = std::stoll(entry.value, &processed, 0);
 			if (processed != entry.value.size() || val < minVal || val > maxVal) {
-				ClientLog(LogLevel::Warning, std::format("[TransferConfig] {}:{} Invalid value '{}' for '{}' (valid range {}..{}). Using default {}.",
-					filename, entry.lineNum, entry.value, key, minVal, maxVal, fallback));
+				ClientLog(LogLevel::Warning, std::format("[TransferConfig] {}:{} Invalid value '{}' for '{}' (valid range {}..{}). Using default {}.", filename, entry.lineNum, entry.value, key, minVal, maxVal, fallback));
 				return fallback;
 			}
 			return val;
 		} catch (...) {
-			ClientLog(LogLevel::Warning, std::format("[TransferConfig] {}:{} Non-numeric value '{}' for '{}'. Using default {}.",
-				filename, entry.lineNum, entry.value, key, fallback));
+			ClientLog(LogLevel::Warning, std::format("[TransferConfig] {}:{} Non-numeric value '{}' for '{}'. Using default {}.", filename, entry.lineNum, entry.value, key, fallback));
 			return fallback;
 		}
 	}
@@ -218,8 +213,7 @@ private:
 		if (valLower == "0" || valLower == "false" || valLower == "no" || valLower == "off")
 			return false;
 
-		ClientLog(LogLevel::Warning, std::format("[TransferConfig] {}:{} Invalid boolean value '{}' for '{}' (expected 1/0 or true/false). Using default {}.",
-			filename, entry.lineNum, entry.value, key, fallback ? "true" : "false"));
+		ClientLog(LogLevel::Warning, std::format("[TransferConfig] {}:{} Invalid boolean value '{}' for '{}' (expected 1/0 or true/false). Using default {}.", filename, entry.lineNum, entry.value, key, fallback ? "true" : "false"));
 		return fallback;
 	}
 

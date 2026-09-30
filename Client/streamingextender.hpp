@@ -360,7 +360,8 @@ public:
 					}
 				}
 				return atomic;
-			}, &ctx);
+			},
+				&ctx);
 		}
 
 		// ExtractDummiesFromClump is a fallback only: it fills any dummy slot that
@@ -409,12 +410,10 @@ public:
 	static CVehicleModelInfo* GetCustomModel(uint32_t id)
 	{
 		auto it = s_customModels.find(id);
-		if (it != s_customModels.end())
-		{
+		if (it != s_customModels.end()) {
 			ClientLog(LogLevel::Debug, std::format("GetCustomModel: matched Custom model Identifier. id={}", id));
 			return it->second->modelInfo;
-		}
-		else {
+		} else {
 			ClientLog(LogLevel::Error, std::format("GetCustomModel: failed to match Custom model Identifier. id={}", id));
 			return nullptr;
 		}
@@ -520,7 +519,6 @@ public:
 			AudioExtender::UnregisterVehicleAudio(id);
 		}
 	}
-
 
 	static void SetDestructionCallback(void (*callback)(uint32_t))
 	{

@@ -49,9 +49,7 @@ bool CryptoUtility::ComputeFileSHA256(const std::filesystem::path& filePath, std
 
 		outHashStr = sha256.getHash();
 		return outHashStr.size() == 64;
-	}
-	catch (...)
-	{
+	} catch (...) {
 		return false;
 	}
 }

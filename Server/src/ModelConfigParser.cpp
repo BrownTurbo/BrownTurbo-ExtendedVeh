@@ -42,15 +42,18 @@ bool ModelConfigParser::ParseBool(const std::string& val, bool* ok)
 	Trim(lower);
 	if (lower == "1" || lower == "true" || lower == "yes" || lower == "on")
 	{
-		if (ok) *ok = true;
+		if (ok)
+			*ok = true;
 		return true;
 	}
 	if (lower == "0" || lower == "false" || lower == "no" || lower == "off")
 	{
-		if (ok) *ok = true;
+		if (ok)
+			*ok = true;
 		return false;
 	}
-	if (ok) *ok = false;
+	if (ok)
+		*ok = false;
 	return false;
 }
 
@@ -60,7 +63,8 @@ uint32_t ModelConfigParser::ParseUInt(const std::string& val, bool* ok)
 	Trim(s);
 	if (s.empty())
 	{
-		if (ok) *ok = false;
+		if (ok)
+			*ok = false;
 		return 0;
 	}
 
@@ -83,15 +87,18 @@ uint32_t ModelConfigParser::ParseUInt(const std::string& val, bool* ok)
 		unsigned long res = std::stoul(s.substr(offset), &processed, base);
 		if (processed != s.size() - offset)
 		{
-			if (ok) *ok = false;
+			if (ok)
+				*ok = false;
 			return 0;
 		}
-		if (ok) *ok = true;
+		if (ok)
+			*ok = true;
 		return static_cast<uint32_t>(res);
 	}
 	catch (...)
 	{
-		if (ok) *ok = false;
+		if (ok)
+			*ok = false;
 		return 0;
 	}
 }
@@ -102,7 +109,8 @@ int ModelConfigParser::ParseInt(const std::string& val, bool* ok)
 	Trim(s);
 	if (s.empty())
 	{
-		if (ok) *ok = false;
+		if (ok)
+			*ok = false;
 		return 0;
 	}
 
@@ -125,15 +133,18 @@ int ModelConfigParser::ParseInt(const std::string& val, bool* ok)
 		int res = std::stoi(s.substr(offset), &processed, base);
 		if (processed != s.size() - offset)
 		{
-			if (ok) *ok = false;
+			if (ok)
+				*ok = false;
 			return 0;
 		}
-		if (ok) *ok = true;
+		if (ok)
+			*ok = true;
 		return res;
 	}
 	catch (...)
 	{
-		if (ok) *ok = false;
+		if (ok)
+			*ok = false;
 		return 0;
 	}
 }
@@ -144,7 +155,8 @@ float ModelConfigParser::ParseFloat(const std::string& val, bool* ok)
 	Trim(s);
 	if (s.empty())
 	{
-		if (ok) *ok = false;
+		if (ok)
+			*ok = false;
 		return 0.0f;
 	}
 
@@ -161,15 +173,18 @@ float ModelConfigParser::ParseFloat(const std::string& val, bool* ok)
 		float res = std::stof(s, &processed);
 		if (processed != s.size() || !std::isfinite(res))
 		{
-			if (ok) *ok = false;
+			if (ok)
+				*ok = false;
 			return 0.0f;
 		}
-		if (ok) *ok = true;
+		if (ok)
+			*ok = true;
 		return res;
 	}
 	catch (...)
 	{
-		if (ok) *ok = false;
+		if (ok)
+			*ok = false;
 		return 0.0f;
 	}
 }
@@ -1363,18 +1378,30 @@ bool ModelConfigParser::ParseString(const std::string& content, ModelConfig& out
 				}
 				else
 				{
-					if (lowerKey == "headlightoffsetx") outConfig.headlightOffsetX = f;
-					else if (lowerKey == "headlightoffsety") outConfig.headlightOffsetY = f;
-					else if (lowerKey == "headlightoffsetz") outConfig.headlightOffsetZ = f;
-					else if (lowerKey == "taillightoffsetx") outConfig.taillightOffsetX = f;
-					else if (lowerKey == "taillightoffsety") outConfig.taillightOffsetY = f;
-					else if (lowerKey == "taillightoffsetz") outConfig.taillightOffsetZ = f;
-					else if (lowerKey == "headlightx") outConfig.headlightCustomX = f;
-					else if (lowerKey == "headlighty") outConfig.headlightCustomY = f;
-					else if (lowerKey == "headlightz") outConfig.headlightCustomZ = f;
-					else if (lowerKey == "taillightx") outConfig.taillightCustomX = f;
-					else if (lowerKey == "taillighty") outConfig.taillightCustomY = f;
-					else if (lowerKey == "taillightz") outConfig.taillightCustomZ = f;
+					if (lowerKey == "headlightoffsetx")
+						outConfig.headlightOffsetX = f;
+					else if (lowerKey == "headlightoffsety")
+						outConfig.headlightOffsetY = f;
+					else if (lowerKey == "headlightoffsetz")
+						outConfig.headlightOffsetZ = f;
+					else if (lowerKey == "taillightoffsetx")
+						outConfig.taillightOffsetX = f;
+					else if (lowerKey == "taillightoffsety")
+						outConfig.taillightOffsetY = f;
+					else if (lowerKey == "taillightoffsetz")
+						outConfig.taillightOffsetZ = f;
+					else if (lowerKey == "headlightx")
+						outConfig.headlightCustomX = f;
+					else if (lowerKey == "headlighty")
+						outConfig.headlightCustomY = f;
+					else if (lowerKey == "headlightz")
+						outConfig.headlightCustomZ = f;
+					else if (lowerKey == "taillightx")
+						outConfig.taillightCustomX = f;
+					else if (lowerKey == "taillighty")
+						outConfig.taillightCustomY = f;
+					else if (lowerKey == "taillightz")
+						outConfig.taillightCustomZ = f;
 				}
 			}
 			else if (currentSection == "audio")

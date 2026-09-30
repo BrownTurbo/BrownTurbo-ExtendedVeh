@@ -496,8 +496,7 @@ void CustomVehicleBindingManager::Process()
 					}
 				}
 				if (binding.hasPopupHeadlights) {
-					ClientLog(LogLevel::Info, std::format("Detected {} popup headlight frame(s) for vehicle {} (customModel={})",
-						static_cast<unsigned int>(binding.popupFrames.size()), vehicleId, binding.customModelId));
+					ClientLog(LogLevel::Info, std::format("Detected {} popup headlight frame(s) for vehicle {} (customModel={})", static_cast<unsigned int>(binding.popupFrames.size()), vehicleId, binding.customModelId));
 				}
 
 				if (binding.hasCustomWheel) {
