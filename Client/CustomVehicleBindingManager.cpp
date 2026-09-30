@@ -17,8 +17,8 @@
 #include <game_sa/CVehicleModelInfo.h>
 #include <game_sa/CWorld.h>
 #include <game_sa/NodeName.h>
-#include <game_sa/rw/rpworld.h>
 #include <game_sa/rw/rwcore.h>
+#include <game_sa/rw/rpworld.h>
 #include <algorithm>
 #include <atomic>
 #include <cmath>
