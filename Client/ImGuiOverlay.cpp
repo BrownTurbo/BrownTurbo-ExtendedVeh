@@ -71,6 +71,7 @@ void RenderTransferWindow()
 			g_windowVisible.store(false, std::memory_order_relaxed);
 			g_manuallyToggled.store(true, std::memory_order_relaxed);
 			io.MouseDrawCursor = false;
+			ResetTransferWindowState();
 		}
 		LogImGuiStage("RenderTransferWindow end (collapsed/hidden)");
 		return;
@@ -81,6 +82,7 @@ void RenderTransferWindow()
 		g_windowVisible.store(false, std::memory_order_relaxed);
 		g_manuallyToggled.store(true, std::memory_order_relaxed);
 		io.MouseDrawCursor = false;
+		ResetTransferWindowState();
 		ImGui::End();
 		LogImGuiStage("RenderTransferWindow end (closed)");
 		return;
@@ -138,7 +140,7 @@ void RenderTransferWindow()
 			if (!g_manuallyToggled.load(std::memory_order_relaxed)) {
 				g_windowVisible.store(false, std::memory_order_relaxed);
 				io.MouseDrawCursor = false;
-				s_allDoneTime = (std::chrono::steady_clock::time_point::min)();
+				ResetTransferWindowState();
 				ImGui::End();
 				return;
 			}
@@ -432,6 +434,7 @@ HRESULT __stdcall hkEndScene(IDirect3DDevice9* pDevice)
 		LogImGuiStage("initialization complete", LogLevel::Info);
 
 		g_windowVisible.store(false, std::memory_order_relaxed);
+		ResetTransferWindowState();
 		g_bwasInitialized = true;
 	}
 
