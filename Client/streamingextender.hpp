@@ -74,7 +74,7 @@ private:
 		if (slot >= 0)
 			return slot;
 
-		ClientLog(LogLevel::Error, std::format("[Streaming] AllocateGtaModelSlot: exhausted entire table [0, {}). s_customModels has {} entries.", TOTAL_GTA_MODEL_COUNT, static_cast<int>(s_customModels.size())));
+		ClientLog(LogLevel::Error, std::format("AllocateGtaModelSlot: exhausted entire table [0, {}). s_customModels has {} entries.", TOTAL_GTA_MODEL_COUNT, static_cast<int>(s_customModels.size())));
 		return -1;
 	}
 
@@ -135,7 +135,7 @@ public:
 		}
 
 		if (visualBase->GetModelType() != MODEL_INFO_VEHICLE) {
-			ClientLog(LogLevel::Error, std::format("[Streaming] ERROR: visual base model {} is not a vehicle model.", def.visualBaseModel));
+			ClientLog(LogLevel::Error, std::format("visual base model {} is not a vehicle model.", def.visualBaseModel));
 			return nullptr;
 		}
 
@@ -143,7 +143,7 @@ public:
 
 		const int gtaSlot = AllocateGtaModelSlot();
 		if (!IsValidGtaModelSlot(gtaSlot)) {
-			ClientLog(LogLevel::Error, std::format("[Streaming] ERROR: no free GTA model-info slot available for custom model {}.", def.customModelId));
+			ClientLog(LogLevel::Error, std::format("no free GTA model-info slot available for custom model {}.", def.customModelId));
 			return nullptr;
 		}
 
@@ -152,11 +152,11 @@ public:
 		entry->modelInfo = nullptr;
 		s_customModels[def.customModelId] = entry;
 
-		ClientLog(LogLevel::Info, std::format("[Streaming] Creating custom model {} using GTA model slot {} (base={}).", def.customModelId, gtaSlot, def.visualBaseModel));
+		ClientLog(LogLevel::Info, std::format("Creating custom model {} using GTA model slot {} (base={}).", def.customModelId, gtaSlot, def.visualBaseModel));
 
 		CVehicleModelInfo* newModel = new CVehicleModelInfo();
 		if (!newModel) {
-			ClientLog(LogLevel::Error, std::format("[Streaming] ERROR: failed to allocate CVehicleModelInfo for custom model {}.", def.customModelId));
+			ClientLog(LogLevel::Error, std::format("failed to allocate CVehicleModelInfo for custom model {}.", def.customModelId));
 			s_customModels.erase(def.customModelId);
 			delete entry;
 			return nullptr;
@@ -207,7 +207,7 @@ public:
 
 		entry->modelInfo = newModel;
 
-		ClientLog(LogLevel::Info, std::format("[Streaming] Custom model {} registered: gtaSlot={} modelInfo=0x{:08X}", def.customModelId, gtaSlot, reinterpret_cast<std::uintptr_t>(newModel)));
+		ClientLog(LogLevel::Info, std::format("Custom model {} registered: gtaSlot={} modelInfo=0x{:08X}", def.customModelId, gtaSlot, reinterpret_cast<std::uintptr_t>(newModel)));
 		return newModel;
 	}
 

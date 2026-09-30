@@ -496,7 +496,7 @@ void CustomVehicleBindingManager::Process()
 				vehicle->m_placement = savedPlacement;
 
 				if (vehicle->m_pRwObject != reinterpret_cast<RwObject*>(newClump)) {
-					ClientLog(LogLevel::Error, std::format("ERROR: AttachToRwObject did not leave expected RW object on vehicle {}", vehicleId));
+					ClientLog(LogLevel::Error, std::format("AttachToRwObject did not leave expected RW object on vehicle {}", vehicleId));
 				} else {
 					ClientLog(LogLevel::Info, std::format("SUCCESS: vehicle {} is visually bound to custom model {}", vehicleId, binding.customModelId));
 				}
