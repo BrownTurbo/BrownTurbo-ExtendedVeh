@@ -22,9 +22,9 @@
 #define EXTVEH_PHASE_DEV true
 #define EXTVEH_VERSION_MAJOR 0
 #define EXTVEH_VERSION_MINOR 0
-#define EXTVEH_VERSION_PATCH 2
+#define EXTVEH_VERSION_PATCH 3
 
-#define EXTVEH_COMPAT_VERSION 0xA839E
+#define EXTVEH_COMPAT_VERSION 0xA839F
 
 #define IS_VALID_PLAYERID(playerid) \
 	((playerid) >= 0 && (playerid) < MAX_PLAYERS)
