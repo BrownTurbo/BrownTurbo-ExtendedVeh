@@ -6,6 +6,7 @@
 #include <sampapi/CNetGame.h>
 #include <sampapi/CPlayerPool.h>
 #include <sampapi/CVehiclePool.h>
+#include <sampapi/CVehicle.h>
 #include <sampapi/sampapi.h>
 
 #include <RakHook/rakhook.hpp>
@@ -54,6 +55,7 @@ PlayerPoolVariant GetPlayerPoolPtr();
 bool MatchPlayerId(int playerId);
 CVehicle* GetGameVehicleFromPool(uint16_t sampVehicleId);
 bool GetVehiclePlateText(uint16_t sampVehicleId, char* outText, size_t maxLen);
+bool UpdateSampVehiclePlateText(uint16_t sampVehicleId, const char* plateText);
 bool IsGameInitialized();
 uint16_t GetLocalPlayerId();
 VehiclePoolVariant GetVehiclesPool();

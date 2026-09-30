@@ -4,6 +4,7 @@
 #include <unordered_map>
 
 #include "game_sa/CColModel.h"
+#include "game_sa/CCustomCarPlateMgr.h"
 #include "game_sa/CHandlingDataMgr.h"
 #include "game_sa/CModelInfo.h"
 #include "game_sa/CStreaming.h"
@@ -355,6 +356,63 @@ public:
 		ClientLog(LogLevel::Debug, "FinalizeClump -> BEFORE SetAtomicRenderCallbacks");
 		pInfo->SetAtomicRenderCallbacks();
 		ClientLog(LogLevel::Debug, "FinalizeClump -> AFTER SetAtomicRenderCallbacks");
+
+		if (!pInfo->m_pPlateMaterial) {
+			struct PlateFinderCtx {
+				RpMaterial* foundMat { nullptr };
+			} pfc;
+			RpClumpForAllAtomics(pClump, [](RpAtomic* atomic, void* data) -> RpAtomic* {
+				auto* ctx = reinterpret_cast<PlateFinderCtx*>(data);
+				RpGeometry* geom = RpAtomicGetGeometry(atomic);
+				if (!geom || !geom->matList.materials)
+					return atomic;
+
+				RwFrame* frame = RpAtomicGetFrame(atomic);
+				std::string frameHierarchy;
+				for (RwFrame* f = frame; f != nullptr; f = RwFrameGetParent(f)) {
+					const char* n = GetFrameNodeName(f);
+					if (n && *n) {
+						frameHierarchy += " ";
+						frameHierarchy += n;
+					}
+				}
+				std::transform(frameHierarchy.begin(), frameHierarchy.end(), frameHierarchy.begin(), ::tolower);
+
+				for (int m = 0; m < geom->matList.numMaterials; ++m) {
+					RpMaterial* mat = geom->matList.materials[m];
+					if (!mat)
+						continue;
+
+					bool isPlate = false;
+					if (mat->texture && mat->texture->name && mat->texture->name[0]) {
+						std::string tn = mat->texture->name;
+						std::transform(tn.begin(), tn.end(), tn.begin(), ::tolower);
+						if (tn.find("plate") != std::string::npos || tn.find("nomer") != std::string::npos || tn.find("license") != std::string::npos || tn.find("licence") != std::string::npos) {
+							if (tn.find("carpback") == std::string::npos && tn.find("plateback") == std::string::npos) {
+								isPlate = true;
+							}
+						}
+					}
+					if (!isPlate && (frameHierarchy.find("plate") != std::string::npos || frameHierarchy.find("nomer") != std::string::npos || frameHierarchy.find("license") != std::string::npos)) {
+						isPlate = true;
+					}
+
+					if (isPlate) {
+						ctx->foundMat = mat;
+						return atomic;
+					}
+				}
+				return atomic;
+			}, &pfc);
+
+			if (pfc.foundMat) {
+				char defaultPlate[] = "SAN ANDREAS";
+				CCustomCarPlateMgr::SetupMaterialPlateTexture(pfc.foundMat, defaultPlate, 0);
+				pInfo->m_pPlateMaterial = pfc.foundMat;
+				strncpy_s(pInfo->m_szPlateText, sizeof(pInfo->m_szPlateText), "SAN ANDREAS", _TRUNCATE);
+				ClientLog(LogLevel::Info, std::format("FinalizeClump: modelInfo=0x{:X} plate material detected via fallback scanner (mat=0x{:X})", reinterpret_cast<std::uintptr_t>(pInfo), reinterpret_cast<std::uintptr_t>(pfc.foundMat)));
+			}
+		}
 
 		// If the DFF contains an unmanaged "tuning" frame containing optional bodykit variations
 		// (e.g. bumper_f0 vs bumper_f1, spoiler1, spoiler2, interior0 vs interior1), GTA:SA's visibility plugins

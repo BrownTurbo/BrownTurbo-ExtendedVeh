@@ -251,6 +251,79 @@ bool GetVehiclePlateText(uint16_t sampVehicleId, char* outText, size_t maxLen)
 	return false;
 }
 
+bool UpdateSampVehiclePlateText(uint16_t sampVehicleId, const char* plateText)
+{
+	if (!plateText || plateText[0] == '\0')
+		return false;
+
+	rakhook::samp_ver version = rakhook::samp_version();
+	switch (version) {
+	case rakhook::samp_ver::v037r1: {
+		auto* pNetGame = sampapi::v037r1::RefNetGame();
+		if (!pNetGame || !pNetGame->m_pPools || !pNetGame->m_pPools->m_pVehicle)
+			return false;
+		auto* veh = pNetGame->m_pPools->m_pVehicle->Get(sampVehicleId);
+		if (veh) {
+			if (std::strncmp(veh->m_szLicensePlateText, plateText, sizeof(veh->m_szLicensePlateText)) != 0 || !veh->m_pLicensePlate) {
+				veh->ShutdownLicensePlate();
+				veh->SetLicensePlateText(plateText);
+				veh->ConstructLicensePlate();
+			}
+			return true;
+		}
+		break;
+	}
+	case rakhook::samp_ver::v037r31: {
+		auto* pNetGame = sampapi::v037r3::RefNetGame();
+		if (!pNetGame || !pNetGame->m_pPools || !pNetGame->m_pPools->m_pVehicle)
+			return false;
+		auto* veh = pNetGame->m_pPools->m_pVehicle->Get(sampVehicleId);
+		if (veh) {
+			if (std::strncmp(veh->m_szLicensePlateText, plateText, sizeof(veh->m_szLicensePlateText)) != 0 || !veh->m_pLicensePlate) {
+				veh->ShutdownLicensePlate();
+				veh->SetLicensePlateText(plateText);
+				veh->ConstructLicensePlate();
+			}
+			return true;
+		}
+		break;
+	}
+	case rakhook::samp_ver::v037r5: {
+		auto* pNetGame = sampapi::v037r5::RefNetGame();
+		if (!pNetGame || !pNetGame->m_pPools || !pNetGame->m_pPools->m_pVehicle)
+			return false;
+		auto* veh = pNetGame->m_pPools->m_pVehicle->Get(sampVehicleId);
+		if (veh) {
+			if (std::strncmp(veh->m_szLicensePlateText, plateText, sizeof(veh->m_szLicensePlateText)) != 0 || !veh->m_pLicensePlate) {
+				veh->ShutdownLicensePlate();
+				veh->SetLicensePlateText(plateText);
+				veh->ConstructLicensePlate();
+			}
+			return true;
+		}
+		break;
+	}
+	case rakhook::samp_ver::v03dlr1: {
+		auto* pNetGame = sampapi::v03dl::RefNetGame();
+		if (!pNetGame || !pNetGame->m_pPools || !pNetGame->m_pPools->m_pVehicle)
+			return false;
+		auto* veh = pNetGame->m_pPools->m_pVehicle->Get(sampVehicleId);
+		if (veh) {
+			if (std::strncmp(veh->m_szLicensePlateText, plateText, sizeof(veh->m_szLicensePlateText)) != 0 || !veh->m_pLicensePlate) {
+				veh->ShutdownLicensePlate();
+				veh->SetLicensePlateText(plateText);
+				veh->ConstructLicensePlate();
+			}
+			return true;
+		}
+		break;
+	}
+	default:
+		break;
+	}
+	return false;
+}
+
 bool IsGameInitialized()
 {
 	rakhook::samp_ver version = rakhook::samp_version();

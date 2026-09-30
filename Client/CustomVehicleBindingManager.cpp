@@ -16,6 +16,7 @@
 #include <game_sa/CTxdStore.h>
 #include <game_sa/CVehicleModelInfo.h>
 #include <game_sa/CWorld.h>
+#include <game_sa/NodeName.h>
 #include <game_sa/rw/rpworld.h>
 #include <game_sa/rw/rwcore.h>
 #include <algorithm>
@@ -241,9 +242,9 @@ void CustomVehicleBindingManager::Unbind(uint16_t vehicleId)
 					char plateText[32] = {};
 					if (binding.hasCustomPlateText && binding.customPlateText[0] != '\0') {
 						strncpy_s(plateText, sizeof(plateText), binding.customPlateText, _TRUNCATE);
-						CCustomCarPlateMgr::SetupClump(origClump, plateText, 0);
+						ApplyPlateToClump(origClump, origModel, plateText, nullptr);
 					} else if (GetVehiclePlateText(vehicleId, plateText, sizeof(plateText))) {
-						CCustomCarPlateMgr::SetupClump(origClump, plateText, 0);
+						ApplyPlateToClump(origClump, origModel, plateText, nullptr);
 					}
 
 					RwFrame* rootFrame = RpClumpGetFrame(origClump);
@@ -463,10 +464,15 @@ void CustomVehicleBindingManager::Process()
 					}
 				}
 
-				if (hasPlate) {
-					strncpy_s(binding.lastPlateText, sizeof(binding.lastPlateText), plateText, _TRUNCATE);
-					CCustomCarPlateMgr::SetupClump(newClump, plateText, 0);
+				if (!hasPlate || plateText[0] == '\0') {
+					strncpy_s(plateText, sizeof(plateText), "SAN ANDREAS", _TRUNCATE);
 				}
+
+				strncpy_s(binding.lastPlateText, sizeof(binding.lastPlateText), plateText, _TRUNCATE);
+				if (binding.sampVehicleId > 0) {
+					UpdateSampVehiclePlateText(binding.sampVehicleId, plateText);
+				}
+				ApplyPlateToClump(newClump, model, plateText, nullptr);
 
 				if (binding.hasExtras) {
 					ApplyExtrasToClump(newClump, binding.extrasMask);
@@ -646,7 +652,7 @@ void CustomVehicleBindingManager::Process()
 						ApplyWheelColorToVehicle(vehicle, binding.wheelColorR, binding.wheelColorG, binding.wheelColorB);
 					}
 					if (binding.lastPlateText[0] != '\0') {
-						CCustomCarPlateMgr::SetupClump(clump, binding.lastPlateText, 0);
+						ApplyPlateToVehicle(vehicle, binding.lastPlateText);
 					}
 				}
 			}
@@ -668,11 +674,7 @@ void CustomVehicleBindingManager::Process()
 			}
 
 			if (hasPlate && std::strncmp(binding.lastPlateText, currentEffectivePlate, sizeof(binding.lastPlateText)) != 0) {
-				strncpy_s(binding.lastPlateText, sizeof(binding.lastPlateText), currentEffectivePlate, _TRUNCATE);
-				RpClump* clump = reinterpret_cast<RpClump*>(vehicle->m_pRwObject);
-				if (clump) {
-					CCustomCarPlateMgr::SetupClump(clump, binding.lastPlateText, 0);
-				}
+				ApplyPlateToVehicle(vehicle, currentEffectivePlate);
 			}
 		}
 	}
@@ -904,6 +906,200 @@ void CustomVehicleBindingManager::SetVehiclePlateText(uint16_t vehicleId, const 
 	}
 }
 
+std::vector<CustomVehicleBindingManager::PlateMaterialInfo> CustomVehicleBindingManager::FindVehiclePlateMaterials(
+	RpClump* clump,
+	CVehicleModelInfo* customModel,
+	const char* lastKnownPlateText)
+{
+	std::vector<PlateMaterialInfo> results;
+	if (!clump)
+		return results;
+
+	auto containsCi = [](const std::string& haystack, std::string_view needle) -> bool {
+		auto it = std::search(
+			haystack.begin(), haystack.end(),
+			needle.begin(), needle.end(),
+			[](char ch1, char ch2) { return std::tolower(static_cast<unsigned char>(ch1)) == std::tolower(static_cast<unsigned char>(ch2)); });
+		return it != haystack.end();
+	};
+
+	auto equalsCi = [](const char* s1, const char* s2) -> bool {
+		if (!s1 || !s2) return false;
+		return _stricmp(s1, s2) == 0;
+	};
+
+	int targetAtomicIdx = -1;
+	int targetMatIdx = -1;
+	if (customModel && customModel->m_pPlateMaterial && customModel->m_pRwClump) {
+		struct SearchCtx {
+			int currentAIdx { 0 };
+			int foundAIdx { -1 };
+			int foundMIdx { -1 };
+			RpMaterial* targetMat { nullptr };
+		} searchCtx;
+		searchCtx.targetMat = customModel->m_pPlateMaterial;
+
+		RpClumpForAllAtomics(customModel->m_pRwClump, [](RpAtomic* atomic, void* data) -> RpAtomic* {
+			auto* sc = reinterpret_cast<SearchCtx*>(data);
+			RpGeometry* geom = RpAtomicGetGeometry(atomic);
+			if (geom && geom->matList.materials) {
+				for (int m = 0; m < geom->matList.numMaterials; ++m) {
+					if (geom->matList.materials[m] == sc->targetMat) {
+						sc->foundAIdx = sc->currentAIdx;
+						sc->foundMIdx = m;
+						return atomic;
+					}
+				}
+			}
+			sc->currentAIdx++;
+			return atomic;
+		}, &searchCtx);
+
+		targetAtomicIdx = searchCtx.foundAIdx;
+		targetMatIdx = searchCtx.foundMIdx;
+	}
+
+	struct ClumpScanContext {
+		int currentAtomicIdx { 0 };
+		int targetAtomicIdx { -1 };
+		int targetMatIdx { -1 };
+		const char* lastPlate { nullptr };
+		const char* modelPlate { nullptr };
+		std::vector<PlateMaterialInfo>* pResults { nullptr };
+		decltype(containsCi)* pContainsCi { nullptr };
+		decltype(equalsCi)* pEqualsCi { nullptr };
+	} ctx;
+
+	ctx.targetAtomicIdx = targetAtomicIdx;
+	ctx.targetMatIdx = targetMatIdx;
+	ctx.lastPlate = lastKnownPlateText;
+	ctx.modelPlate = (customModel && customModel->m_szPlateText[0] != '\0') ? customModel->m_szPlateText : nullptr;
+	ctx.pResults = &results;
+	ctx.pContainsCi = &containsCi;
+	ctx.pEqualsCi = &equalsCi;
+
+	RpClumpForAllAtomics(clump, [](RpAtomic* atomic, void* data) -> RpAtomic* {
+		auto* c = reinterpret_cast<ClumpScanContext*>(data);
+		RpGeometry* geom = RpAtomicGetGeometry(atomic);
+		if (!geom || !geom->matList.materials) {
+			c->currentAtomicIdx++;
+			return atomic;
+		}
+
+		RwFrame* frame = RpAtomicGetFrame(atomic);
+		std::string frameHierarchy;
+		for (RwFrame* f = frame; f != nullptr; f = RwFrameGetParent(f)) {
+			const char* n = GetFrameNodeName(f);
+			if (n && *n) {
+				frameHierarchy += " ";
+				frameHierarchy += n;
+			}
+		}
+
+		for (int m = 0; m < geom->matList.numMaterials; ++m) {
+			RpMaterial* mat = geom->matList.materials[m];
+			if (!mat)
+				continue;
+
+			bool isPlate = false;
+			bool isBg = false;
+
+			if (c->targetAtomicIdx >= 0 && c->currentAtomicIdx == c->targetAtomicIdx && m == c->targetMatIdx) {
+				isPlate = true;
+			}
+
+			if (mat->texture) {
+				const char* texName = mat->texture->name;
+				if (texName && *texName) {
+					std::string tn = texName;
+					if ((*c->pEqualsCi)(texName, "carplate")) {
+						isPlate = true;
+						isBg = false;
+					} else if ((*c->pEqualsCi)(texName, "carpback") || (*c->pContainsCi)(tn, "plateback")) {
+						isPlate = true;
+						isBg = true;
+					} else if ((*c->pContainsCi)(tn, "carplate") || (*c->pContainsCi)(tn, "numberplate") ||
+							   (*c->pContainsCi)(tn, "license") || (*c->pContainsCi)(tn, "licence") ||
+							   (*c->pContainsCi)(tn, "nomer") || (*c->pContainsCi)(tn, "plate")) {
+						isPlate = true;
+						isBg = false;
+					} else if (c->lastPlate && c->lastPlate[0] != '\0' && (*c->pEqualsCi)(texName, c->lastPlate)) {
+						isPlate = true;
+						isBg = false;
+					} else if (c->modelPlate && (*c->pEqualsCi)(texName, c->modelPlate)) {
+						isPlate = true;
+						isBg = false;
+					}
+				}
+			}
+
+			if (!isPlate && !frameHierarchy.empty()) {
+				if ((*c->pContainsCi)(frameHierarchy, "plate") || (*c->pContainsCi)(frameHierarchy, "nomer") || (*c->pContainsCi)(frameHierarchy, "license")) {
+					isPlate = true;
+					isBg = false;
+				}
+			}
+
+			if (isPlate) {
+				bool alreadyAdded = false;
+				for (const auto& existing : *c->pResults) {
+					if (existing.material == mat) {
+						alreadyAdded = true;
+						break;
+					}
+				}
+				if (!alreadyAdded) {
+					c->pResults->push_back({ mat, isBg });
+				}
+			}
+		}
+
+		c->currentAtomicIdx++;
+		return atomic;
+	}, &ctx);
+
+	return results;
+}
+
+bool CustomVehicleBindingManager::ApplyPlateToClump(
+	RpClump* clump,
+	CVehicleModelInfo* customModel,
+	const char* plateText,
+	const char* lastKnownText)
+{
+	if (!clump || !plateText || plateText[0] == '\0')
+		return false;
+
+	auto plateMaterials = FindVehiclePlateMaterials(clump, customModel, lastKnownText);
+
+	int textPlatesApplied = 0;
+	int bgPlatesApplied = 0;
+
+	for (auto& entry : plateMaterials) {
+		if (entry.isBackground) {
+			CCustomCarPlateMgr::SetupMaterialPlatebackTexture(entry.material, 0);
+			bgPlatesApplied++;
+		} else {
+			CCustomCarPlateMgr::SetupMaterialPlateTexture(entry.material, const_cast<char*>(plateText), 0);
+			textPlatesApplied++;
+		}
+	}
+
+	if (textPlatesApplied > 0) {
+		ClientLog(LogLevel::Info, std::format("ApplyPlateToClump: Applied '{}' to {} plate text mat(s) and {} background mat(s)", plateText, textPlatesApplied, bgPlatesApplied));
+		return true;
+	}
+
+	RpMaterial* fallbackMat = CCustomCarPlateMgr::SetupClump(clump, const_cast<char*>(plateText), 0);
+	if (fallbackMat) {
+		ClientLog(LogLevel::Info, std::format("ApplyPlateToClump: Fallback SetupClump succeeded for '{}' (mat=0x{:X})", plateText, reinterpret_cast<std::uintptr_t>(fallbackMat)));
+		return true;
+	}
+
+	ClientLog(LogLevel::Warning, std::format("ApplyPlateToClump: Failed to find any plate material for text '{}'", plateText));
+	return false;
+}
+
 void CustomVehicleBindingManager::ApplyPlateToVehicle(CVehicle* vehicle, const char* text)
 {
 	if (!vehicle || !IsVehiclePointerValid(vehicle))
@@ -940,12 +1136,26 @@ void CustomVehicleBindingManager::ApplyPlateToVehicle(CVehicle* vehicle, const c
 		}
 	}
 
-	if (hasPlate && finalPlate[0] != '\0') {
-		if (binding) {
-			strncpy_s(binding->lastPlateText, sizeof(binding->lastPlateText), finalPlate, _TRUNCATE);
-		}
-		CCustomCarPlateMgr::SetupClump(clump, finalPlate, 0);
+	if (!hasPlate || finalPlate[0] == '\0') {
+		strncpy_s(finalPlate, sizeof(finalPlate), "SAN ANDREAS", _TRUNCATE);
+		hasPlate = true;
 	}
+
+	CVehicleModelInfo* customModel = nullptr;
+	const char* lastKnownText = nullptr;
+	uint16_t sampVehicleId = 0;
+	if (binding) {
+		customModel = StreamingExtender::GetCustomModel(binding->customModelId);
+		lastKnownText = binding->lastPlateText;
+		sampVehicleId = binding->sampVehicleId;
+		strncpy_s(binding->lastPlateText, sizeof(binding->lastPlateText), finalPlate, _TRUNCATE);
+	}
+
+	if (sampVehicleId > 0) {
+		UpdateSampVehiclePlateText(sampVehicleId, finalPlate);
+	}
+
+	ApplyPlateToClump(clump, customModel, finalPlate, lastKnownText);
 }
 
 void CustomVehicleBindingManager::ApplyPaintjobToVehicle(CVehicle* vehicle, int paintjobIndex)

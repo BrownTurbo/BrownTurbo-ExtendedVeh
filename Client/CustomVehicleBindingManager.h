@@ -6,9 +6,11 @@
 #include <unordered_map>
 #include <vector>
 #include <game_sa/rw/rwcore.h>
+#include <game_sa/rw/rpworld.h>
 
 class CVehicle;
 class CColModel;
+class CVehicleModelInfo;
 struct RwFrame;
 
 class CustomVehicleBindingManager {
@@ -184,6 +186,22 @@ public:
 	void ApplyAudioSettingsToVehicle(CVehicle* vehicle);
 	void ApplyPlateToVehicle(CVehicle* vehicle, const char* text = nullptr);
 	void SetVehiclePlateText(uint16_t vehicleId, const char* text);
+
+	struct PlateMaterialInfo {
+		RpMaterial* material { nullptr };
+		bool isBackground { false };
+	};
+
+	static std::vector<PlateMaterialInfo> FindVehiclePlateMaterials(
+		RpClump* clump,
+		CVehicleModelInfo* customModel,
+		const char* lastKnownPlateText = nullptr);
+
+	static bool ApplyPlateToClump(
+		RpClump* clump,
+		CVehicleModelInfo* customModel,
+		const char* plateText,
+		const char* lastKnownText = nullptr);
 
 	static void SetModelDefaultPlateText(uint32_t customModelId, const std::string& plateText);
 	static std::string GetModelDefaultPlateText(uint32_t customModelId);
