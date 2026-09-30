@@ -21,4 +21,5 @@ void SendVehicleLights(IPlayer& player, const CustomVeh::Protocol::VehicleLights
 void SendVehicleWheel(IPlayer& player, const CustomVeh::Protocol::VehicleWheelPacket& wheel);
 void SendVehicleOffsets(IPlayer& player, const CustomVeh::Protocol::VehicleOffsetsPacket& offsets);
 void SendVehiclePlate(IPlayer& player, const CustomVeh::Protocol::VehiclePlatePacket& plate);
+void SendDebugMode(IPlayer& player, bool enabled);
 }

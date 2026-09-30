@@ -4,6 +4,7 @@
 #include "CVehicleManager.hpp"
 #include "HandlingManager.h"
 #include "ModelTransferManager.h"
+#include "CustomVehicleTransport.h"
 #include "extendedveh.h"
 
 bool Actions::Process(CustomVehAction id, NetworkBitStream& bs, IPlayer& player)
@@ -40,6 +41,10 @@ bool Actions::Process(CustomVehAction id, NetworkBitStream& bs, IPlayer& player)
 			if (!alreadyAuthorized)
 			{
 				HandlingMgr::OnPlayerAuthorized(player);
+				if (gPlayers.IsDebugMode(playerid))
+				{
+					CustomVehicleTransport::SendDebugMode(player, true);
+				}
 			}
 			return true;
 		}

@@ -1279,10 +1279,14 @@ void CustomVehicleBindingManager::SetModelOffsets(uint32_t customModelId, const 
 
 bool CustomVehicleBindingManager::HandleChatCommand(const std::string& fullCmd)
 {
-	if (fullCmd.empty() || fullCmd[0] != '/')
+	if (fullCmd.empty())
 		return false;
 
-	std::istringstream iss(fullCmd);
+	std::string cleanCmd = fullCmd;
+	if (!cleanCmd.empty() && cleanCmd[0] == '/')
+		cleanCmd = cleanCmd.substr(1);
+
+	std::istringstream iss(cleanCmd);
 	std::string cmd;
 	iss >> cmd;
 	std::transform(cmd.begin(), cmd.end(), cmd.begin(), ::tolower);
@@ -1290,13 +1294,16 @@ bool CustomVehicleBindingManager::HandleChatCommand(const std::string& fullCmd)
 	static const std::unordered_set<std::string> s_knownCommands = {
 		"$vehwheelz", "$vehwheely", "$vehtrack", "$vehcamber", "$vehwheelscale",
 		"$vehchassisz", "$vehchassis", "$vehoffsets", "$vehinfo",
-		"$vehresetspec", "$vehreset", "$vehhelp"
+		"$vehresetspec", "$vehreset", "$vehhelp", "$customvehhelp", "$vehplate"
 	};
 
 	if (s_knownCommands.find(cmd) == s_knownCommands.end())
 		return false;
 
-	if (cmd == "$customvehhelp") {
+	if (!IsClientDebugMode())
+		return false;
+
+	if (cmd == "$customvehhelp" || cmd == "$vehhelp") {
 		SendMsg(0xFFFFFF, "{FFFF00}$vehwheelz [model] <Z> [rearZ] {FFFFFF}- Live preview wheel height offset");
 		SendMsg(0xFFFFFF, "{FFFF00}$vehwheely [model] <Y> [rearY] {FFFFFF}- Live preview wheel longitudinal offset");
 		SendMsg(0xFFFFFF, "{FFFF00}$vehchassisz [model] <Z> {FFFFFF}- Live preview chassis body height");
@@ -1304,6 +1311,7 @@ bool CustomVehicleBindingManager::HandleChatCommand(const std::string& fullCmd)
 		SendMsg(0xFFFFFF, "{FFFF00}$vehtrack [model] <front> [rear] {FFFFFF}- Live preview wheel track width");
 		SendMsg(0xFFFFFF, "{FFFF00}$vehcamber [model] <front> [rear] {FFFFFF}- Live preview wheel camber");
 		SendMsg(0xFFFFFF, "{FFFF00}$vehwheelscale [model] <front> [rear] {FFFFFF}- Live preview wheel scale");
+		SendMsg(0xFFFFFF, "{FFFF00}$vehplate [model] <text> {FFFFFF}- Live preview license plate text");
 		SendMsg(0xFFFFFF, "{FFFF00}$vehoffsets {FFFFFF}- Display current offsets for vehicle/model");
 		SendMsg(0xFFFFFF, "{FFFF00}$vehreset [model] {FFFFFF}- Reset live preview to server defaults");
 		SendMsg(0xAAAAAA, "{AAAAAA}Note: Permanent offsets are configured on the server in model.ini [offsets].");

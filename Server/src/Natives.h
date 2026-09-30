@@ -15,6 +15,7 @@
 #include "CustomVehicleBindingRegistry.h"
 #include "CVehicleManager.hpp"
 #include "ModelTransferManager.h"
+#include "CustomVehicleTransport.h"
 #include "utils.h"
 #include <Server/Components/Pawn/pawn.hpp>
 #include <Server/Components/Pawn/Impl/pawn_natives.hpp>
@@ -256,6 +257,81 @@ SCRIPT_API(IsPlayerUsingCHandling, bool(IPlayer& player))
 	if (core_)
 		core_->logLn(LogLevel::Message, "[ExtendedVeh] IsPlayerUsingCHandling(playerid=%d) returning %s (hasExtendedVeh=%d)", playerid, has ? "true" : "false", has ? 1 : 0);
 	return has;
+}
+
+namespace CustomVehicleNatives
+{
+inline bool SetPlayerExtendedVehDebug(IPlayer& player, bool enabled)
+{
+	int playerid = player.getID();
+	if (!gPlayers.HasExtendedVeh(playerid))
+		return false;
+
+	gPlayers.SetDebugMode(playerid, enabled);
+	CustomVehicleTransport::SendDebugMode(player, enabled);
+	return true;
+}
+
+inline bool GetPlayerExtendedVehDebug(IPlayer& player, bool& enabled)
+{
+	int playerid = player.getID();
+	if (!gPlayers.HasExtendedVeh(playerid))
+		return false;
+
+	enabled = gPlayers.IsDebugMode(playerid);
+	return true;
+}
+
+inline bool TogglePlayerExtendedVehDebug(IPlayer& player)
+{
+	int playerid = player.getID();
+	if (!gPlayers.HasExtendedVeh(playerid))
+		return false;
+
+	bool newState = !gPlayers.IsDebugMode(playerid);
+	gPlayers.SetDebugMode(playerid, newState);
+	CustomVehicleTransport::SendDebugMode(player, newState);
+	return newState;
+}
+}
+
+// native bool:SetPlayerExtendedVehDebug(playerid, bool:enabled);
+SCRIPT_API(SetPlayerExtendedVehDebug, bool(IPlayer& player, bool enabled))
+{
+	return CustomVehicleNatives::SetPlayerExtendedVehDebug(player, enabled);
+}
+
+// native bool:GetPlayerExtendedVehDebug(playerid, &bool:enabled);
+SCRIPT_API(GetPlayerExtendedVehDebug, bool(IPlayer& player, bool& enabled))
+{
+	return CustomVehicleNatives::GetPlayerExtendedVehDebug(player, enabled);
+}
+
+// native bool:TogglePlayerExtendedVehDebug(playerid);
+SCRIPT_API(TogglePlayerExtendedVehDebug, bool(IPlayer& player))
+{
+	return CustomVehicleNatives::TogglePlayerExtendedVehDebug(player);
+}
+
+// ExtendedVeh-specific aliases:
+SCRIPT_API(SetExtendedVehDebug, bool(IPlayer& player, bool enabled))
+{
+	return CustomVehicleNatives::SetPlayerExtendedVehDebug(player, enabled);
+}
+
+SCRIPT_API(GetExtendedVehDebug, bool(IPlayer& player, bool& enabled))
+{
+	return CustomVehicleNatives::GetPlayerExtendedVehDebug(player, enabled);
+}
+
+SCRIPT_API(ToggleExtendedVehDebug, bool(IPlayer& player))
+{
+	return CustomVehicleNatives::TogglePlayerExtendedVehDebug(player);
+}
+
+SCRIPT_API(IsPlayerExtendedVehDebug, bool(IPlayer& player, bool& enabled))
+{
+	return CustomVehicleNatives::GetPlayerExtendedVehDebug(player, enabled);
 }
 
 // native ResetModelHandling(modelid);

@@ -1695,6 +1695,20 @@ bool HandlingManager::ProcessAction(CustomVehAction action, RakNet::BitStream* b
 		}
 		return true;
 	}
+	case static_cast<CustomVehAction>(CustomVeh::Protocol::Action::SetDebugMode): {
+		CustomVeh::Protocol::DebugModePacket dbg {};
+		if (bs->Read(reinterpret_cast<char*>(&dbg), sizeof(dbg))) {
+			bool enabled = (dbg.enabled != 0);
+			SetClientDebugMode(enabled);
+			ClientLog(LogLevel::Info, std::format("SetDebugMode: enabled={}", enabled));
+			if (enabled) {
+				SendMsg(0x00FF00, "{00FF00}[ExtendedVeh]{FFFFFF} Client debug mode enabled. Live tuning commands (e.g. {FFFF00}/$customvehhelp{FFFFFF}) are active.");
+			} else {
+				SendMsg(0xFFFF00, "{00FF00}[ExtendedVeh]{FFFFFF} Client debug mode disabled.");
+			}
+		}
+		return true;
+	}
 	default:
 		ClientLog(LogLevel::Warning, std::format("ProcessAction: Unknown or unhandled action {}", static_cast<int>(action)));
 		break;

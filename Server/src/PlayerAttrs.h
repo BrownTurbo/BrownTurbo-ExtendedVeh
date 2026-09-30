@@ -7,11 +7,14 @@ class PlayerAttrs
 {
 private:
 	bool _hasExtendedVeh = false;
+	bool _debugMode = false;
 
 public:
 	bool hasExtendedVeh() const { return this->_hasExtendedVeh; }
 	void sethasExtendedVeh() { this->_hasExtendedVeh = true; }
-	void Reset() { this->_hasExtendedVeh = false; }
+	bool isDebugMode() const { return this->_debugMode; }
+	void setDebugMode(bool enabled) { this->_debugMode = enabled; }
+	void Reset() { this->_hasExtendedVeh = false; this->_debugMode = false; }
 };
 
 class PlayerAttrsMap
@@ -47,6 +50,19 @@ public:
 			m_map[playerid].sethasExtendedVeh();
 		else
 			m_map[playerid].Reset();
+	}
+
+	bool IsDebugMode(int playerid) const
+	{
+		std::lock_guard<std::mutex> lock(m_mutex);
+		auto it = m_map.find(playerid);
+		return (it != m_map.end()) && it->second.isDebugMode();
+	}
+
+	void SetDebugMode(int playerid, bool value = true)
+	{
+		std::lock_guard<std::mutex> lock(m_mutex);
+		m_map[playerid].setDebugMode(value);
 	}
 
 	void Reset(int playerid)

@@ -42,6 +42,7 @@ namespace CustomVeh::Protocol {
 		SetVehicleWheel = 70,
 		SetVehicleOffsets = 71,
 		SetVehiclePlate = 72,
+		SetDebugMode = 73,
 		AssetManifest = 50,
 		AssetRequest = 51,
 		AssetResume = 52,
@@ -244,6 +245,10 @@ namespace CustomVeh::Protocol {
 	struct VehiclePlatePacket {
 		uint16_t sampVehicleId = 0;
 		char plateText[32] = {};
+	};
+
+	struct DebugModePacket {
+		uint8_t enabled = 0;
 	};
 
 	struct VehicleExtrasPacket {

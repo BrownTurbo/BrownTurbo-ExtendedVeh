@@ -3,6 +3,19 @@
 #include "CryptoUtility.h"
 #include <fstream>
 #include <mutex>
+#include <atomic>
+
+static std::atomic<bool> s_clientDebugMode { false };
+
+void SetClientDebugMode(bool enabled)
+{
+	s_clientDebugMode.store(enabled, std::memory_order_relaxed);
+}
+
+bool IsClientDebugMode()
+{
+	return s_clientDebugMode.load(std::memory_order_relaxed);
+}
 
 static const char* LogLevelToString(LogLevel level)
 {
@@ -24,12 +37,16 @@ static const char* LogLevelToString(LogLevel level)
 
 void ClientLog(const std::string& msg, LogLevel level)
 {
-	static std::mutex logMutex;
-	std::lock_guard<std::mutex> lock(logMutex);
-
 	if (level == LogLevel::None) {
 		level = LogLevel::Info;
 	}
+
+	if (!IsClientDebugMode() && (level == LogLevel::Debug || level == LogLevel::Trace)) {
+		return;
+	}
+
+	static std::mutex logMutex;
+	std::lock_guard<std::mutex> lock(logMutex);
 
 	SYSTEMTIME st;
 	GetLocalTime(&st);

@@ -132,5 +132,16 @@ void SendVehiclePlate(IPlayer& player, const CustomVeh::Protocol::VehiclePlatePa
 
 	player.sendPacket(Span<uint8_t>(reinterpret_cast<uint8_t*>(pkt.data.GetData()), pkt.data.GetNumberOfBitsUsed()), 0, true);
 }
+
+void SendDebugMode(IPlayer& player, bool enabled)
+{
+	CustomVeh::Protocol::DebugModePacket dbg {};
+	dbg.enabled = enabled ? 1 : 0;
+
+	CustomVehActionPacket pkt(CustomVeh::Protocol::Action::SetDebugMode);
+	pkt.data.Write(reinterpret_cast<const char*>(&dbg), sizeof(dbg));
+
+	player.sendPacket(Span<uint8_t>(reinterpret_cast<uint8_t*>(pkt.data.GetData()), pkt.data.GetNumberOfBitsUsed()), 0, true);
+}
 };
 

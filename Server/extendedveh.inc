@@ -185,6 +185,9 @@ native CHandlingAttribType:GetHandlingAttribType(CHandlingAttrib:attribute);
 native bool:IsPlayerUsingExtendedVeh(playerid);
 #pragma deprecated Use IsPlayerUsingExtendedVeh instead
 native bool:IsPlayerUsingCHandling(playerid);
+native bool:SetPlayerExtendedVehDebug(playerid, bool:enabled);
+native bool:GetPlayerExtendedVehDebug(playerid, &bool:enabled);
+native bool:TogglePlayerExtendedVehDebug(playerid);
 
 // Model Handling Natives
 native bool:ResetModelHandling(customModelId);
@@ -437,6 +440,10 @@ native bool:SetCustomVehicleAllDoorsMissing(vehicleid, bool:missing);
 #define SetVehicleDoorMissing               SetCustomVehicleDoorMissing
 #define GetVehicleDoorMissing               GetCustomVehicleDoorMissing
 #define SetVehicleAllDoorsMissing           SetCustomVehicleAllDoorsMissing
+#define SetExtendedVehDebug                 SetPlayerExtendedVehDebug
+#define GetExtendedVehDebug                 GetPlayerExtendedVehDebug
+#define ToggleExtendedVehDebug              TogglePlayerExtendedVehDebug
+#define IsPlayerExtendedVehDebug            GetPlayerExtendedVehDebug
 
 /*
  * Stock Wrapper Helper for Single-Call Custom Vehicle Creation

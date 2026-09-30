@@ -33,6 +33,8 @@ using ClientLogLevel = LogLevel;
 bool SendMsg(int color, const char* msg);
 void ClientLog(const std::string& msg, LogLevel level = LogLevel::None);
 inline void ClientLog(LogLevel level, const std::string& msg) { ClientLog(msg, level); }
+void SetClientDebugMode(bool enabled);
+bool IsClientDebugMode();
 
 using PlayerPoolVariant = std::variant<
 	std::nullptr_t,

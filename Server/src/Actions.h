@@ -39,6 +39,7 @@ inline constexpr CustomVehAction ACTION_ASSET_VERIFIED = CustomVehAction::AssetV
 inline constexpr CustomVehAction ACTION_ASSET_CANCEL = CustomVehAction::AssetCancel;
 inline constexpr CustomVehAction ACTION_ASSET_REJECTED = CustomVehAction::AssetRejected;
 inline constexpr CustomVehAction ACTION_ASSET_READY = CustomVehAction::AssetReady;
+inline constexpr CustomVehAction ACTION_SET_DEBUG_MODE = CustomVehAction::SetDebugMode;
 
 struct CustomVehActionPacket
 {
