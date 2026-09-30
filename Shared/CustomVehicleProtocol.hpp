@@ -41,6 +41,7 @@ namespace CustomVeh::Protocol {
 		SetVehicleLights = 69,
 		SetVehicleWheel = 70,
 		SetVehicleOffsets = 71,
+		SetVehiclePlate = 72,
 		AssetManifest = 50,
 		AssetRequest = 51,
 		AssetResume = 52,
@@ -202,6 +203,7 @@ namespace CustomVeh::Protocol {
 		AssetDescriptor audioCrash = {};
 		LightingOffsets lighting = {};
 		PositionOffsets offsets = {};
+		char defaultPlateText[32] = {};
 	};
 
 	struct VehicleBinding {
@@ -237,6 +239,11 @@ namespace CustomVeh::Protocol {
 		float chassisOffsetX = 0.0f;
 		float chassisOffsetY = 0.0f;
 		float chassisOffsetZ = 0.0f;
+	};
+
+	struct VehiclePlatePacket {
+		uint16_t sampVehicleId = 0;
+		char plateText[32] = {};
 	};
 
 	struct VehicleExtrasPacket {

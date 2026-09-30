@@ -107,6 +107,10 @@ public:
 
 		bool hasCustomWheel { false };
 		int16_t customWheelModelId { -1 };
+
+		bool hasCustomPlateText { false };
+		char customPlateText[32] = {};
+		char lastPlateText[32] = {};
 	};
 
 	static CustomVehicleBindingManager& Instance()
@@ -178,6 +182,11 @@ public:
 	void ApplyWheelToVehicle(CVehicle* vehicle, int16_t wheelModelId);
 
 	void ApplyAudioSettingsToVehicle(CVehicle* vehicle);
+	void ApplyPlateToVehicle(CVehicle* vehicle, const char* text = nullptr);
+	void SetVehiclePlateText(uint16_t vehicleId, const char* text);
+
+	static void SetModelDefaultPlateText(uint32_t customModelId, const std::string& plateText);
+	static std::string GetModelDefaultPlateText(uint32_t customModelId);
 
 	static bool GetModelOffsets(uint32_t customModelId, ModelOffsetConfig& outCfg);
 	static void SetModelOffsets(uint32_t customModelId, const ModelOffsetConfig& cfg);
@@ -196,4 +205,5 @@ private:
 	static inline std::unordered_map<uint32_t, uint32_t> s_baseModelIds;
 	static inline std::unordered_map<uint32_t, ModelOffsetConfig> s_modelOffsets;
 	static inline std::unordered_map<uint32_t, ModelOffsetConfig> s_serverModelOffsets;
+	static inline std::unordered_map<uint32_t, std::string> s_modelDefaultPlateText;
 };

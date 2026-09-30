@@ -1629,13 +1629,30 @@ SCRIPT_API(IsVehicleCustom, bool(IVehicle& vehicle))
 	if (!CVehicleMgr::VehicleRegistry::Get().IsValidVehicleID(vehicleid))
 		return false;
 
-	std::optional<uint32_t> customModelId = 0;
-	customModelId = CustomVehicleBindingRegistry::Instance().Get(static_cast<uint16_t>(vehicleid)).has_value();
-	if (customModelId != std::nullopt)
+	auto customOpt = CustomVehicleBindingRegistry::Instance().Get(static_cast<uint16_t>(vehicleid));
+	if (customOpt)
 	{
-		return HandlingMgr::IsCustomVehicle(customModelId.value());
+		return HandlingMgr::IsCustomVehicle(*customOpt);
 	}
 	return false;
+}
+
+// native GetCustomVehicleVisualBase(customModelId);
+SCRIPT_API(GetCustomVehicleVisualBase, int(int customModelId))
+{
+	return static_cast<int>(HandlingMgr::GetCustomVehicleVisualBase(static_cast<uint32_t>(customModelId)));
+}
+
+// native GetCustomVehicleAudioBase(customModelId);
+SCRIPT_API(GetCustomVehicleAudioBase, int(int customModelId))
+{
+	return static_cast<int>(HandlingMgr::GetCustomVehicleAudioBase(static_cast<uint32_t>(customModelId)));
+}
+
+// native GetCustomVehicleHandlingBase(customModelId);
+SCRIPT_API(GetCustomVehicleHandlingBase, int(int customModelId))
+{
+	return static_cast<int>(HandlingMgr::GetCustomVehicleHandlingBase(static_cast<uint32_t>(customModelId)));
 }
 
 // native bool:LoadCustomVehicleConfig(customModelId);
@@ -2011,6 +2028,81 @@ SCRIPT_API(BindVehicleModel, bool(IVehicle& vehicle, int customModelId))
 
 namespace CustomVehicleNatives
 {
+inline bool UnbindCustomVehicle(IVehicle& vehicle)
+{
+	int vehicleid = vehicle.getID();
+	ExtendedVehCompo* compo = ExtendedVehCompo::get();
+	ICore* core_ = compo ? compo->getCore() : nullptr;
+	if (!CVehicleMgr::VehicleRegistry::Get().IsValidVehicleID(vehicleid))
+	{
+		if (core_)
+			core_->logLn(LogLevel::Warning, "[ExtendedVeh] UnbindCustomVehicle: Invalid vehicle ID %d", vehicleid);
+		return false;
+	}
+
+	uint16_t vId = static_cast<uint16_t>(vehicleid);
+	if (!CustomVehicleBindingRegistry::Instance().Get(vId).has_value())
+	{
+		return false;
+	}
+
+	CustomVehicleBindingRegistry::Instance().Unbind(vId);
+
+	if (core_)
+	{
+		core_->logLn(LogLevel::Message, "[ExtendedVeh] UnbindCustomVehicle: Unbound vehicle %d", vehicleid);
+		for (IPlayer* player : core_->getPlayers().players())
+		{
+			if (player && gPlayers.HasExtendedVeh(player->getID()))
+			{
+				CustomVehicleTransport::SendVehicleUnbind(*player, vId);
+			}
+		}
+	}
+	return true;
+}
+
+inline int GetCustomVehicleModel(IVehicle& vehicle)
+{
+	int vehicleid = vehicle.getID();
+	if (!CVehicleMgr::VehicleRegistry::Get().IsValidVehicleID(vehicleid))
+		return 0;
+
+	auto customOpt = CustomVehicleBindingRegistry::Instance().Get(static_cast<uint16_t>(vehicleid));
+	if (customOpt)
+	{
+		return static_cast<int>(*customOpt);
+	}
+	return 0;
+}
+}
+
+// native UnbindCustomVehicle(vehicleid);
+SCRIPT_API(UnbindCustomVehicle, bool(IVehicle& vehicle))
+{
+	return CustomVehicleNatives::UnbindCustomVehicle(vehicle);
+}
+
+// Legacy alias: UnbindVehicleModel -> UnbindCustomVehicle
+SCRIPT_API(UnbindVehicleModel, bool(IVehicle& vehicle))
+{
+	return CustomVehicleNatives::UnbindCustomVehicle(vehicle);
+}
+
+// native GetCustomVehicleModel(vehicleid);
+SCRIPT_API(GetCustomVehicleModel, int(IVehicle& vehicle))
+{
+	return CustomVehicleNatives::GetCustomVehicleModel(vehicle);
+}
+
+// Legacy alias: GetVehicleCustomModel -> GetCustomVehicleModel
+SCRIPT_API(GetVehicleCustomModel, int(IVehicle& vehicle))
+{
+	return CustomVehicleNatives::GetCustomVehicleModel(vehicle);
+}
+
+namespace CustomVehicleNatives
+{
 inline bool SetCustomVehicleStance(IVehicle& vehicle, float frontScale, float rearScale, float frontCamber, float rearCamber, float frontTrackWidth, float rearTrackWidth)
 {
 	int vehicleid = vehicle.getID();
@@ -2187,6 +2279,51 @@ inline bool GetCustomVehicleChassisOffset(IVehicle& vehicle, float& chassisX, fl
 	float fZ = 0.0f, rZ = 0.0f, fY = 0.0f, rY = 0.0f;
 	return GetCustomVehicleOffsets(vehicle, fZ, rZ, fY, rY, chassisX, chassisY, chassisZ);
 }
+
+inline bool SetCustomVehicleNumberPlate(IVehicle& vehicle, const std::string& numberplate)
+{
+	int vehicleid = vehicle.getID();
+	if (!CVehicleMgr::VehicleRegistry::Get().IsValidVehicleID(vehicleid))
+		return false;
+
+	uint16_t vId = static_cast<uint16_t>(vehicleid);
+	CustomVehicleBindingRegistry::Instance().SetPlate(vId, numberplate);
+
+	CustomVeh::Protocol::VehiclePlatePacket pkt {};
+	pkt.sampVehicleId = vId;
+	std::strncpy(pkt.plateText, numberplate.c_str(), sizeof(pkt.plateText) - 1);
+	pkt.plateText[sizeof(pkt.plateText) - 1] = '\0';
+
+	ExtendedVehCompo* compo = ExtendedVehCompo::get();
+	ICore* core_ = compo ? compo->getCore() : nullptr;
+	if (core_)
+	{
+		for (IPlayer* player : core_->getPlayers().players())
+		{
+			if (player && gPlayers.HasExtendedVeh(player->getID()) && vehicle.isStreamedInForPlayer(*player))
+			{
+				CustomVehicleTransport::SendVehiclePlate(*player, pkt);
+			}
+		}
+	}
+	return true;
+}
+
+inline bool GetCustomVehicleNumberPlate(IVehicle& vehicle, std::string& numberplate)
+{
+	int vehicleid = vehicle.getID();
+	if (!CVehicleMgr::VehicleRegistry::Get().IsValidVehicleID(vehicleid))
+		return false;
+
+	uint16_t vId = static_cast<uint16_t>(vehicleid);
+	auto plateOpt = CustomVehicleBindingRegistry::Instance().GetPlate(vId);
+	if (plateOpt)
+	{
+		numberplate = plateOpt->plateText;
+		return true;
+	}
+	return false;
+}
 }
 
 // native bool:SetCustomVehicleOffsets(vehicleid, Float:frontWheelOffsetZ, Float:rearWheelOffsetZ, Float:frontWheelOffsetY = 0.0, Float:rearWheelOffsetY = 0.0, Float:chassisOffsetX = 0.0, Float:chassisOffsetY = 0.0, Float:chassisOffsetZ = 0.0);
@@ -2259,6 +2396,71 @@ SCRIPT_API(GetCustomVehicleChassisOffset, bool(IVehicle& vehicle, float& chassis
 SCRIPT_API(GetVehicleChassisOffset, bool(IVehicle& vehicle, float& chassisX, float& chassisY, float& chassisZ))
 {
 	return CustomVehicleNatives::GetCustomVehicleChassisOffset(vehicle, chassisX, chassisY, chassisZ);
+}
+
+// native bool:SetCustomVehicleNumberPlate(vehicleid, const numberplate[]);
+SCRIPT_API(SetCustomVehicleNumberPlate, bool(IVehicle& vehicle, const std::string& numberplate))
+{
+	return CustomVehicleNatives::SetCustomVehicleNumberPlate(vehicle, numberplate);
+}
+
+// native bool:GetCustomVehicleNumberPlate(vehicleid, numberplate[], maxlen = sizeof(numberplate));
+SCRIPT_API(GetCustomVehicleNumberPlate, bool(IVehicle& vehicle, std::string& numberplate))
+{
+	return CustomVehicleNatives::GetCustomVehicleNumberPlate(vehicle, numberplate);
+}
+
+// native bool:SetCustomVehicleModelPlateText(customModelId, const plateText[]);
+SCRIPT_API(SetCustomVehicleModelPlateText, bool(int customModelId, const std::string& plateText))
+{
+	return HandlingMgr::SetCustomVehicleModelPlateText(static_cast<uint32_t>(customModelId), plateText);
+}
+
+// native bool:GetCustomVehicleModelPlateText(customModelId, plateText[], maxlen = sizeof(plateText));
+SCRIPT_API(GetCustomVehicleModelPlateText, bool(int customModelId, std::string& plateText))
+{
+	return HandlingMgr::GetCustomVehicleModelPlateText(static_cast<uint32_t>(customModelId), plateText);
+}
+
+// Aliases:
+SCRIPT_API(SetVehiclePlateText, bool(IVehicle& vehicle, const std::string& numberplate))
+{
+	return CustomVehicleNatives::SetCustomVehicleNumberPlate(vehicle, numberplate);
+}
+
+SCRIPT_API(GetVehiclePlateText, bool(IVehicle& vehicle, std::string& numberplate))
+{
+	return CustomVehicleNatives::GetCustomVehicleNumberPlate(vehicle, numberplate);
+}
+
+SCRIPT_API(SetVehicleNumberPlateText, bool(IVehicle& vehicle, const std::string& numberplate))
+{
+	return CustomVehicleNatives::SetCustomVehicleNumberPlate(vehicle, numberplate);
+}
+
+SCRIPT_API(GetVehicleNumberPlateText, bool(IVehicle& vehicle, std::string& numberplate))
+{
+	return CustomVehicleNatives::GetCustomVehicleNumberPlate(vehicle, numberplate);
+}
+
+SCRIPT_API(SetCustomVehiclePlateText, bool(IVehicle& vehicle, const std::string& numberplate))
+{
+	return CustomVehicleNatives::SetCustomVehicleNumberPlate(vehicle, numberplate);
+}
+
+SCRIPT_API(GetCustomVehiclePlateText, bool(IVehicle& vehicle, std::string& numberplate))
+{
+	return CustomVehicleNatives::GetCustomVehicleNumberPlate(vehicle, numberplate);
+}
+
+SCRIPT_API(SetVehicleModelPlateText, bool(int customModelId, const std::string& plateText))
+{
+	return HandlingMgr::SetCustomVehicleModelPlateText(static_cast<uint32_t>(customModelId), plateText);
+}
+
+SCRIPT_API(GetVehicleModelPlateText, bool(int customModelId, std::string& plateText))
+{
+	return HandlingMgr::GetCustomVehicleModelPlateText(static_cast<uint32_t>(customModelId), plateText);
 }
 
 namespace CustomVehicleNatives
@@ -2399,6 +2601,12 @@ inline int GetCustomVehiclePaintjob(IVehicle& vehicle)
 
 // native GetCustomVehiclePaintjob(vehicleid);
 SCRIPT_API(GetCustomVehiclePaintjob, int(IVehicle& vehicle))
+{
+	return CustomVehicleNatives::GetCustomVehiclePaintjob(vehicle);
+}
+
+// Legacy alias: GetVehiclePaintjob -> GetCustomVehiclePaintjob
+SCRIPT_API(GetVehiclePaintjob, int(IVehicle& vehicle))
 {
 	return CustomVehicleNatives::GetCustomVehiclePaintjob(vehicle);
 }
@@ -2956,6 +3164,36 @@ SCRIPT_API(SetVehicleModelHorn, bool(int customModelId, int hornSoundId, float h
 
 namespace CustomVehicleNatives
 {
+inline bool GetCustomVehicleModelHorn(int customModelId, int& hornSoundId, float& hornPitch)
+{
+	if (customModelId < 0 || !CVehicleMgr::IsCustomVehicleModel(static_cast<uint32_t>(customModelId)))
+		return false;
+
+	auto audioOpt = CustomVehicleBindingRegistry::Instance().GetModelAudio(static_cast<uint32_t>(customModelId));
+	if (audioOpt && audioOpt->hasHorn)
+	{
+		hornSoundId = static_cast<int>(audioOpt->hornSoundId);
+		hornPitch = audioOpt->hornPitch;
+		return true;
+	}
+	return false;
+}
+}
+
+// native bool:GetCustomVehicleModelHorn(customModelId, &hornSoundId, &Float:hornPitch);
+SCRIPT_API(GetCustomVehicleModelHorn, bool(int customModelId, int& hornSoundId, float& hornPitch))
+{
+	return CustomVehicleNatives::GetCustomVehicleModelHorn(customModelId, hornSoundId, hornPitch);
+}
+
+// Legacy alias: GetVehicleModelHorn -> GetCustomVehicleModelHorn
+SCRIPT_API(GetVehicleModelHorn, bool(int customModelId, int& hornSoundId, float& hornPitch))
+{
+	return CustomVehicleNatives::GetCustomVehicleModelHorn(customModelId, hornSoundId, hornPitch);
+}
+
+namespace CustomVehicleNatives
+{
 inline bool SetCustomVehicleModelSiren(int customModelId, bool hasSiren, int sirenType)
 {
 	if (customModelId < 0 || !CVehicleMgr::IsCustomVehicleModel(static_cast<uint32_t>(customModelId)))
@@ -2976,6 +3214,36 @@ SCRIPT_API(SetCustomVehicleModelSiren, bool(int customModelId, bool hasSiren, in
 SCRIPT_API(SetVehicleModelSiren, bool(int customModelId, bool hasSiren, int sirenType))
 {
 	return CustomVehicleNatives::SetCustomVehicleModelSiren(customModelId, hasSiren, sirenType);
+}
+
+namespace CustomVehicleNatives
+{
+inline bool GetCustomVehicleModelSiren(int customModelId, bool& hasSiren, int& sirenType)
+{
+	if (customModelId < 0 || !CVehicleMgr::IsCustomVehicleModel(static_cast<uint32_t>(customModelId)))
+		return false;
+
+	auto audioOpt = CustomVehicleBindingRegistry::Instance().GetModelAudio(static_cast<uint32_t>(customModelId));
+	if (audioOpt && audioOpt->hasSiren)
+	{
+		hasSiren = audioOpt->sirenEnabled;
+		sirenType = static_cast<int>(audioOpt->sirenType);
+		return true;
+	}
+	return false;
+}
+}
+
+// native bool:GetCustomVehicleModelSiren(customModelId, &bool:hasSiren, &sirenType);
+SCRIPT_API(GetCustomVehicleModelSiren, bool(int customModelId, bool& hasSiren, int& sirenType))
+{
+	return CustomVehicleNatives::GetCustomVehicleModelSiren(customModelId, hasSiren, sirenType);
+}
+
+// Legacy alias: GetVehicleModelSiren -> GetCustomVehicleModelSiren
+SCRIPT_API(GetVehicleModelSiren, bool(int customModelId, bool& hasSiren, int& sirenType))
+{
+	return CustomVehicleNatives::GetCustomVehicleModelSiren(customModelId, hasSiren, sirenType);
 }
 
 namespace CustomVehicleNatives

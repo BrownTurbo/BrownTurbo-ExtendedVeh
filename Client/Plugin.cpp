@@ -1738,6 +1738,11 @@ public:
 				bs.Read(def.offsets.frontCamber);
 				bs.Read(def.offsets.rearCamber);
 			}
+
+			if (bs.GetNumberOfUnreadBits() >= sizeof(def.defaultPlateText) * 8) {
+				bs.Read(def.defaultPlateText, sizeof(def.defaultPlateText));
+				def.defaultPlateText[sizeof(def.defaultPlateText) - 1] = '\0';
+			}
 		}
 
 		if (def.flags & CustomVeh::Protocol::HasAnyAudio) {
@@ -2294,6 +2299,10 @@ public:
 			def.offsets.rearCamber,
 			true
 		});
+
+		if (def.defaultPlateText[0] != '\0') {
+			CustomVehicleBindingManager::SetModelDefaultPlateText(def.customModelId, def.defaultPlateText);
+		}
 
 		// Guard: if we already started a transfer for this model ID, ignore the duplicate.
 		{

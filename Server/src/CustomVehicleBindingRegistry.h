@@ -35,6 +35,8 @@ public:
 		bool hasCustomLights { false };
 		bool hasCustomWheel { false };
 		bool hasCustomOffsets { false };
+		CustomVeh::Protocol::VehiclePlatePacket plate {};
+		bool hasCustomPlate { false };
 	};
 
 	struct ModelAudioDefaults
@@ -316,6 +318,25 @@ public:
 		auto it = m_states.find(sampVehicleId);
 		if (it != m_states.end() && it->second.hasCustomOffsets)
 			return it->second.offsets;
+		return std::nullopt;
+	}
+
+	void SetPlate(uint16_t sampVehicleId, const std::string& plateText)
+	{
+		std::lock_guard<std::mutex> lock(m_mutex);
+		auto& state = m_states[sampVehicleId];
+		state.plate.sampVehicleId = sampVehicleId;
+		std::strncpy(state.plate.plateText, plateText.c_str(), sizeof(state.plate.plateText) - 1);
+		state.plate.plateText[sizeof(state.plate.plateText) - 1] = '\0';
+		state.hasCustomPlate = true;
+	}
+
+	std::optional<CustomVeh::Protocol::VehiclePlatePacket> GetPlate(uint16_t sampVehicleId) const
+	{
+		std::lock_guard<std::mutex> lock(m_mutex);
+		auto it = m_states.find(sampVehicleId);
+		if (it != m_states.end() && it->second.hasCustomPlate)
+			return it->second.plate;
 		return std::nullopt;
 	}
 

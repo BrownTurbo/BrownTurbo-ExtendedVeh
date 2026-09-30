@@ -124,5 +124,13 @@ void SendVehicleOffsets(IPlayer& player, const CustomVeh::Protocol::VehicleOffse
 
 	player.sendPacket(Span<uint8_t>(reinterpret_cast<uint8_t*>(pkt.data.GetData()), pkt.data.GetNumberOfBitsUsed()), 0, true);
 }
+
+void SendVehiclePlate(IPlayer& player, const CustomVeh::Protocol::VehiclePlatePacket& plate)
+{
+	CustomVehActionPacket pkt(CustomVeh::Protocol::Action::SetVehiclePlate);
+	pkt.data.Write(reinterpret_cast<const char*>(&plate), sizeof(plate));
+
+	player.sendPacket(Span<uint8_t>(reinterpret_cast<uint8_t*>(pkt.data.GetData()), pkt.data.GetNumberOfBitsUsed()), 0, true);
+}
 };
 

@@ -239,7 +239,10 @@ void CustomVehicleBindingManager::Unbind(uint16_t vehicleId)
 					origModel->SetEditableMaterials(origClump); // non-static: must call on model instance
 
 					char plateText[32] = {};
-					if (GetVehiclePlateText(vehicleId, plateText, sizeof(plateText))) {
+					if (binding.hasCustomPlateText && binding.customPlateText[0] != '\0') {
+						strncpy_s(plateText, sizeof(plateText), binding.customPlateText, _TRUNCATE);
+						CCustomCarPlateMgr::SetupClump(origClump, plateText, 0);
+					} else if (GetVehiclePlateText(vehicleId, plateText, sizeof(plateText))) {
 						CCustomCarPlateMgr::SetupClump(origClump, plateText, 0);
 					}
 
@@ -307,6 +310,7 @@ void CustomVehicleBindingManager::Clear()
 	}
 	m_bindings.clear();
 	s_modelOffsets.clear();
+	s_modelDefaultPlateText.clear();
 	ClientLog(LogLevel::Info, "CustomVehicleBindingManager::Clear: All bindings and model offsets cleared.");
 }
 
@@ -445,7 +449,22 @@ void CustomVehicleBindingManager::Process()
 				model->SetEditableMaterials(newClump); // non-static: must call on model instance
 
 				char plateText[32] = {};
-				if (GetVehiclePlateText(vehicleId, plateText, sizeof(plateText))) {
+				bool hasPlate = false;
+				if (binding.hasCustomPlateText && binding.customPlateText[0] != '\0') {
+					strncpy_s(plateText, sizeof(plateText), binding.customPlateText, _TRUNCATE);
+					hasPlate = true;
+				} else if (GetVehiclePlateText(vehicleId, plateText, sizeof(plateText)) && plateText[0] != '\0') {
+					hasPlate = true;
+				} else {
+					auto defIt = s_modelDefaultPlateText.find(binding.customModelId);
+					if (defIt != s_modelDefaultPlateText.end() && !defIt->second.empty()) {
+						strncpy_s(plateText, sizeof(plateText), defIt->second.c_str(), _TRUNCATE);
+						hasPlate = true;
+					}
+				}
+
+				if (hasPlate) {
+					strncpy_s(binding.lastPlateText, sizeof(binding.lastPlateText), plateText, _TRUNCATE);
 					CCustomCarPlateMgr::SetupClump(newClump, plateText, 0);
 				}
 
@@ -626,6 +645,33 @@ void CustomVehicleBindingManager::Process()
 					if (binding.hasWheelColor) {
 						ApplyWheelColorToVehicle(vehicle, binding.wheelColorR, binding.wheelColorG, binding.wheelColorB);
 					}
+					if (binding.lastPlateText[0] != '\0') {
+						CCustomCarPlateMgr::SetupClump(clump, binding.lastPlateText, 0);
+					}
+				}
+			}
+
+			// Check if license plate text changed in real-time
+			char currentEffectivePlate[32] = {};
+			bool hasPlate = false;
+			if (binding.hasCustomPlateText && binding.customPlateText[0] != '\0') {
+				strncpy_s(currentEffectivePlate, sizeof(currentEffectivePlate), binding.customPlateText, _TRUNCATE);
+				hasPlate = true;
+			} else if (GetVehiclePlateText(vehicleId, currentEffectivePlate, sizeof(currentEffectivePlate)) && currentEffectivePlate[0] != '\0') {
+				hasPlate = true;
+			} else {
+				auto defIt = s_modelDefaultPlateText.find(binding.customModelId);
+				if (defIt != s_modelDefaultPlateText.end() && !defIt->second.empty()) {
+					strncpy_s(currentEffectivePlate, sizeof(currentEffectivePlate), defIt->second.c_str(), _TRUNCATE);
+					hasPlate = true;
+				}
+			}
+
+			if (hasPlate && std::strncmp(binding.lastPlateText, currentEffectivePlate, sizeof(binding.lastPlateText)) != 0) {
+				strncpy_s(binding.lastPlateText, sizeof(binding.lastPlateText), currentEffectivePlate, _TRUNCATE);
+				RpClump* clump = reinterpret_cast<RpClump*>(vehicle->m_pRwObject);
+				if (clump) {
+					CCustomCarPlateMgr::SetupClump(clump, binding.lastPlateText, 0);
 				}
 			}
 		}
@@ -823,6 +869,82 @@ void CustomVehicleBindingManager::ApplyAudioSettingsToVehicle(CVehicle* vehicle)
 		vehicle->bSirenOrAlarm = binding->sirenEnabled;
 	} else if (audioDef && audioDef->sirenType > 0) {
 		pAudio->m_bModelWithSiren = true;
+	}
+}
+
+void CustomVehicleBindingManager::SetModelDefaultPlateText(uint32_t customModelId, const std::string& plateText)
+{
+	std::lock_guard lock(m_mutex);
+	s_modelDefaultPlateText[customModelId] = plateText;
+}
+
+std::string CustomVehicleBindingManager::GetModelDefaultPlateText(uint32_t customModelId)
+{
+	std::lock_guard lock(m_mutex);
+	auto it = s_modelDefaultPlateText.find(customModelId);
+	return (it != s_modelDefaultPlateText.end()) ? it->second : "";
+}
+
+void CustomVehicleBindingManager::SetVehiclePlateText(uint16_t vehicleId, const char* text)
+{
+	std::lock_guard lock(m_mutex);
+	auto it = m_bindings.find(vehicleId);
+	if (it != m_bindings.end()) {
+		if (text && text[0] != '\0') {
+			it->second.hasCustomPlateText = true;
+			strncpy_s(it->second.customPlateText, sizeof(it->second.customPlateText), text, _TRUNCATE);
+		} else {
+			it->second.hasCustomPlateText = false;
+			it->second.customPlateText[0] = '\0';
+		}
+
+		if (it->second.modelApplied && it->second.appliedGameVehicle && IsVehiclePointerValid(it->second.appliedGameVehicle)) {
+			ApplyPlateToVehicle(it->second.appliedGameVehicle, it->second.hasCustomPlateText ? it->second.customPlateText : nullptr);
+		}
+	}
+}
+
+void CustomVehicleBindingManager::ApplyPlateToVehicle(CVehicle* vehicle, const char* text)
+{
+	if (!vehicle || !IsVehiclePointerValid(vehicle))
+		return;
+
+	RpClump* clump = reinterpret_cast<RpClump*>(vehicle->m_pRwObject);
+	if (!clump)
+		return;
+
+	Binding* binding = FindByVehicle(vehicle);
+	char finalPlate[32] = {};
+	bool hasPlate = false;
+
+	if (text && text[0] != '\0') {
+		strncpy_s(finalPlate, sizeof(finalPlate), text, _TRUNCATE);
+		hasPlate = true;
+	} else if (binding) {
+		if (binding->hasCustomPlateText && binding->customPlateText[0] != '\0') {
+			strncpy_s(finalPlate, sizeof(finalPlate), binding->customPlateText, _TRUNCATE);
+			hasPlate = true;
+		} else {
+			char sampPlate[32] = {};
+			if (GetVehiclePlateText(binding->sampVehicleId, sampPlate, sizeof(sampPlate)) && sampPlate[0] != '\0') {
+				strncpy_s(finalPlate, sizeof(finalPlate), sampPlate, _TRUNCATE);
+				hasPlate = true;
+			} else {
+				std::lock_guard lock(m_mutex);
+				auto defIt = s_modelDefaultPlateText.find(binding->customModelId);
+				if (defIt != s_modelDefaultPlateText.end() && !defIt->second.empty()) {
+					strncpy_s(finalPlate, sizeof(finalPlate), defIt->second.c_str(), _TRUNCATE);
+					hasPlate = true;
+				}
+			}
+		}
+	}
+
+	if (hasPlate && finalPlate[0] != '\0') {
+		if (binding) {
+			strncpy_s(binding->lastPlateText, sizeof(binding->lastPlateText), finalPlate, _TRUNCATE);
+		}
+		CCustomCarPlateMgr::SetupClump(clump, finalPlate, 0);
 	}
 }
 
@@ -1474,6 +1596,32 @@ bool CustomVehicleBindingManager::HandleChatCommand(const std::string& fullCmd)
 		} catch (...) {
 			SendMsg(0xFF6666, "{00FF00}[ExtendedVeh]{FFFFFF} Invalid number format for $vehwheelscale.");
 		}
+		return true;
+	}
+
+	if (cmd == "$vehplate") {
+		if (argIdx >= args.size()) {
+			SendMsg(0xFFFF00, "{FFFF00}Usage: {FFFFFF}$vehplate [modelId] <text>");
+			return true;
+		}
+		std::string newPlate = args[argIdx];
+		for (size_t i = argIdx + 1; i < args.size(); ++i) {
+			newPlate += " " + args[i];
+		}
+
+		{
+			std::lock_guard lock(m_mutex);
+			s_modelDefaultPlateText[targetModelId] = newPlate;
+
+			for (auto& [vId, b] : m_bindings) {
+				if (b.customModelId == targetModelId && b.appliedGameVehicle && IsVehiclePointerValid(b.appliedGameVehicle)) {
+					ApplyPlateToVehicle(b.appliedGameVehicle, newPlate.c_str());
+				}
+			}
+		}
+
+		SendMsg(0x00FF00, std::format("{{00FF00}}[ExtendedVeh]{{FFFFFF}} Model {} Plate Text: '{}' (Live Preview)", targetModelId, newPlate).c_str());
+		SendMsg(0xAAAAAA, std::format("{{AAAAAA}}Server config -> [model] plateText={}", newPlate).c_str());
 		return true;
 	}
 

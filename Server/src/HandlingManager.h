@@ -98,6 +98,9 @@ bool GetCustomVehicleWheelModel(uint32_t customModelId, int16_t& wheelModelId);
 bool GetCustomVehicleWheelScale(uint32_t customModelId, float& wheelScaleFront, float& wheelScaleRear);
 bool CommitCustomVehicleDef(uint32_t customModelId);
 bool IsCustomVehicle(uint32_t modelId);
+uint32_t GetCustomVehicleVisualBase(uint32_t customModelId);
+uint32_t GetCustomVehicleAudioBase(uint32_t customModelId);
+uint32_t GetCustomVehicleHandlingBase(uint32_t customModelId);
 void SendCustomVehicleDefToPlayer(IPlayer& player, uint32_t modelId);
 void SendCustomVehicleDefToAll(uint32_t modelId);
 void SendCustomVehicleDestroyToPlayer(IPlayer& player, uint32_t modelId);
@@ -142,4 +145,7 @@ bool GetCustomVehicleModelChassisOffset(uint32_t customModelId, float& chassisX,
 
 bool SetCustomVehicleModelStance(uint32_t customModelId, float frontScale, float rearScale, float frontCamber, float rearCamber, float frontTrackWidth, float rearTrackWidth);
 bool GetCustomVehicleModelStance(uint32_t customModelId, float& frontScale, float& rearScale, float& frontCamber, float& rearCamber, float& frontTrackWidth, float& rearTrackWidth);
+
+bool SetCustomVehicleModelPlateText(uint32_t customModelId, const std::string& plateText);
+bool GetCustomVehicleModelPlateText(uint32_t customModelId, std::string& plateText);
 }

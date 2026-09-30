@@ -20,4 +20,5 @@ void SendVehicleSiren(IPlayer& player, const CustomVeh::Protocol::VehicleSirenPa
 void SendVehicleLights(IPlayer& player, const CustomVeh::Protocol::VehicleLightsPacket& lights);
 void SendVehicleWheel(IPlayer& player, const CustomVeh::Protocol::VehicleWheelPacket& wheel);
 void SendVehicleOffsets(IPlayer& player, const CustomVeh::Protocol::VehicleOffsetsPacket& offsets);
+void SendVehiclePlate(IPlayer& player, const CustomVeh::Protocol::VehiclePlatePacket& plate);
 }

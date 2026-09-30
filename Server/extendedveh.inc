@@ -242,6 +242,9 @@ native bool:CommitCustomVehicleDef(customModelId);
 native bool:DestroyCustomVehicle(customModelId);
 native bool:IsCustomVehicleModel(customModelId);
 native bool:IsVehicleCustom(vehicleid);
+native GetCustomVehicleVisualBase(customModelId);
+native GetCustomVehicleAudioBase(customModelId);
+native GetCustomVehicleHandlingBase(customModelId);
 
 // Custom Vehicle Model INI Configuration & Override Natives
 native bool:LoadCustomVehicleConfig(customModelId);
@@ -282,6 +285,9 @@ native bool:GetCustomVehicleModelChassisOffset(customModelId, &Float:chassisX, &
 native bool:SetCustomVehicleModelStance(customModelId, Float:frontScale, Float:rearScale, Float:frontCamber, Float:rearCamber, Float:frontTrackWidth, Float:rearTrackWidth);
 native bool:GetCustomVehicleModelStance(customModelId, &Float:frontScale, &Float:rearScale, &Float:frontCamber, &Float:rearCamber, &Float:frontTrackWidth, &Float:rearTrackWidth);
 
+native bool:SetCustomVehicleModelPlateText(customModelId, const plateText[]);
+native bool:GetCustomVehicleModelPlateText(customModelId, plateText[], maxlen = sizeof(plateText));
+
 /*
  * Custom Vehicle Instance Customization Natives
  *
@@ -291,6 +297,8 @@ native bool:GetCustomVehicleModelStance(customModelId, &Float:frontScale, &Float
  *   - AddVehicleComponent(vehicleid, componentid) / RemoveVehicleComponent(...) work seamlessly.
  */
 native bool:BindCustomVehicle(vehicleid, customModelId);
+native bool:UnbindCustomVehicle(vehicleid);
+native GetCustomVehicleModel(vehicleid);
 
 native bool:SetCustomVehicleStance(vehicleid, Float:frontScale, Float:rearScale, Float:frontCamber, Float:rearCamber, Float:frontTrackWidth, Float:rearTrackWidth);
 native bool:GetCustomVehicleStance(vehicleid, &Float:frontScale, &Float:rearScale, &Float:frontCamber, &Float:rearCamber, &Float:frontTrackWidth, &Float:rearTrackWidth);
@@ -303,6 +311,9 @@ native bool:GetCustomVehicleWheelOffsets(vehicleid, &Float:frontOffsetZ, &Float:
 
 native bool:SetCustomVehicleChassisOffset(vehicleid, Float:chassisX, Float:chassisY, Float:chassisZ);
 native bool:GetCustomVehicleChassisOffset(vehicleid, &Float:chassisX, &Float:chassisY, &Float:chassisZ);
+
+native bool:SetCustomVehicleNumberPlate(vehicleid, const numberplate[]);
+native bool:GetCustomVehicleNumberPlate(vehicleid, numberplate[], maxlen = sizeof(numberplate));
 
 native bool:SetCustomVehicleExtras(vehicleid, extrasMask);
 native bool:GetCustomVehicleExtras(vehicleid, &extrasMask);
@@ -348,7 +359,9 @@ native bool:SetCustomVehicleLighting(vehicleid, category = -1, Float:scale = 1.0
 native bool:GetCustomVehicleLighting(vehicleid, &category, &Float:scale);
 
 native bool:SetCustomVehicleModelHorn(customModelId, hornSoundId, Float:hornPitch = 1.0);
+native bool:GetCustomVehicleModelHorn(customModelId, &hornSoundId, &Float:hornPitch);
 native bool:SetCustomVehicleModelSiren(customModelId, bool:hasSiren, sirenType = 1);
+native bool:GetCustomVehicleModelSiren(customModelId, &bool:hasSiren, &sirenType);
 
 native bool:GetFileSha256(const filename[], outputHash[]);
 native bool:InvalidateModelCache(customModelId, fileKind);
@@ -365,11 +378,14 @@ native bool:SetCustomVehicleAllDoorsMissing(vehicleid, bool:missing);
  * Backward-compatibility aliases for legacy scripts
  */
 #define BindVehicleModel            BindCustomVehicle
+#define UnbindVehicleModel          UnbindCustomVehicle
+#define GetVehicleCustomModel       GetCustomVehicleModel
 #define SetVehicleStance            SetCustomVehicleStance
 #define GetVehicleStance            GetCustomVehicleStance
 #define SetVehicleExtras            SetCustomVehicleExtras
 #define GetVehicleExtras            GetCustomVehicleExtras
 #define SetVehiclePaintjob          SetCustomVehiclePaintjob
+#define GetVehiclePaintjob          GetCustomVehiclePaintjob
 #define SetVehicleNeon              SetCustomVehicleNeon
 #define GetVehicleNeon              GetCustomVehicleNeon
 #define SetVehicleWindowTint        SetCustomVehicleWindowTint
@@ -406,11 +422,21 @@ native bool:SetCustomVehicleAllDoorsMissing(vehicleid, bool:missing);
 #define GetVehicleWheelOffsets              GetCustomVehicleWheelOffsets
 #define SetVehicleChassisOffset             SetCustomVehicleChassisOffset
 #define GetVehicleChassisOffset             GetCustomVehicleChassisOffset
-#define SetVehicleModelHorn         SetCustomVehicleModelHorn
-#define SetVehicleModelSiren        SetCustomVehicleModelSiren
-#define SetVehicleDoorMissing       SetCustomVehicleDoorMissing
-#define GetVehicleDoorMissing       GetCustomVehicleDoorMissing
-#define SetVehicleAllDoorsMissing   SetCustomVehicleAllDoorsMissing
+#define SetVehiclePlateText                 SetCustomVehicleNumberPlate
+#define GetVehiclePlateText                 GetCustomVehicleNumberPlate
+#define SetVehicleNumberPlateText           SetCustomVehicleNumberPlate
+#define GetVehicleNumberPlateText           GetCustomVehicleNumberPlate
+#define SetCustomVehiclePlateText           SetCustomVehicleNumberPlate
+#define GetCustomVehiclePlateText           GetCustomVehicleNumberPlate
+#define SetVehicleModelPlateText            SetCustomVehicleModelPlateText
+#define GetVehicleModelPlateText            GetCustomVehicleModelPlateText
+#define SetVehicleModelHorn                 SetCustomVehicleModelHorn
+#define GetVehicleModelHorn                 GetCustomVehicleModelHorn
+#define SetVehicleModelSiren                SetCustomVehicleModelSiren
+#define GetVehicleModelSiren                GetCustomVehicleModelSiren
+#define SetVehicleDoorMissing               SetCustomVehicleDoorMissing
+#define GetVehicleDoorMissing               GetCustomVehicleDoorMissing
+#define SetVehicleAllDoorsMissing           SetCustomVehicleAllDoorsMissing
 
 /*
  * Stock Wrapper Helper for Single-Call Custom Vehicle Creation

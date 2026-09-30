@@ -1304,6 +1304,45 @@ bool IsCustomVehicle(uint32_t modelId)
 	return customVehicleModels.find(modelId) != customVehicleModels.end();
 }
 
+uint32_t GetCustomVehicleVisualBase(uint32_t customModelId)
+{
+	auto itComm = customVehicleDefs.find(customModelId);
+	if (itComm != customVehicleDefs.end())
+		return itComm->second.visualBaseModel;
+	auto itStaged = stagedCustomVehicleDefs.find(customModelId);
+	if (itStaged != stagedCustomVehicleDefs.end())
+		return itStaged->second.visualBaseModel;
+	if (customModelId >= 400 && customModelId <= 611)
+		return customModelId;
+	return 0;
+}
+
+uint32_t GetCustomVehicleAudioBase(uint32_t customModelId)
+{
+	auto itComm = customVehicleDefs.find(customModelId);
+	if (itComm != customVehicleDefs.end())
+		return itComm->second.audioBaseModel;
+	auto itStaged = stagedCustomVehicleDefs.find(customModelId);
+	if (itStaged != stagedCustomVehicleDefs.end())
+		return itStaged->second.audioBaseModel;
+	if (customModelId >= 400 && customModelId <= 611)
+		return customModelId;
+	return 0;
+}
+
+uint32_t GetCustomVehicleHandlingBase(uint32_t customModelId)
+{
+	auto itComm = customVehicleDefs.find(customModelId);
+	if (itComm != customVehicleDefs.end())
+		return itComm->second.handlingBaseModel;
+	auto itStaged = stagedCustomVehicleDefs.find(customModelId);
+	if (itStaged != stagedCustomVehicleDefs.end())
+		return itStaged->second.handlingBaseModel;
+	if (customModelId >= 400 && customModelId <= 611)
+		return customModelId;
+	return 0;
+}
+
 void SendCustomVehicleDefToPlayer(IPlayer& player, uint32_t modelId)
 {
 	auto it = customVehicleDefs.find(modelId);
@@ -1378,6 +1417,7 @@ void SendCustomVehicleDefToPlayer(IPlayer& player, uint32_t modelId)
 	bs.Write(def.offsets.rearWheelScale);
 	bs.Write(def.offsets.frontCamber);
 	bs.Write(def.offsets.rearCamber);
+	writeToStream(def.defaultPlateText, sizeof(def.defaultPlateText));
 
 	if (def.flags & CustomVeh::Protocol::HasAnyAudio)
 	{
@@ -1671,6 +1711,24 @@ bool LoadCustomVehicleConfig(uint32_t customModelId, const ModelConfig* preParse
 		auto itComm = customVehicleDefs.find(customModelId);
 		if (itComm != customVehicleDefs.end())
 			applyOffsetsConfig(itComm->second);
+	}
+
+	// Apply custom plate text configuration to staged or committed definition
+	{
+		auto applyPlateConfig = [&](CustomVeh::Protocol::VehicleDefinition& def)
+		{
+			if (!config.plateText.empty())
+			{
+				std::strncpy(def.defaultPlateText, config.plateText.c_str(), sizeof(def.defaultPlateText) - 1);
+				def.defaultPlateText[sizeof(def.defaultPlateText) - 1] = '\0';
+			}
+		};
+
+		if (itStaged != stagedCustomVehicleDefs.end())
+			applyPlateConfig(itStaged->second);
+		auto itComm = customVehicleDefs.find(customModelId);
+		if (itComm != customVehicleDefs.end())
+			applyPlateConfig(itComm->second);
 	}
 
 	if (core_)
@@ -2196,6 +2254,41 @@ bool GetCustomVehicleModelStance(uint32_t customModelId, float& frontScale, floa
 		rearCamber = itStaged->second.offsets.rearCamber;
 		frontTrackWidth = itStaged->second.offsets.frontTrackWidth;
 		rearTrackWidth = itStaged->second.offsets.rearTrackWidth;
+		return true;
+	}
+	return false;
+}
+
+bool SetCustomVehicleModelPlateText(uint32_t customModelId, const std::string& plateText)
+{
+	auto itStaged = stagedCustomVehicleDefs.find(customModelId);
+	if (itStaged != stagedCustomVehicleDefs.end())
+	{
+		std::strncpy(itStaged->second.defaultPlateText, plateText.c_str(), sizeof(itStaged->second.defaultPlateText) - 1);
+		itStaged->second.defaultPlateText[sizeof(itStaged->second.defaultPlateText) - 1] = '\0';
+	}
+	auto itComm = customVehicleDefs.find(customModelId);
+	if (itComm != customVehicleDefs.end())
+	{
+		std::strncpy(itComm->second.defaultPlateText, plateText.c_str(), sizeof(itComm->second.defaultPlateText) - 1);
+		itComm->second.defaultPlateText[sizeof(itComm->second.defaultPlateText) - 1] = '\0';
+		SendCustomVehicleDefToAll(customModelId);
+	}
+	return itStaged != stagedCustomVehicleDefs.end() || itComm != customVehicleDefs.end();
+}
+
+bool GetCustomVehicleModelPlateText(uint32_t customModelId, std::string& plateText)
+{
+	auto itComm = customVehicleDefs.find(customModelId);
+	if (itComm != customVehicleDefs.end())
+	{
+		plateText = itComm->second.defaultPlateText;
+		return true;
+	}
+	auto itStaged = stagedCustomVehicleDefs.find(customModelId);
+	if (itStaged != stagedCustomVehicleDefs.end())
+	{
+		plateText = itStaged->second.defaultPlateText;
 		return true;
 	}
 	return false;

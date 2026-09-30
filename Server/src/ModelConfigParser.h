@@ -26,6 +26,7 @@ struct ModelConfig
 	int16_t engineOffSound = -1;
 	int16_t accelerateSound = -1;
 	int16_t decelerateSound = -1;
+	std::string plateText;
 
 	// [ide]
 	bool hasIde = false;

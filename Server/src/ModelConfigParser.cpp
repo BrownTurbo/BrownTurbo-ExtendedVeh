@@ -554,6 +554,10 @@ bool ModelConfigParser::ParseString(const std::string& content, ModelConfig& out
 					else
 						logWarn("Invalid decelerateSound '%s' (expected -1..32767)", val.c_str());
 				}
+				else if (lowerKey == "platetext" || lowerKey == "plate" || lowerKey == "defaultplate" || lowerKey == "numberplate")
+				{
+					outConfig.plateText = val;
+				}
 			}
 			else if (currentSection == "ide" || currentSection == "vehicle" || currentSection == "vehicles")
 			{
@@ -1462,6 +1466,13 @@ bool ModelConfigParser::ParseString(const std::string& content, ModelConfig& out
 						outConfig.frontCamber = f;
 						outConfig.rearCamber = f;
 					}
+				}
+			}
+			else if (currentSection == "plate" || currentSection == "numberplate")
+			{
+				if (lowerKey == "text" || lowerKey == "platetext" || lowerKey == "plate" || lowerKey == "defaultplate")
+				{
+					outConfig.plateText = val;
 				}
 			}
 			else if (currentSection == "audio")

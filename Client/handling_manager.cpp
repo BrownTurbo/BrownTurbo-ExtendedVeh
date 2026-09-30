@@ -1606,6 +1606,15 @@ bool HandlingManager::ProcessAction(CustomVehAction action, RakNet::BitStream* b
 		}
 		return true;
 	}
+	case static_cast<CustomVehAction>(CustomVeh::Protocol::Action::SetVehiclePlate): {
+		CustomVeh::Protocol::VehiclePlatePacket pkt {};
+		if (bs->Read(reinterpret_cast<char*>(&pkt), sizeof(pkt))) {
+			pkt.plateText[sizeof(pkt.plateText) - 1] = '\0';
+			ClientLog(LogLevel::Info, std::format("SetVehiclePlate: vehId={}, plateText='{}'", pkt.sampVehicleId, pkt.plateText));
+			CustomVehicleBindingManager::Instance().SetVehiclePlateText(pkt.sampVehicleId, pkt.plateText);
+		}
+		return true;
+	}
 	case static_cast<CustomVehAction>(CustomVeh::Protocol::Action::SetVehicleExtras): {
 		CustomVeh::Protocol::VehicleExtrasPacket extras {};
 		if (bs->Read(reinterpret_cast<char*>(&extras), sizeof(extras))) {
