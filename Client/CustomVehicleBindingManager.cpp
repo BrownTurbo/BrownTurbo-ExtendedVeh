@@ -247,7 +247,15 @@ void CustomVehicleBindingManager::Unbind(uint16_t vehicleId)
 					vehicle->m_placement = savedPlacement;
 
 					if (vehicle->m_nVehicleSubClass == VEHICLE_AUTOMOBILE || vehicle->m_nVehicleSubClass == VEHICLE_MTRUCK || vehicle->m_nVehicleSubClass == VEHICLE_QUAD) {
-						reinterpret_cast<CAutomobile*>(vehicle)->SetupModelNodes();
+						auto* car = reinterpret_cast<CAutomobile*>(vehicle);
+						car->SetupModelNodes();
+						for (int p = 0; p < 3; ++p) {
+							short frameId = car->m_panels[p].m_nFrameId;
+							if (frameId >= 0 && (frameId >= CAR_NUM_NODES || !car->m_aCarNodes[frameId])) {
+								car->m_panels[p].m_nFrameId = -1;
+								car->m_panels[p].ResetPanel();
+							}
+						}
 					} else if (vehicle->m_nVehicleSubClass == VEHICLE_BIKE || vehicle->m_nVehicleSubClass == VEHICLE_BMX) {
 						reinterpret_cast<CBike*>(vehicle)->SetupModelNodes();
 					} else if (vehicle->m_nVehicleSubClass == VEHICLE_BOAT) {
@@ -467,7 +475,15 @@ void CustomVehicleBindingManager::Process()
 				}
 
 				if (vehicle->m_nVehicleSubClass == VEHICLE_AUTOMOBILE || vehicle->m_nVehicleSubClass == VEHICLE_MTRUCK || vehicle->m_nVehicleSubClass == VEHICLE_QUAD) {
-					reinterpret_cast<CAutomobile*>(vehicle)->SetupModelNodes();
+					auto* car = reinterpret_cast<CAutomobile*>(vehicle);
+					car->SetupModelNodes();
+					for (int p = 0; p < 3; ++p) {
+						short frameId = car->m_panels[p].m_nFrameId;
+						if (frameId >= 0 && (frameId >= CAR_NUM_NODES || !car->m_aCarNodes[frameId])) {
+							car->m_panels[p].m_nFrameId = -1;
+							car->m_panels[p].ResetPanel();
+						}
+					}
 				} else if (vehicle->m_nVehicleSubClass == VEHICLE_BIKE || vehicle->m_nVehicleSubClass == VEHICLE_BMX) {
 					reinterpret_cast<CBike*>(vehicle)->SetupModelNodes();
 				} else if (vehicle->m_nVehicleSubClass == VEHICLE_BOAT) {

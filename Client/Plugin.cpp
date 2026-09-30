@@ -837,6 +837,22 @@ static RwStream* __cdecl Hooked_ClumpCollisionRead(RwStream* stream, unsigned in
 	return g_origClumpCollisionRead ? g_origClumpCollisionRead(stream, length, object, offsetInObject) : stream;
 }
 
+static void(__fastcall* g_origBouncingPanel_ProcessPanel)(CBouncingPanel* thisPanel, void* edx, CVehicle* vehicle, RwFrame* frame, CVector arg2, CVector arg3, float arg4, float arg5) = nullptr;
+
+static void __fastcall Hooked_BouncingPanel_ProcessPanel(CBouncingPanel* thisPanel, void* edx, CVehicle* vehicle, RwFrame* frame, CVector arg2, CVector arg3, float arg4, float arg5)
+{
+	if (!frame || !vehicle) {
+		if (thisPanel) {
+			thisPanel->m_nFrameId = -1;
+			thisPanel->ResetPanel();
+		}
+		return;
+	}
+	if (g_origBouncingPanel_ProcessPanel) {
+		g_origBouncingPanel_ProcessPanel(thisPanel, edx, vehicle, frame, arg2, arg3, arg4, arg5);
+	}
+}
+
 static void(__fastcall* g_origCAutomobile_PreRender)(CAutomobile* thisCar, void* edx) = nullptr;
 
 static void __fastcall Hooked_CAutomobile_PreRender(CAutomobile* thisCar, void* edx)
@@ -3202,6 +3218,18 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD dwReason, LPVOID lpReserved)
 			ClientLog(LogLevel::Error, std::format("Failed to hook CAutomobile::PreRender (0x6AAB50): {}", MH_StatusToString(preRenderStatus)));
 		}
 
+		MH_STATUS bpStatus = MH_CreateHook(reinterpret_cast<void*>(0x6F49A0), reinterpret_cast<void*>(&Hooked_BouncingPanel_ProcessPanel), reinterpret_cast<void**>(&g_origBouncingPanel_ProcessPanel));
+		if (bpStatus == MH_OK) {
+			MH_STATUS enableStatus = MH_EnableHook(reinterpret_cast<void*>(0x6F49A0));
+			if (enableStatus == MH_OK) {
+				ClientLog(LogLevel::Info, "CBouncingPanel::ProcessPanel (0x6F49A0) hooked successfully via MinHook");
+			} else {
+				ClientLog(LogLevel::Error, std::format("Failed to enable CBouncingPanel::ProcessPanel hook: {}", MH_StatusToString(enableStatus)));
+			}
+		} else {
+			ClientLog(LogLevel::Error, std::format("Failed to hook CBouncingPanel::ProcessPanel (0x6F49A0): {}", MH_StatusToString(bpStatus)));
+		}
+
 		MH_STATUS dffColStatus = MH_CreateHook(reinterpret_cast<void*>(0x41B1D0), reinterpret_cast<void*>(&Hooked_ClumpCollisionRead), reinterpret_cast<void**>(&g_origClumpCollisionRead));
 		if (dffColStatus == MH_OK) {
 			MH_STATUS enableStatus = MH_EnableHook(reinterpret_cast<void*>(0x41B1D0));
@@ -3456,6 +3484,12 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD dwReason, LPVOID lpReserved)
 			MH_DisableHook(reinterpret_cast<void*>(0x535300));
 			MH_RemoveHook(reinterpret_cast<void*>(0x535300));
 			g_origGetColModel = nullptr;
+		}
+
+		if (g_origBouncingPanel_ProcessPanel) {
+			MH_DisableHook(reinterpret_cast<void*>(0x6F49A0));
+			MH_RemoveHook(reinterpret_cast<void*>(0x6F49A0));
+			g_origBouncingPanel_ProcessPanel = nullptr;
 		}
 
 		rakhook::on_receive_rpc.clear();

@@ -171,6 +171,10 @@ public:
 		newModel->m_nRefCount = 0;
 		newModel->SetIsLod(0);
 		newModel->bDoWeOwnTheColModel = 0;
+		newModel->m_pPlateMaterial = nullptr;
+		std::memset(newModel->m_szPlateText, 0, sizeof(newModel->m_szPlateText));
+		std::memset(newModel->m_apDirtMaterials, 0, sizeof(newModel->m_apDirtMaterials));
+		newModel->m_pAnimBlock = nullptr;
 
 		CBaseModelInfo* handlingBase = GetEngineModelInfo(static_cast<int>(def.handlingBaseModel));
 		if (handlingBase && handlingBase->GetModelType() == MODEL_INFO_VEHICLE) {
@@ -411,12 +415,9 @@ public:
 	{
 		auto it = s_customModels.find(id);
 		if (it != s_customModels.end()) {
-			ClientLog(LogLevel::Debug, std::format("GetCustomModel: matched Custom model Identifier. id={}", id));
 			return it->second->modelInfo;
-		} else {
-			ClientLog(LogLevel::Error, std::format("GetCustomModel: failed to match Custom model Identifier. id={}", id));
-			return nullptr;
 		}
+		return nullptr;
 	}
 
 	static bool IsCustomModel(uint32_t id)
