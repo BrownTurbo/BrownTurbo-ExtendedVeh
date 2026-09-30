@@ -2338,9 +2338,20 @@ public:
 	void RequestClearAllCustomModels()
 	{
 		{
+			std::lock_guard<std::mutex> lock(m_pendingDefMutex);
+			while (!m_pendingDefQueue.empty())
+				m_pendingDefQueue.pop();
+			m_activeModelIds.clear();
+		}
+		{
 			std::lock_guard<std::mutex> lock(m_pendingFinalizeMutex);
 			while (!m_pendingFinalizeQueue.empty())
 				m_pendingFinalizeQueue.pop();
+		}
+		{
+			std::lock_guard<std::mutex> lock(m_queueMutex);
+			while (!m_completedQueue.empty())
+				m_completedQueue.pop();
 		}
 		m_pendingClearAll.store(true, std::memory_order_relaxed);
 	}
@@ -2348,23 +2359,6 @@ public:
 	void ProcessPendingClearAll()
 	{
 		if (m_pendingClearAll.exchange(false, std::memory_order_relaxed)) {
-			// Drop all queued model work before destroying streaming data
-			{
-				std::lock_guard<std::mutex> lock(m_pendingDefMutex);
-				while (!m_pendingDefQueue.empty())
-					m_pendingDefQueue.pop();
-				m_activeModelIds.clear(); // allow fresh VehicleDefinitions after reconnect
-			}
-			{
-				std::lock_guard<std::mutex> lock(m_pendingFinalizeMutex);
-				while (!m_pendingFinalizeQueue.empty())
-					m_pendingFinalizeQueue.pop();
-			}
-			{
-				std::lock_guard<std::mutex> lock(m_queueMutex);
-				while (!m_completedQueue.empty())
-					m_completedQueue.pop();
-			}
 			CustomVehicleBindingManager::Instance().Clear();
 			StreamingExtender::ClearAllCustomModels();
 		}
@@ -2414,6 +2408,7 @@ void InitializeHooks()
 			ClientLog(LogLevel::Info, "Received RPC_InitGame (139), sending init packet...");
 			_customVehInstance.SetLocalPlayerSpawned(false);
 			g_windowVisible.store(false, std::memory_order_relaxed);
+			ResetTransferWindowState();
 			ModelTransferClient::Instance().ClearHistory();
 			_customVehInstance.RequestClearAllCustomModels();
 			if (!HandlingManager::ProcessAction(ACTION_RESET_ALL, nullptr)) {
@@ -2453,6 +2448,7 @@ void InitializeHooks()
 			ClientLog(LogLevel::Info, "Received RPC_GameModeRestart (142), resetting session state and re-sending init packet...");
 			_customVehInstance.SetLocalPlayerSpawned(false);
 			g_windowVisible.store(false, std::memory_order_relaxed);
+			ResetTransferWindowState();
 			HandlingManager::m_isServerAuthorized.store(false, std::memory_order_release);
 			ModelTransferClient::Instance().CancelAll("gamemode restart");
 			ModelTransferClient::Instance().ClearHistory();
@@ -2468,6 +2464,7 @@ void InitializeHooks()
 			ClientLog(LogLevel::Info, "Received RPC_ServerQuit (166).");
 			_customVehInstance.SetLocalPlayerSpawned(false);
 			g_windowVisible.store(false, std::memory_order_relaxed);
+			ResetTransferWindowState();
 			HandlingManager::m_isServerAuthorized.store(false, std::memory_order_release);
 			return true;
 		}
@@ -2528,6 +2525,7 @@ void InitializeHooks()
 			ModelCache::Instance().ReloadManifest();
 			_customVehInstance.SetLocalPlayerSpawned(false);
 			g_windowVisible.store(false, std::memory_order_relaxed);
+			ResetTransferWindowState();
 			ModelTransferClient::Instance().ClearHistory();
 			_customVehInstance.RequestClearAllCustomModels();
 			if (!HandlingManager::ProcessAction(ACTION_RESET_ALL, nullptr)) {
@@ -2544,6 +2542,7 @@ void InitializeHooks()
 			_customVehInstance.SetLocalPlayerSpawned(false);
 			// Hide download window on disconnect
 			g_windowVisible.store(false, std::memory_order_relaxed);
+			ResetTransferWindowState();
 			HandlingManager::m_isServerAuthorized.store(false, std::memory_order_release);
 			ModelTransferClient::Instance().CancelAll("server connection lost");
 			ModelTransferClient::Instance().ClearHistory();

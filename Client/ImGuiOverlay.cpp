@@ -47,6 +47,12 @@ static inline const char* GetModelFileKindName(ModelFileKind kind)
 	return "UNKNOWN";
 }
 
+static auto s_allDoneTime = (std::chrono::steady_clock::time_point::min)();
+void ResetTransferWindowState()
+{
+	s_allDoneTime = (std::chrono::steady_clock::time_point::min)();
+}
+
 void RenderTransferWindow()
 {
 	LogImGuiStage("RenderTransferWindow begin");
@@ -120,7 +126,6 @@ void RenderTransferWindow()
 		ImGui::ProgressBar(totalFraction, ImVec2(-1, 0), buf);
 	}
 
-	static auto s_allDoneTime = (std::chrono::steady_clock::time_point::min)();
 	if (allDone) {
 		if (s_allDoneTime == (std::chrono::steady_clock::time_point::min)()) {
 			s_allDoneTime = std::chrono::steady_clock::now();
@@ -432,6 +437,8 @@ HRESULT __stdcall hkEndScene(IDirect3DDevice9* pDevice)
 
 	if (ImGui::GetCurrentContext() != nullptr && g_windowVisible.load(std::memory_order_acquire)) {
 		ImGuiIO& io = ImGui::GetIO();
+
+		ClipCursor(nullptr);
 		io.MouseDrawCursor = true;
 
 		IDirect3DStateBlock9* stateBlock = nullptr;

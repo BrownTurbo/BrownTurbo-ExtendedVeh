@@ -44,26 +44,37 @@ private:
 		CVehicleModelInfo* modelInfo = nullptr;
 	};
 	static inline std::unordered_map<uint32_t, CustomModelEntry*> s_customModels;
-	static constexpr int CUSTOM_GTA_MODEL_BASE = 19000;
+	static constexpr int CUSTOM_GTA_MODEL_PREFERRED_BASE = 11000;
 
 	static int AllocateGtaModelSlot()
 	{
 		auto** table = GetModelInfoTable();
-		for (int slot = CUSTOM_GTA_MODEL_BASE; slot < TOTAL_GTA_MODEL_COUNT; ++slot) {
-			if (table[slot] != nullptr)
-				continue;
-			bool alreadyClaimed = false;
-			for (auto& [id, e] : s_customModels) {
-				if (e && e->gtaModelSlot == slot) {
-					alreadyClaimed = true;
-					break;
-				}
-			}
-			if (!alreadyClaimed)
-				return slot;
-		}
 
-		ClientLog(LogLevel::Error, std::format("[Streaming] AllocateGtaModelSlot: exhausted range [{}, {}). s_customModels has {} entries.", CUSTOM_GTA_MODEL_BASE, TOTAL_GTA_MODEL_COUNT, static_cast<int>(s_customModels.size())));
+		auto tryRange = [&](int rangeStart, int rangeEnd) -> int {
+			for (int slot = rangeStart; slot < rangeEnd; ++slot) {
+				if (table[slot] != nullptr)
+					continue;
+				bool alreadyClaimed = false;
+				for (auto& [id, e] : s_customModels) {
+					if (e && e->gtaModelSlot == slot) {
+						alreadyClaimed = true;
+						break;
+					}
+				}
+				if (!alreadyClaimed)
+					return slot;
+			}
+			return -1;
+		};
+
+		int slot = tryRange(CUSTOM_GTA_MODEL_PREFERRED_BASE, TOTAL_GTA_MODEL_COUNT);
+		if (slot >= 0)
+			return slot;
+		slot = tryRange(0, CUSTOM_GTA_MODEL_PREFERRED_BASE);
+		if (slot >= 0)
+			return slot;
+
+		ClientLog(LogLevel::Error, std::format("[Streaming] AllocateGtaModelSlot: exhausted entire table [0, {}). s_customModels has {} entries.", TOTAL_GTA_MODEL_COUNT, static_cast<int>(s_customModels.size())));
 		return -1;
 	}
 

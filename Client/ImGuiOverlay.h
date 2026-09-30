@@ -40,3 +40,9 @@ inline bool g_bwasInitialized = false;
 inline bool imGuiOn = false;
 inline std::atomic<bool> g_windowVisible { false };
 inline std::atomic<bool> g_manuallyToggled { false };
+
+// Resets the auto-close countdown timer in RenderTransferWindow.
+// Must be called whenever g_windowVisible is set to false (reset / disconnect /
+// game-mode restart) — otherwise the stale timestamp fires allDone=true on the
+// very first empty frame of the new session and produces a duplicate window.
+void ResetTransferWindowState();
