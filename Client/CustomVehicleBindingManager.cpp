@@ -21,11 +21,11 @@
 #include <algorithm>
 #include <atomic>
 #include <cmath>
+#include <cstring>
 #include <format>
 #include <fstream>
 #include <shared_mutex>
 #include <sstream>
-#include <cstring>
 #include <unordered_set>
 
 static bool IsFrameOrChildOf(RwFrame* frame, RwFrame* targetParent)
@@ -82,7 +82,8 @@ static void ApplyExtrasToClump(RpClump* clump, uint8_t mask)
 			RpAtomicSetFlags(atomic, 0);
 		}
 		return atomic;
-	}, nullptr);
+	},
+		nullptr);
 
 	// Second pass: For any bit enabled in mask (bits 0..7), enable that extra's atomics
 	for (int i = 1; i <= 8; ++i) {
@@ -117,7 +118,8 @@ static void ApplyExtrasToClump(RpClump* clump, uint8_t mask)
 				RpAtomicSetFlags(atomic, rpATOMICRENDER);
 			}
 			return atomic;
-		}, &ctx);
+		},
+			&ctx);
 	}
 }
 
@@ -295,11 +297,12 @@ void CustomVehicleBindingManager::Unbind(uint16_t vehicleId)
 							const char* name = GetFrameNodeName(frame);
 							if (name && strstr(name, "_vlo")) {
 								RpAtomicSetFlags(atomic, 0);
-								CVisibilityPlugins::SetAtomicRenderCallback(atomic, (RpAtomic*(*)(RpAtomic*))0x7331E0);
+								CVisibilityPlugins::SetAtomicRenderCallback(atomic, (RpAtomic * (*)(RpAtomic*))0x7331E0);
 							}
 						}
 						return atomic;
-					}, nullptr);
+					},
+						nullptr);
 
 					char plateText[32] = {};
 					if (binding.hasCustomPlateText && binding.customPlateText[0] != '\0') {
@@ -500,9 +503,7 @@ void CustomVehicleBindingManager::OnVehicleFixed(CVehicle* vehicle)
 					continue;
 
 				RwFrame* vehFrame = nullptr;
-				if (vehicle->m_nVehicleSubClass == VEHICLE_AUTOMOBILE ||
-				    vehicle->m_nVehicleSubClass == VEHICLE_MTRUCK ||
-				    vehicle->m_nVehicleSubClass == VEHICLE_QUAD) {
+				if (vehicle->m_nVehicleSubClass == VEHICLE_AUTOMOBILE || vehicle->m_nVehicleSubClass == VEHICLE_MTRUCK || vehicle->m_nVehicleSubClass == VEHICLE_QUAD) {
 					auto* car = reinterpret_cast<CAutomobile*>(vehicle);
 					if (node.nodeIdx >= 0 && node.nodeIdx < CAR_NUM_NODES) {
 						vehFrame = car->m_aCarNodes[node.nodeIdx];
@@ -614,11 +615,12 @@ void CustomVehicleBindingManager::OnVehicleFixed(CVehicle* vehicle)
 					const char* name = GetFrameNodeName(frame);
 					if (name && strstr(name, "_vlo")) {
 						RpAtomicSetFlags(atomic, 0);
-						CVisibilityPlugins::SetAtomicRenderCallback(atomic, (RpAtomic*(*)(RpAtomic*))0x7331E0);
+						CVisibilityPlugins::SetAtomicRenderCallback(atomic, (RpAtomic * (*)(RpAtomic*))0x7331E0);
 					}
 				}
 				return atomic;
-			}, nullptr);
+			},
+				nullptr);
 
 			// 5. Restore atomic visibility flags directly from pristine template clump (customModel->m_pRwClump).
 			// This hides _dam meshes, restores _ok meshes, preserves baseline tuning parts (e.g. bumper_f0),
@@ -632,7 +634,8 @@ void CustomVehicleBindingManager::OnVehicleFixed(CVehicle* vehicle)
 				auto* ctx = reinterpret_cast<AtomicSyncContext*>(data);
 				ctx->tmplFlags.push_back(RpAtomicGetFlags(atomic));
 				return atomic;
-			}, &syncCtx);
+			},
+				&syncCtx);
 
 			RpClumpForAllAtomics(clump, [](RpAtomic* atomic, void* data) -> RpAtomic* {
 				auto* ctx = reinterpret_cast<AtomicSyncContext*>(data);
@@ -641,7 +644,8 @@ void CustomVehicleBindingManager::OnVehicleFixed(CVehicle* vehicle)
 					ctx->idx++;
 				}
 				return atomic;
-			}, &syncCtx);
+			},
+				&syncCtx);
 
 			// 6. Re-apply extras mask if a custom mask was set
 			if (b.hasExtras) {
@@ -751,11 +755,12 @@ void CustomVehicleBindingManager::Process()
 						const char* name = GetFrameNodeName(frame);
 						if (name && strstr(name, "_vlo")) {
 							RpAtomicSetFlags(atomic, 0);
-							CVisibilityPlugins::SetAtomicRenderCallback(atomic, (RpAtomic*(*)(RpAtomic*))0x7331E0);
+							CVisibilityPlugins::SetAtomicRenderCallback(atomic, (RpAtomic * (*)(RpAtomic*))0x7331E0);
 						}
 					}
 					return atomic;
-				}, nullptr);
+				},
+					nullptr);
 
 				char plateText[32] = {};
 				bool hasPlate = false;

@@ -3,8 +3,8 @@
 #ifndef RW
 #define RW
 #endif
-#include <RenderWare.h>
 #include "../Shared/CustomVehicleProtocol.hpp"
+#include <RenderWare.h>
 #include <functional>
 #include <mutex>
 #include <string>
