@@ -881,7 +881,8 @@ static bool VehicleComponentHasDamagedAtomic(CVehicle* vehicle, RwFrame* compone
 			}
 		}
 		return atomic;
-	}, &ctx);
+	},
+		&ctx);
 
 	return ctx.hasDam;
 }

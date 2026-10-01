@@ -1149,10 +1149,10 @@ RpAtomic* CustomVehicleBindingManager::CreatePlateQuadAtomic(
 
 					RpGeometryLock(geom, rpGEOMETRYLOCKALL);
 					RwV3d* verts = geom->morphTarget[0].verts;
-					verts[0] = { halfW, 0.0f, halfH };   // Top-Left
-					verts[1] = { -halfW, 0.0f, halfH };  // Top-Right
+					verts[0] = { halfW, 0.0f, halfH }; // Top-Left
+					verts[1] = { -halfW, 0.0f, halfH }; // Top-Right
 					verts[2] = { -halfW, 0.0f, -halfH }; // Bottom-Right
-					verts[3] = { halfW, 0.0f, -halfH };  // Bottom-Left
+					verts[3] = { halfW, 0.0f, -halfH }; // Bottom-Left
 
 					geom->morphTarget[0].boundingSphere.center = { 0.0f, 0.0f, 0.0f };
 					geom->morphTarget[0].boundingSphere.radius = std::sqrt(halfW * halfW + halfH * halfH) + 0.1f;
@@ -1206,10 +1206,10 @@ RpAtomic* CustomVehicleBindingManager::CreatePlateQuadAtomic(
 	RpGeometryLock(geom, rpGEOMETRYLOCKALL);
 
 	RwV3d* verts = geom->morphTarget[0].verts;
-	verts[0] = { halfW, 0.0f, halfH };   // Top-Left
-	verts[1] = { -halfW, 0.0f, halfH };  // Top-Right
+	verts[0] = { halfW, 0.0f, halfH }; // Top-Left
+	verts[1] = { -halfW, 0.0f, halfH }; // Top-Right
 	verts[2] = { -halfW, 0.0f, -halfH }; // Bottom-Right
-	verts[3] = { halfW, 0.0f, -halfH };  // Bottom-Left
+	verts[3] = { halfW, 0.0f, -halfH }; // Bottom-Left
 
 	RwV3d* normals = geom->morphTarget[0].normals;
 	for (int i = 0; i < 4; ++i) {

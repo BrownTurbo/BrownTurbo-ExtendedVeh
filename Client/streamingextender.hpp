@@ -363,10 +363,7 @@ public:
 		// component, and hides the door, causing CJ to open an invisible door in thin air.
 		// Setting these bits ensures GTA SA sets damage state to 2 (DAMAGED) instead of 4 (NOTPRESENT).
 		if (pInfo->m_pVehicleStruct) {
-			pInfo->m_pVehicleStruct->m_nMaskComponentsDamagable |=
-				(1 << CAR_DOOR_RF) | (1 << CAR_DOOR_RR) | (1 << CAR_DOOR_LF) | (1 << CAR_DOOR_LR) |
-				(1 << CAR_BONNET) | (1 << CAR_BOOT) | (1 << CAR_BUMP_FRONT) | (1 << CAR_BUMP_REAR) |
-				(1 << CAR_WING_RF) | (1 << CAR_WING_LF) | (1 << CAR_WINDSCREEN);
+			pInfo->m_pVehicleStruct->m_nMaskComponentsDamagable |= (1 << CAR_DOOR_RF) | (1 << CAR_DOOR_RR) | (1 << CAR_DOOR_LF) | (1 << CAR_DOOR_LR) | (1 << CAR_BONNET) | (1 << CAR_BOOT) | (1 << CAR_BUMP_FRONT) | (1 << CAR_BUMP_REAR) | (1 << CAR_WING_RF) | (1 << CAR_WING_LF) | (1 << CAR_WINDSCREEN);
 		}
 
 		ClientLog(LogLevel::Debug, "FinalizeClump -> BEFORE SetAtomicRenderCallbacks");
