@@ -3799,8 +3799,7 @@ inline bool SetCustomVehicleAllDoorsMissing(IVehicle& vehicle, bool missing)
 	if (cat == CVehicleMgr::VehicleCategory::Bike || cat == CVehicleMgr::VehicleCategory::Bmx || cat == CVehicleMgr::VehicleCategory::Boat || cat == CVehicleMgr::VehicleCategory::Trailer || cat == CVehicleMgr::VehicleCategory::Train)
 	{
 		if (core_)
-			core_->logLn(LogLevel::Warning, "[ExtendedVeh] SetCustomVehicleAllDoorsMissing: Vehicle %d (category '%s') has no doors",
-				vehicleid, CVehicleMgr::GetVehicleCategoryName(cat));
+			core_->logLn(LogLevel::Warning, "[ExtendedVeh] SetCustomVehicleAllDoorsMissing: Vehicle %d (category '%s') has no doors", vehicleid, CVehicleMgr::GetVehicleCategoryName(cat));
 		return false;
 	}
 

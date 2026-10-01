@@ -3,6 +3,7 @@
 #include <cstring>
 #include <unordered_map>
 
+#include "game_sa/CAutomobile.h"
 #include "game_sa/CColModel.h"
 #include "game_sa/CCustomCarPlateMgr.h"
 #include "game_sa/CHandlingDataMgr.h"
@@ -245,6 +246,8 @@ public:
 		static const DummyMapping s_dummyMap[] = {
 			{ 0, { "headlights", "headlights_dummy", "headlight" } }, // LIGHT_FRONT_MAIN
 			{ 1, { "taillights", "taillights_dummy", "taillight" } }, // LIGHT_REAR_MAIN
+			{ 2, { "headlights2", "headlights2_dummy", "headlight2", "headlights_2", "headlight_2" } }, // LIGHT_FRONT_SECONDARY
+			{ 3, { "taillights2", "taillights2_dummy", "taillight2", "taillights_2", "taillight_2" } }, // LIGHT_REAR_SECONDARY
 			{ 4, { "seat_f", "seat_front" } }, // SEAT_FRONT (driver!)
 			{ 5, { "seat_r", "seat_rear" } }, // SEAT_REAR
 			{ 6, { "exhaust", "exhaust_dummy" } }, // EXHAUST
@@ -276,8 +279,8 @@ public:
 					// This prevents overwriting positions GTA:SA filled correctly.
 					if (slot.x == 0.0f && slot.y == 0.0f && slot.z == 0.0f) {
 						slot = CVector(ltm->pos.x, ltm->pos.y, ltm->pos.z);
-						if (mapping.dummyIndex == 0 || mapping.dummyIndex == 1) {
-							// Headlights/taillights: GTA:SA stores abs(X), right side positive
+						if (mapping.dummyIndex >= 0 && mapping.dummyIndex <= 3) {
+							// Headlights/taillights (primary & secondary): GTA:SA stores abs(X), right side positive
 							slot.x = fabsf(slot.x);
 						}
 					}
@@ -353,6 +356,19 @@ public:
 		pInfo->SetClump(pClump); // SetClump allocates m_pVehicleStruct from pool + fills dummies
 		ClientLog(LogLevel::Debug, "FinalizeClump -> AFTER SetClump");
 
+		// Ensure all vehicle doors and panels are marked as damagable in m_nMaskComponentsDamagable.
+		// If a model lacks separate _dam meshes, GTA SA's SetClump does not set these bits.
+		// When damaged, GTA SA (CAutomobile::SetDoorDamage at 0x6B16B3) checks m_nMaskComponentsDamagable:
+		// if the bit is missing, it sets damage state to 4 (DAMSTATE_NOTPRESENT), knocks off the door as a flying
+		// component, and hides the door, causing CJ to open an invisible door in thin air.
+		// Setting these bits ensures GTA SA sets damage state to 2 (DAMAGED) instead of 4 (NOTPRESENT).
+		if (pInfo->m_pVehicleStruct) {
+			pInfo->m_pVehicleStruct->m_nMaskComponentsDamagable |=
+				(1 << CAR_DOOR_RF) | (1 << CAR_DOOR_RR) | (1 << CAR_DOOR_LF) | (1 << CAR_DOOR_LR) |
+				(1 << CAR_BONNET) | (1 << CAR_BOOT) | (1 << CAR_BUMP_FRONT) | (1 << CAR_BUMP_REAR) |
+				(1 << CAR_WING_RF) | (1 << CAR_WING_LF) | (1 << CAR_WINDSCREEN);
+		}
+
 		ClientLog(LogLevel::Debug, "FinalizeClump -> BEFORE SetAtomicRenderCallbacks");
 		pInfo->SetAtomicRenderCallbacks();
 		ClientLog(LogLevel::Debug, "FinalizeClump -> AFTER SetAtomicRenderCallbacks");
@@ -413,10 +429,10 @@ public:
 				&pfc);
 
 			if (pfc.foundMat) {
-				char defaultPlate[] = "SAN ANDREAS";
-				CCustomCarPlateMgr::SetupMaterialPlateTexture(pfc.foundMat, defaultPlate, 0);
 				pInfo->m_pPlateMaterial = pfc.foundMat;
-				strncpy_s(pInfo->m_szPlateText, sizeof(pInfo->m_szPlateText), "SAN ANDREAS", _TRUNCATE);
+				if (pInfo->m_szPlateText[0] != '\0') {
+					CCustomCarPlateMgr::SetupMaterialPlateTexture(pfc.foundMat, pInfo->m_szPlateText, 0);
+				}
 				ClientLog(LogLevel::Info, std::format("FinalizeClump: modelInfo=0x{:X} plate material detected via fallback scanner (mat=0x{:X})", reinterpret_cast<std::uintptr_t>(pInfo), reinterpret_cast<std::uintptr_t>(pfc.foundMat)));
 			}
 		}

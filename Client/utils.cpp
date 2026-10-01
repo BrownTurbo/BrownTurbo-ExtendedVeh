@@ -264,7 +264,8 @@ bool UpdateSampVehiclePlateText(uint16_t sampVehicleId, const char* plateText)
 			return false;
 		auto* veh = pNetGame->m_pPools->m_pVehicle->Get(sampVehicleId);
 		if (veh) {
-			if (std::strncmp(veh->m_szLicensePlateText, plateText, sizeof(veh->m_szLicensePlateText)) != 0 || !veh->m_pLicensePlate) {
+			if (!veh->m_pLicensePlate || strncmp(veh->m_szLicensePlateText, plateText, sizeof(veh->m_szLicensePlateText)) != 0) {
+				strncpy_s(veh->m_szLicensePlateText, sizeof(veh->m_szLicensePlateText), plateText, _TRUNCATE);
 				veh->ShutdownLicensePlate();
 				veh->SetLicensePlateText(plateText);
 				veh->ConstructLicensePlate();
@@ -279,7 +280,8 @@ bool UpdateSampVehiclePlateText(uint16_t sampVehicleId, const char* plateText)
 			return false;
 		auto* veh = pNetGame->m_pPools->m_pVehicle->Get(sampVehicleId);
 		if (veh) {
-			if (std::strncmp(veh->m_szLicensePlateText, plateText, sizeof(veh->m_szLicensePlateText)) != 0 || !veh->m_pLicensePlate) {
+			if (!veh->m_pLicensePlate || strncmp(veh->m_szLicensePlateText, plateText, sizeof(veh->m_szLicensePlateText)) != 0) {
+				strncpy_s(veh->m_szLicensePlateText, sizeof(veh->m_szLicensePlateText), plateText, _TRUNCATE);
 				veh->ShutdownLicensePlate();
 				veh->SetLicensePlateText(plateText);
 				veh->ConstructLicensePlate();
@@ -294,7 +296,8 @@ bool UpdateSampVehiclePlateText(uint16_t sampVehicleId, const char* plateText)
 			return false;
 		auto* veh = pNetGame->m_pPools->m_pVehicle->Get(sampVehicleId);
 		if (veh) {
-			if (std::strncmp(veh->m_szLicensePlateText, plateText, sizeof(veh->m_szLicensePlateText)) != 0 || !veh->m_pLicensePlate) {
+			if (!veh->m_pLicensePlate || strncmp(veh->m_szLicensePlateText, plateText, sizeof(veh->m_szLicensePlateText)) != 0) {
+				strncpy_s(veh->m_szLicensePlateText, sizeof(veh->m_szLicensePlateText), plateText, _TRUNCATE);
 				veh->ShutdownLicensePlate();
 				veh->SetLicensePlateText(plateText);
 				veh->ConstructLicensePlate();
@@ -309,7 +312,8 @@ bool UpdateSampVehiclePlateText(uint16_t sampVehicleId, const char* plateText)
 			return false;
 		auto* veh = pNetGame->m_pPools->m_pVehicle->Get(sampVehicleId);
 		if (veh) {
-			if (std::strncmp(veh->m_szLicensePlateText, plateText, sizeof(veh->m_szLicensePlateText)) != 0 || !veh->m_pLicensePlate) {
+			if (!veh->m_pLicensePlate || strncmp(veh->m_szLicensePlateText, plateText, sizeof(veh->m_szLicensePlateText)) != 0) {
+				strncpy_s(veh->m_szLicensePlateText, sizeof(veh->m_szLicensePlateText), plateText, _TRUNCATE);
 				veh->ShutdownLicensePlate();
 				veh->SetLicensePlateText(plateText);
 				veh->ConstructLicensePlate();

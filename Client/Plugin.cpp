@@ -677,8 +677,8 @@ static bool __fastcall Hooked_DoHeadLightEffect(CVehicle* thisVehicle, void* edx
 				binding->lastHeadlightActiveTick = GetTickCount();
 			}
 
-			// If dummyId == 2 (secondary headlight), only allow if custom model actually has headlights2
-			if (dummyId == 2) {
+			// If dummyId == 1 (secondary headlight), only allow if custom model actually has headlights2
+			if (dummyId == 1) {
 				auto* customModel = StreamingExtender::GetCustomModel(binding->customModelId);
 				if (!customModel || !customModel->m_pRwClump || CClumpModelInfo::GetFrameFromName(customModel->m_pRwClump, "headlights2") == nullptr) {
 					s_pCurrentHeadLightVehicle = nullptr;
@@ -697,6 +697,14 @@ static bool __fastcall Hooked_DoHeadLightEffect(CVehicle* thisVehicle, void* edx
 			DummySwapGuard guard(baseModel, customModel);
 			if (g_origDoHeadLightEffect) {
 				res = g_origDoHeadLightEffect(thisVehicle, edx, dummyId, vehicleMatrix, lightId, lightState);
+
+				// If rendering primary headlights (dummyId == 0), also render secondary headlights (dummyId == 1) if present
+				if (dummyId == 0 && customModel && customModel->m_pVehicleStruct) {
+					const CVector& dummy2 = customModel->m_pVehicleStruct->m_avDummyPos[2];
+					if (dummy2.x != 0.0f || dummy2.y != 0.0f || dummy2.z != 0.0f) {
+						g_origDoHeadLightEffect(thisVehicle, edx, 1, vehicleMatrix, lightId, lightState);
+					}
+				}
 			}
 			s_pCurrentHeadLightVehicle = nullptr;
 			return res;
@@ -834,6 +842,82 @@ static void __fastcall Hooked_DoVehicleLights(CVehicle* thisVehicle, void* edx, 
 
 	if (g_origDoVehicleLights) {
 		g_origDoVehicleLights(thisVehicle, edx, matrix, flags);
+	}
+}
+
+static bool IsFrameOrChildOf(RwFrame* frame, RwFrame* targetParent)
+{
+	for (RwFrame* f = frame; f != nullptr; f = RwFrameGetParent(f)) {
+		if (f == targetParent)
+			return true;
+	}
+	return false;
+}
+
+static void(__fastcall* g_origSetComponentVisibility)(CVehicle* thisVehicle, void* edx, RwFrame* component, unsigned int visibilityState) = nullptr;
+
+static bool VehicleComponentHasDamagedAtomic(CVehicle* vehicle, RwFrame* component)
+{
+	if (!vehicle || !vehicle->m_pRwObject || !component)
+		return false;
+
+	RpClump* clump = reinterpret_cast<RpClump*>(vehicle->m_pRwObject);
+	struct CheckCtx {
+		RwFrame* targetComponent;
+		bool hasDam { false };
+	} ctx { component, false };
+
+	RpClumpForAllAtomics(clump, [](RpAtomic* atomic, void* data) -> RpAtomic* {
+		auto* c = reinterpret_cast<CheckCtx*>(data);
+		if (c->hasDam)
+			return nullptr;
+
+		RwFrame* frame = RpAtomicGetFrame(atomic);
+		if (IsFrameOrChildOf(frame, c->targetComponent)) {
+			short userVal = CVisibilityPlugins::GetUserValue(atomic);
+			if ((userVal & 3) == 2) { // 2 == DAMAGED (_dam)
+				c->hasDam = true;
+				return nullptr;
+			}
+		}
+		return atomic;
+	}, &ctx);
+
+	return ctx.hasDam;
+}
+
+static void __fastcall Hooked_SetComponentVisibility(CVehicle* thisVehicle, void* edx, RwFrame* component, unsigned int visibilityState)
+{
+	if (!thisVehicle || !component) {
+		if (g_origSetComponentVisibility)
+			g_origSetComponentVisibility(thisVehicle, edx, component, visibilityState);
+		return;
+	}
+
+	unsigned int effectiveState = visibilityState;
+	if (visibilityState == 2) {
+		// When damaged state (2) is requested, check if the component hierarchy has any _dam atomic.
+		// If the 3D model lacks a _dam mesh (common in modded vehicles), falling back to state 1 (_ok)
+		// prevents doors, bonnets, boots, and bumpers from vanishing into thin air while the
+		// ped plays enter/exit door animations on the non-existent invisible door.
+		if (!VehicleComponentHasDamagedAtomic(thisVehicle, component)) {
+			effectiveState = 1; // Keep _ok mesh visible
+		}
+
+		// Preserve vehicle damage flag in GTA SA (normally set at 0x6D2713 / 0x401EA2 when visibilityState == 2)
+		reinterpret_cast<uint8_t*>(thisVehicle)[0x42A] |= 1;
+	} else if (visibilityState == 0) {
+		// When hidden/detached state (0) is requested, if the component hierarchy has NO _dam atomic,
+		// the vehicle is a custom model without breakable doors/panels. Falling back to state 1 (_ok)
+		// ensures the door stays attached and rendered, completely eliminating ghost door opening animations
+		// where the player opens an invisible door in thin air.
+		if (!VehicleComponentHasDamagedAtomic(thisVehicle, component)) {
+			effectiveState = 1; // Keep _ok mesh visible
+		}
+	}
+
+	if (g_origSetComponentVisibility) {
+		g_origSetComponentVisibility(thisVehicle, edx, component, effectiveState);
 	}
 }
 
@@ -2230,6 +2314,18 @@ private:
 		CTxdStore::PopCurrentTxd();
 		ClientLog(LogLevel::Info, std::format("Model {} finalized successfully. modelInfo=0x{:X}, rwClump=0x{:X}, txdSlot={}", pending->def.customModelId, reinterpret_cast<std::uintptr_t>(newModel), reinterpret_cast<std::uintptr_t>(newModel->m_pRwClump), newModel->m_nTxdIndex));
 
+		if (pending->def.defaultPlateText[0] != '\0') {
+			CustomVehicleBindingManager::SetModelDefaultPlateText(pending->def.customModelId, pending->def.defaultPlateText);
+			strncpy_s(newModel->m_szPlateText, sizeof(newModel->m_szPlateText), pending->def.defaultPlateText, _TRUNCATE);
+		}
+		std::string defaultPlate = CustomVehicleBindingManager::GetModelDefaultPlateText(pending->def.customModelId);
+		if (!defaultPlate.empty()) {
+			strncpy_s(newModel->m_szPlateText, sizeof(newModel->m_szPlateText), defaultPlate.c_str(), _TRUNCATE);
+			if (newModel->m_pRwClump) {
+				CustomVehicleBindingManager::ApplyPlateToClump(newModel->m_pRwClump, newModel, defaultPlate.c_str(), nullptr, pending->def.customModelId);
+			}
+		}
+
 		if (pending->def.flags & CustomVeh::Protocol::HasAnyAudio) {
 			AudioExtender::RegisterCustomAudio(
 				pending->def.customModelId,
@@ -3296,6 +3392,18 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD dwReason, LPVOID lpReserved)
 			ClientLog(LogLevel::Error, std::format("Failed to hook CVehicle::DoVehicleLights (0x6E1A60): {}", MH_StatusToString(vlStatus)));
 		}
 
+		MH_STATUS scvStatus = MH_CreateHook(reinterpret_cast<void*>(0x6D2700), reinterpret_cast<void*>(&Hooked_SetComponentVisibility), reinterpret_cast<void**>(&g_origSetComponentVisibility));
+		if (scvStatus == MH_OK) {
+			MH_STATUS enableStatus = MH_EnableHook(reinterpret_cast<void*>(0x6D2700));
+			if (enableStatus == MH_OK) {
+				ClientLog(LogLevel::Info, "CVehicle::SetComponentVisibility (0x6D2700) hooked successfully via MinHook");
+			} else {
+				ClientLog(LogLevel::Error, std::format("Failed to enable CVehicle::SetComponentVisibility hook: {}", MH_StatusToString(enableStatus)));
+			}
+		} else {
+			ClientLog(LogLevel::Error, std::format("Failed to hook CVehicle::SetComponentVisibility (0x6D2700): {}", MH_StatusToString(scvStatus)));
+		}
+
 		MH_STATUS preRenderStatus = MH_CreateHook(reinterpret_cast<void*>(0x6AAB50), reinterpret_cast<void*>(&Hooked_CAutomobile_PreRender), reinterpret_cast<void**>(&g_origCAutomobile_PreRender));
 		if (preRenderStatus == MH_OK) {
 			MH_STATUS enableStatus = MH_EnableHook(reinterpret_cast<void*>(0x6AAB50));
@@ -3502,6 +3610,12 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD dwReason, LPVOID lpReserved)
 			MH_DisableHook(reinterpret_cast<void*>(0x6E1A60));
 			MH_RemoveHook(reinterpret_cast<void*>(0x6E1A60));
 			g_origDoVehicleLights = nullptr;
+		}
+
+		if (g_origSetComponentVisibility) {
+			MH_DisableHook(reinterpret_cast<void*>(0x6D2700));
+			MH_RemoveHook(reinterpret_cast<void*>(0x6D2700));
+			g_origSetComponentVisibility = nullptr;
 		}
 
 		if (g_origCAutomobile_PreRender) {

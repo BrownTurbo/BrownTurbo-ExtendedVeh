@@ -326,9 +326,7 @@ void CustomVehicleBindingManager::Clear()
 		HandlingManager::DecrementModelUse(binding.customModelId);
 	}
 	m_bindings.clear();
-	s_modelOffsets.clear();
-	s_modelDefaultPlateText.clear();
-	ClientLog(LogLevel::Info, "CustomVehicleBindingManager::Clear: All bindings and model offsets cleared.");
+	ClientLog(LogLevel::Info, "CustomVehicleBindingManager::Clear: All bindings cleared.");
 }
 
 CustomVehicleBindingManager::Binding* CustomVehicleBindingManager::Find(uint16_t vehicleId)
@@ -470,13 +468,21 @@ void CustomVehicleBindingManager::Process()
 				if (binding.hasCustomPlateText && binding.customPlateText[0] != '\0') {
 					strncpy_s(plateText, sizeof(plateText), binding.customPlateText, _TRUNCATE);
 					hasPlate = true;
-				} else if (GetVehiclePlateText(vehicleId, plateText, sizeof(plateText)) && plateText[0] != '\0') {
-					hasPlate = true;
 				} else {
-					auto defIt = s_modelDefaultPlateText.find(binding.customModelId);
-					if (defIt != s_modelDefaultPlateText.end() && !defIt->second.empty()) {
-						strncpy_s(plateText, sizeof(plateText), defIt->second.c_str(), _TRUNCATE);
+					char sampPlate[32] = {};
+					bool gotSamp = GetVehiclePlateText(vehicleId, sampPlate, sizeof(sampPlate)) && sampPlate[0] != '\0';
+					if (gotSamp && _stricmp(sampPlate, "SAN ANDREAS") != 0) {
+						strncpy_s(plateText, sizeof(plateText), sampPlate, _TRUNCATE);
 						hasPlate = true;
+					} else {
+						auto defIt = s_modelDefaultPlateText.find(binding.customModelId);
+						if (defIt != s_modelDefaultPlateText.end() && !defIt->second.empty()) {
+							strncpy_s(plateText, sizeof(plateText), defIt->second.c_str(), _TRUNCATE);
+							hasPlate = true;
+						} else if (gotSamp) {
+							strncpy_s(plateText, sizeof(plateText), sampPlate, _TRUNCATE);
+							hasPlate = true;
+						}
 					}
 				}
 
@@ -682,14 +688,27 @@ void CustomVehicleBindingManager::Process()
 			if (binding.hasCustomPlateText && binding.customPlateText[0] != '\0') {
 				strncpy_s(currentEffectivePlate, sizeof(currentEffectivePlate), binding.customPlateText, _TRUNCATE);
 				hasPlate = true;
-			} else if (GetVehiclePlateText(vehicleId, currentEffectivePlate, sizeof(currentEffectivePlate)) && currentEffectivePlate[0] != '\0') {
-				hasPlate = true;
 			} else {
-				auto defIt = s_modelDefaultPlateText.find(binding.customModelId);
-				if (defIt != s_modelDefaultPlateText.end() && !defIt->second.empty()) {
-					strncpy_s(currentEffectivePlate, sizeof(currentEffectivePlate), defIt->second.c_str(), _TRUNCATE);
+				char sampPlate[32] = {};
+				bool gotSamp = GetVehiclePlateText(vehicleId, sampPlate, sizeof(sampPlate)) && sampPlate[0] != '\0';
+				if (gotSamp && _stricmp(sampPlate, "SAN ANDREAS") != 0) {
+					strncpy_s(currentEffectivePlate, sizeof(currentEffectivePlate), sampPlate, _TRUNCATE);
 					hasPlate = true;
+				} else {
+					auto defIt = s_modelDefaultPlateText.find(binding.customModelId);
+					if (defIt != s_modelDefaultPlateText.end() && !defIt->second.empty()) {
+						strncpy_s(currentEffectivePlate, sizeof(currentEffectivePlate), defIt->second.c_str(), _TRUNCATE);
+						hasPlate = true;
+					} else if (gotSamp) {
+						strncpy_s(currentEffectivePlate, sizeof(currentEffectivePlate), sampPlate, _TRUNCATE);
+						hasPlate = true;
+					}
 				}
+			}
+
+			if (!hasPlate || currentEffectivePlate[0] == '\0') {
+				strncpy_s(currentEffectivePlate, sizeof(currentEffectivePlate), "SAN ANDREAS", _TRUNCATE);
+				hasPlate = true;
 			}
 
 			if (hasPlate && std::strncmp(binding.lastPlateText, currentEffectivePlate, sizeof(binding.lastPlateText)) != 0) {
@@ -897,6 +916,18 @@ void CustomVehicleBindingManager::SetModelDefaultPlateText(uint32_t customModelI
 {
 	std::lock_guard lock(m_mutex);
 	s_modelDefaultPlateText[customModelId] = plateText;
+
+	for (auto& [vehicleId, binding] : m_bindings) {
+		if (binding.customModelId == customModelId && !binding.hasCustomPlateText) {
+			strncpy_s(binding.lastPlateText, sizeof(binding.lastPlateText), plateText.c_str(), _TRUNCATE);
+			if (binding.sampVehicleId > 0) {
+				UpdateSampVehiclePlateText(binding.sampVehicleId, plateText.c_str());
+			}
+			if (binding.appliedGameVehicle && IsVehiclePointerValid(binding.appliedGameVehicle)) {
+				Instance().ApplyPlateToVehicle(binding.appliedGameVehicle, plateText.c_str());
+			}
+		}
+	}
 }
 
 std::string CustomVehicleBindingManager::GetModelDefaultPlateText(uint32_t customModelId)
@@ -1111,29 +1142,46 @@ RpAtomic* CustomVehicleBindingManager::CreatePlateQuadAtomic(
 		if (ctx.foundAtomic) {
 			RpGeometry* geom = RpAtomicGetGeometry(ctx.foundAtomic);
 			if (geom) {
-				float s = (cfg.scale > 0.001f) ? cfg.scale : 1.0f;
-				const float halfW = 0.225f * s;
-				const float halfH = 0.090f * s;
-				RpGeometryLock(geom, rpGEOMETRYLOCKALL);
-				RwV3d* verts = geom->morphTarget[0].verts;
-				verts[0] = { halfW, 0.0f, halfH }; // Top-Left
-				verts[1] = { -halfW, 0.0f, halfH }; // Top-Right
-				verts[2] = { -halfW, 0.0f, -halfH }; // Bottom-Right
-				verts[3] = { halfW, 0.0f, -halfH }; // Bottom-Left
-				geom->morphTarget[0].boundingSphere.center = { 0.0f, 0.0f, 0.0f };
-				geom->morphTarget[0].boundingSphere.radius = std::sqrt(halfW * halfW + halfH * halfH) + 0.1f;
-				RpGeometryUnlock(geom);
+				if (geom->numVertices == 4 && geom->numTriangles == 4) {
+					float s = (cfg.scale > 0.001f) ? cfg.scale : 1.0f;
+					const float halfW = 0.160f * s;
+					const float halfH = 0.080f * s;
 
-				if (plateText && plateText[0] != '\0' && geom->matList.materials && geom->matList.numMaterials > 0) {
-					CCustomCarPlateMgr::SetupMaterialPlateTexture(geom->matList.materials[0], const_cast<char*>(plateText), 0);
+					RpGeometryLock(geom, rpGEOMETRYLOCKALL);
+					RwV3d* verts = geom->morphTarget[0].verts;
+					verts[0] = { halfW, 0.0f, halfH };   // Top-Left
+					verts[1] = { -halfW, 0.0f, halfH };  // Top-Right
+					verts[2] = { -halfW, 0.0f, -halfH }; // Bottom-Right
+					verts[3] = { halfW, 0.0f, -halfH };  // Bottom-Left
+
+					geom->morphTarget[0].boundingSphere.center = { 0.0f, 0.0f, 0.0f };
+					geom->morphTarget[0].boundingSphere.radius = std::sqrt(halfW * halfW + halfH * halfH) + 0.1f;
+					RpGeometryUnlock(geom);
+
+					if (geom->matList.materials && geom->matList.numMaterials >= 1) {
+						if (plateText && plateText[0] != '\0') {
+							CCustomCarPlateMgr::SetupMaterialPlateTexture(geom->matList.materials[0], const_cast<char*>(plateText), 0);
+						}
+					}
+					ClientLog(LogLevel::Info, std::format("CreatePlateQuadAtomic: Updated {} 3D plate on clump (pos={:.2f}, {:.2f}, {:.2f}, rot={:.1f}, {:.1f}, {:.1f}, scale={:.2f})", isRear ? "rear" : "front", cfg.offsetX, cfg.offsetY, cfg.offsetZ, cfg.rotX, cfg.rotY, cfg.rotZ, cfg.scale));
+					return ctx.foundAtomic;
+				} else {
+					RpClumpRemoveAtomic(clump, ctx.foundAtomic);
+					RpAtomicDestroy(ctx.foundAtomic);
+					RwFrameDestroy(existingFrame);
+					existingFrame = nullptr;
 				}
 			}
 		}
-		ClientLog(LogLevel::Info, std::format("CreatePlateQuadAtomic: Updated {} 3D plate quad on clump (pos={:.2f}, {:.2f}, {:.2f}, rot={:.1f}, {:.1f}, {:.1f}, scale={:.2f})", isRear ? "rear" : "front", cfg.offsetX, cfg.offsetY, cfg.offsetZ, cfg.rotX, cfg.rotY, cfg.rotZ, cfg.scale));
-		return ctx.foundAtomic;
+		if (existingFrame) {
+			ClientLog(LogLevel::Info, std::format("CreatePlateQuadAtomic: Updated {} 3D plate quad on clump (pos={:.2f}, {:.2f}, {:.2f}, rot={:.1f}, {:.1f}, {:.1f}, scale={:.2f})", isRear ? "rear" : "front", cfg.offsetX, cfg.offsetY, cfg.offsetZ, cfg.rotX, cfg.rotY, cfg.rotZ, cfg.scale));
+			return ctx.foundAtomic;
+		}
 	}
 
-	// Create new 3D plate quad atomic
+	// Create new 3D plate atomic with a clean single-layer 2:1 aspect ratio quad.
+	// GTA SA's CCustomCarPlateMgr::SetupMaterialPlateTexture creates the full plate texture
+	// (background + stamped text) at standard vehicle plate proportions (2:1).
 	RpGeometry* geom = RpGeometryCreate(4, 4, rpGEOMETRYPOSITIONS | rpGEOMETRYTEXTURED | rpGEOMETRYNORMALS | rpGEOMETRYMODULATEMATERIALCOLOR | rpGEOMETRYPRELIT);
 	if (!geom)
 		return nullptr;
@@ -1143,29 +1191,30 @@ RpAtomic* CustomVehicleBindingManager::CreatePlateQuadAtomic(
 		RpGeometryDestroy(geom);
 		return nullptr;
 	}
+
 	RwRGBA white = { 255, 255, 255, 255 };
 	RpMaterialSetColor(mat, &white);
+
 	if (plateText && plateText[0] != '\0') {
 		CCustomCarPlateMgr::SetupMaterialPlateTexture(mat, const_cast<char*>(plateText), 0);
 	}
 
 	float s = (cfg.scale > 0.001f) ? cfg.scale : 1.0f;
-	const float halfW = 0.225f * s;
-	const float halfH = 0.090f * s;
+	const float halfW = 0.160f * s;
+	const float halfH = 0.080f * s;
 
 	RpGeometryLock(geom, rpGEOMETRYLOCKALL);
 
 	RwV3d* verts = geom->morphTarget[0].verts;
-	verts[0] = { halfW, 0.0f, halfH }; // Top-Left
-	verts[1] = { -halfW, 0.0f, halfH }; // Top-Right
+	verts[0] = { halfW, 0.0f, halfH };   // Top-Left
+	verts[1] = { -halfW, 0.0f, halfH };  // Top-Right
 	verts[2] = { -halfW, 0.0f, -halfH }; // Bottom-Right
-	verts[3] = { halfW, 0.0f, -halfH }; // Bottom-Left
+	verts[3] = { halfW, 0.0f, -halfH };  // Bottom-Left
 
 	RwV3d* normals = geom->morphTarget[0].normals;
-	normals[0] = { 0.0f, 1.0f, 0.0f };
-	normals[1] = { 0.0f, 1.0f, 0.0f };
-	normals[2] = { 0.0f, 1.0f, 0.0f };
-	normals[3] = { 0.0f, 1.0f, 0.0f };
+	for (int i = 0; i < 4; ++i) {
+		normals[i] = { 0.0f, 1.0f, 0.0f };
+	}
 
 	RwTexCoords* uvs = geom->texCoords[0];
 	uvs[0] = { 0.0f, 0.0f }; // Top-Left
@@ -1398,7 +1447,10 @@ std::vector<CustomVehicleBindingManager::PlateMaterialInfo> CustomVehicleBinding
 			}
 
 			if (!isPlate && !fhLower.empty()) {
-				if (fhLower.find("bt_plate") != std::string::npos || fhLower.find("carplate") != std::string::npos || fhLower.find("numberplate") != std::string::npos || fhLower.find("license_plate") != std::string::npos || fhLower.find("licence_plate") != std::string::npos || fhLower.find("numplate") != std::string::npos) {
+				if (fhLower.find("bt_plate") != std::string::npos) {
+					isPlate = true;
+					isBg = false;
+				} else if (fhLower.find("carplate") != std::string::npos || fhLower.find("numberplate") != std::string::npos || fhLower.find("license_plate") != std::string::npos || fhLower.find("licence_plate") != std::string::npos || fhLower.find("numplate") != std::string::npos) {
 					isPlate = true;
 					isBg = false;
 				}
@@ -1526,7 +1578,8 @@ void CustomVehicleBindingManager::ApplyPlateToVehicle(CVehicle* vehicle, const c
 			hasPlate = true;
 		} else {
 			char sampPlate[32] = {};
-			if (GetVehiclePlateText(binding->sampVehicleId, sampPlate, sizeof(sampPlate)) && sampPlate[0] != '\0') {
+			bool gotSamp = GetVehiclePlateText(binding->sampVehicleId, sampPlate, sizeof(sampPlate)) && sampPlate[0] != '\0';
+			if (gotSamp && _stricmp(sampPlate, "SAN ANDREAS") != 0) {
 				strncpy_s(finalPlate, sizeof(finalPlate), sampPlate, _TRUNCATE);
 				hasPlate = true;
 			} else {
@@ -1534,6 +1587,9 @@ void CustomVehicleBindingManager::ApplyPlateToVehicle(CVehicle* vehicle, const c
 				auto defIt = s_modelDefaultPlateText.find(binding->customModelId);
 				if (defIt != s_modelDefaultPlateText.end() && !defIt->second.empty()) {
 					strncpy_s(finalPlate, sizeof(finalPlate), defIt->second.c_str(), _TRUNCATE);
+					hasPlate = true;
+				} else if (gotSamp) {
+					strncpy_s(finalPlate, sizeof(finalPlate), sampPlate, _TRUNCATE);
 					hasPlate = true;
 				}
 			}
