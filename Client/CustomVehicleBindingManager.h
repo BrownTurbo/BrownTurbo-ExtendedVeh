@@ -1,7 +1,9 @@
 #pragma once
 
-#include <game_sa/rw/rwcore.h>
-#include <game_sa/rw/rpworld.h>
+#ifndef RW
+#define RW
+#endif
+#include <RenderWare.h>
 #include "../Shared/CustomVehicleProtocol.hpp"
 #include <functional>
 #include <mutex>

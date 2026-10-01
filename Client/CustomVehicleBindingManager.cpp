@@ -17,8 +17,6 @@
 #include <game_sa/CVehicleModelInfo.h>
 #include <game_sa/CWorld.h>
 #include <game_sa/NodeName.h>
-#include <game_sa/rw/rwcore.h>
-#include <game_sa/rw/rpworld.h>
 #include <algorithm>
 #include <atomic>
 #include <cmath>
@@ -1111,16 +1109,16 @@ RpAtomic* CustomVehicleBindingManager::CreatePlateQuadAtomic(
 	// If atomic already exists on clump, update its transform and plate texture
 	if (existingFrame) {
 		RwFrameSetIdentity(existingFrame);
-		RwV3d axisX = { 1.0f, 0.0f, 0.0f };
-		RwV3d axisY = { 0.0f, 1.0f, 0.0f };
-		RwV3d axisZ = { 0.0f, 0.0f, 1.0f };
+		const RwV3d axisX = { 1.0f, 0.0f, 0.0f };
+		const RwV3d axisY = { 0.0f, 1.0f, 0.0f };
+		const RwV3d axisZ = { 0.0f, 0.0f, 1.0f };
 		if (cfg.rotX != 0.0f)
-			RwFrameRotate(existingFrame, const_cast<const RwV3d*>(&axisX), cfg.rotX, rwCOMBINEPOSTCONCAT);
+			RwFrameRotate(existingFrame, &axisX, cfg.rotX, rwCOMBINEPOSTCONCAT);
 		if (cfg.rotY != 0.0f)
-			RwFrameRotate(existingFrame, const_cast<const RwV3d*>(&axisY), cfg.rotY, rwCOMBINEPOSTCONCAT);
+			RwFrameRotate(existingFrame, &axisY, cfg.rotY, rwCOMBINEPOSTCONCAT);
 		if (cfg.rotZ != 0.0f)
-			RwFrameRotate(existingFrame, const_cast<const RwV3d*>(&axisZ), cfg.rotZ, rwCOMBINEPOSTCONCAT);
-		RwV3d pos = { cfg.offsetX, cfg.offsetY, cfg.offsetZ };
+			RwFrameRotate(existingFrame, &axisZ, cfg.rotZ, rwCOMBINEPOSTCONCAT);
+		const RwV3d pos = { cfg.offsetX, cfg.offsetY, cfg.offsetZ };
 		RwFrameTranslate(existingFrame, &pos, rwCOMBINEPOSTCONCAT);
 		RwFrameUpdateObjects(existingFrame);
 
@@ -1265,16 +1263,16 @@ RpAtomic* CustomVehicleBindingManager::CreatePlateQuadAtomic(
 	SetFrameNodeName(frame, nodeName);
 
 	RwFrameSetIdentity(frame);
-	RwV3d axisX = { 1.0f, 0.0f, 0.0f };
-	RwV3d axisY = { 0.0f, 1.0f, 0.0f };
-	RwV3d axisZ = { 0.0f, 0.0f, 1.0f };
+	const RwV3d axisX = { 1.0f, 0.0f, 0.0f };
+	const RwV3d axisY = { 0.0f, 1.0f, 0.0f };
+	const RwV3d axisZ = { 0.0f, 0.0f, 1.0f };
 	if (cfg.rotX != 0.0f)
-		RwFrameRotate(frame, const_cast<const RwV3d*>(&axisX), cfg.rotX, rwCOMBINEPOSTCONCAT);
+		RwFrameRotate(frame, &axisX, cfg.rotX, rwCOMBINEPOSTCONCAT);
 	if (cfg.rotY != 0.0f)
-		RwFrameRotate(frame, const_cast<const RwV3d*>(&axisY), cfg.rotY, rwCOMBINEPOSTCONCAT);
+		RwFrameRotate(frame, &axisY, cfg.rotY, rwCOMBINEPOSTCONCAT);
 	if (cfg.rotZ != 0.0f)
-		RwFrameRotate(frame, const_cast<const RwV3d*>(&axisZ), cfg.rotZ, rwCOMBINEPOSTCONCAT);
-	RwV3d pos = { cfg.offsetX, cfg.offsetY, cfg.offsetZ };
+		RwFrameRotate(frame, &axisZ, cfg.rotZ, rwCOMBINEPOSTCONCAT);
+	const RwV3d pos = { cfg.offsetX, cfg.offsetY, cfg.offsetZ };
 	RwFrameTranslate(frame, &pos, rwCOMBINEPOSTCONCAT);
 
 	RpAtomicSetFrame(atomic, frame);
