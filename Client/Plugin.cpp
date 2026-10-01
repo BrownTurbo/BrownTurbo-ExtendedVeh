@@ -944,6 +944,126 @@ static void __fastcall Hooked_BouncingPanel_ProcessPanel(CBouncingPanel* thisPan
 
 static std::unordered_map<CVehicle*, float> g_lastVehicleHealth;
 static void(__fastcall* g_origCAutomobile_Fix)(CAutomobile* thisCar, void* edx) = nullptr;
+static bool(__fastcall* g_origCVehicle_CanVehicleBeDamaged)(CVehicle* thisVeh, void* edx, CEntity* damager, eWeaponType weapon, unsigned char* arg2) = nullptr;
+static void(__fastcall* g_origCAutomobile_VehicleDamage)(CAutomobile* thisCar, void* edx, float damageIntensity, unsigned short collisionComponent, CEntity* damager, CVector* vecCollisionCoors, CVector* vecCollisionDirection, eWeaponType weapon) = nullptr;
+static void(__fastcall* g_origCAutomobile_PopDoor)(CAutomobile* thisCar, void* edx, int nodeIndex, eDoors door, bool showVisualEffect) = nullptr;
+static void(__fastcall* g_origCAutomobile_PopPanel)(CAutomobile* thisCar, void* edx, int nodeIndex, ePanels panel, bool showVisualEffect) = nullptr;
+static void(__fastcall* g_origCAutomobile_BlowUpCar)(CAutomobile* thisCar, void* edx, CEntity* damager, bool bHideExplosion) = nullptr;
+static void(__fastcall* g_origCVehicle_ProcessDelayedExplosion)(CVehicle* thisVeh, void* edx) = nullptr;
+
+static void ApplyVehicleGodMode(CVehicle* veh, bool enable)
+{
+	if (!veh || !IsVehiclePointerValid(veh))
+		return;
+
+	if (enable) {
+		veh->bBulletProof = true;
+		veh->bFireProof = true;
+		veh->bCollisionProof = true;
+		veh->bMeleeProof = true;
+		veh->bInvulnerable = true;
+		veh->bExplosionProof = true;
+		veh->bCanBeDamaged = false;
+		veh->bTyresDontBurst = true;
+
+		if (veh->m_nVehicleSubClass == VEHICLE_AUTOMOBILE || veh->m_nVehicleSubClass == VEHICLE_MTRUCK || veh->m_nVehicleSubClass == VEHICLE_QUAD) {
+			auto* autoVeh = reinterpret_cast<CAutomobile*>(veh);
+			autoVeh->m_nAutomobileFlags.bCanBeVisiblyDamaged = false;
+			autoVeh->m_nAutomobileFlags.bDoesNotGetDamagedUpsideDown = true;
+			autoVeh->m_fBurningTimer = 0.0f;
+			if (autoVeh->m_pFireParticle) {
+				autoVeh->m_pFireParticle->Kill();
+				autoVeh->m_pFireParticle = nullptr;
+			}
+			if (autoVeh->m_pOverheatParticle) {
+				autoVeh->m_pOverheatParticle->Kill();
+				autoVeh->m_pOverheatParticle = nullptr;
+			}
+		}
+	} else {
+		veh->bBulletProof = false;
+		veh->bFireProof = false;
+		veh->bCollisionProof = false;
+		veh->bMeleeProof = false;
+		veh->bInvulnerable = false;
+		veh->bExplosionProof = false;
+		veh->bCanBeDamaged = true;
+		veh->bTyresDontBurst = false;
+
+		if (veh->m_nVehicleSubClass == VEHICLE_AUTOMOBILE || veh->m_nVehicleSubClass == VEHICLE_MTRUCK || veh->m_nVehicleSubClass == VEHICLE_QUAD) {
+			auto* autoVeh = reinterpret_cast<CAutomobile*>(veh);
+			autoVeh->m_nAutomobileFlags.bCanBeVisiblyDamaged = true;
+			autoVeh->m_nAutomobileFlags.bDoesNotGetDamagedUpsideDown = false;
+		}
+	}
+}
+
+static bool __fastcall Hooked_CVehicle_CanVehicleBeDamaged(CVehicle* thisVeh, void* edx, CEntity* damager, eWeaponType weapon, unsigned char* arg2)
+{
+	if (thisVeh && IsVehiclePointerValid(thisVeh)) {
+		if (thisVeh->m_fHealth > 1000.0f) {
+			return false; // SA-MP God-mode: completely prevent damage
+		}
+	}
+	if (g_origCVehicle_CanVehicleBeDamaged)
+		return g_origCVehicle_CanVehicleBeDamaged(thisVeh, edx, damager, weapon, arg2);
+	return true;
+}
+
+static void __fastcall Hooked_CAutomobile_VehicleDamage(CAutomobile* thisCar, void* edx, float damageIntensity, unsigned short collisionComponent, CEntity* damager, CVector* vecCollisionCoors, CVector* vecCollisionDirection, eWeaponType weapon)
+{
+	if (thisCar && IsVehiclePointerValid(thisCar)) {
+		if (thisCar->m_fHealth > 1000.0f) {
+			return; // SA-MP God-mode: completely ignore vehicle damage & dents
+		}
+	}
+	if (g_origCAutomobile_VehicleDamage)
+		g_origCAutomobile_VehicleDamage(thisCar, edx, damageIntensity, collisionComponent, damager, vecCollisionCoors, vecCollisionDirection, weapon);
+}
+
+static void __fastcall Hooked_CAutomobile_PopDoor(CAutomobile* thisCar, void* edx, int nodeIndex, eDoors door, bool showVisualEffect)
+{
+	if (thisCar && IsVehiclePointerValid(thisCar)) {
+		if (thisCar->m_fHealth > 1000.0f) {
+			return; // SA-MP God-mode: never detach or pop doors
+		}
+	}
+	if (g_origCAutomobile_PopDoor)
+		g_origCAutomobile_PopDoor(thisCar, edx, nodeIndex, door, showVisualEffect);
+}
+
+static void __fastcall Hooked_CAutomobile_PopPanel(CAutomobile* thisCar, void* edx, int nodeIndex, ePanels panel, bool showVisualEffect)
+{
+	if (thisCar && IsVehiclePointerValid(thisCar)) {
+		if (thisCar->m_fHealth > 1000.0f) {
+			return; // SA-MP God-mode: never detach or pop panels
+		}
+	}
+	if (g_origCAutomobile_PopPanel)
+		g_origCAutomobile_PopPanel(thisCar, edx, nodeIndex, panel, showVisualEffect);
+}
+
+static void __fastcall Hooked_CAutomobile_BlowUpCar(CAutomobile* thisCar, void* edx, CEntity* damager, bool bHideExplosion)
+{
+	if (thisCar && IsVehiclePointerValid(thisCar)) {
+		if (thisCar->m_fHealth > 1000.0f) {
+			return; // SA-MP God-mode: never blow up
+		}
+	}
+	if (g_origCAutomobile_BlowUpCar)
+		g_origCAutomobile_BlowUpCar(thisCar, edx, damager, bHideExplosion);
+}
+
+static void __fastcall Hooked_CVehicle_ProcessDelayedExplosion(CVehicle* thisVeh, void* edx)
+{
+	if (thisVeh && IsVehiclePointerValid(thisVeh)) {
+		if (thisVeh->m_fHealth > 1000.0f) {
+			return; // SA-MP God-mode: do not explode
+		}
+	}
+	if (g_origCVehicle_ProcessDelayedExplosion)
+		g_origCVehicle_ProcessDelayedExplosion(thisVeh, edx);
+}
 
 static void __fastcall Hooked_CAutomobile_Fix(CAutomobile* thisCar, void* edx)
 {
@@ -952,6 +1072,8 @@ static void __fastcall Hooked_CAutomobile_Fix(CAutomobile* thisCar, void* edx)
 			g_origCAutomobile_Fix(thisCar, edx);
 		return;
 	}
+
+	float savedHealth = thisCar->m_fHealth;
 
 	if (g_origCAutomobile_Fix)
 		g_origCAutomobile_Fix(thisCar, edx);
@@ -1003,6 +1125,13 @@ static void __fastcall Hooked_CAutomobile_Fix(CAutomobile* thisCar, void* edx)
 		thisCar->m_panels[i].ResetPanel();
 	}
 
+	// Restore tyres and reset damage status
+	for (int w = 0; w < 4; ++w) {
+		thisCar->FixTyre(static_cast<eWheels>(w));
+	}
+	thisCar->m_damageManager.ResetDamageStatus();
+	thisCar->bIsDamaged = false;
+
 	// Extinguish engine fire and burning explosion timer if vehicle was on fire
 	thisCar->m_fBurningTimer = 0.0f;
 	if (thisCar->m_pFireParticle) {
@@ -1013,12 +1142,17 @@ static void __fastcall Hooked_CAutomobile_Fix(CAutomobile* thisCar, void* edx)
 		thisCar->m_pOverheatParticle->Kill();
 		thisCar->m_pOverheatParticle = nullptr;
 	}
-	if (thisCar->m_fHealth < 1000.0f) {
+
+	// Preserve God-mode health if health was > 1000.0f before Fix(), otherwise ensure at least 1000.0f
+	if (savedHealth > 1000.0f) {
+		thisCar->m_fHealth = savedHealth;
+		ApplyVehicleGodMode(thisCar, true);
+	} else if (thisCar->m_fHealth < 1000.0f) {
 		thisCar->m_fHealth = 1000.0f;
 	}
-	g_lastVehicleHealth[thisCar] = 1000.0f;
+	g_lastVehicleHealth[thisCar] = thisCar->m_fHealth;
 
-	// Notify CustomVehicleBindingManager to restore extras and suppress _vlo LOD atomics
+	// Notify CustomVehicleBindingManager to restore extras, materials, colors, and suppress _vlo LOD atomics
 	CustomVehicleBindingManager::Instance().OnVehicleFixed(thisCar);
 }
 
@@ -2740,6 +2874,10 @@ void InitializeHooks()
 						} else {
 							veh->Fix();
 						}
+						CustomVehicleBindingManager::Instance().OnVehicleFixed(veh);
+						if (veh->m_fHealth > 1000.0f) {
+							ApplyVehicleGodMode(veh, true);
+						}
 					}
 				});
 			}
@@ -2755,26 +2893,37 @@ void InitializeHooks()
 					if (veh && IsVehiclePointerValid(veh)) {
 						veh->m_fHealth = health;
 
-						if (health >= 250.0f) {
-							if (veh->m_nVehicleSubClass == VEHICLE_AUTOMOBILE || veh->m_nVehicleSubClass == VEHICLE_MTRUCK || veh->m_nVehicleSubClass == VEHICLE_QUAD) {
-								auto* autoVeh = reinterpret_cast<CAutomobile*>(veh);
-								autoVeh->m_fBurningTimer = 0.0f;
-								if (autoVeh->m_pFireParticle) {
-									autoVeh->m_pFireParticle->Kill();
-									autoVeh->m_pFireParticle = nullptr;
-								}
-								if (autoVeh->m_pOverheatParticle) {
-									autoVeh->m_pOverheatParticle->Kill();
-									autoVeh->m_pOverheatParticle = nullptr;
-								}
-							}
-						}
-
-						if (health >= 990.0f) {
+						if (health > 1000.0f) {
+							ApplyVehicleGodMode(veh, true);
 							if (veh->m_nVehicleSubClass == VEHICLE_AUTOMOBILE || veh->m_nVehicleSubClass == VEHICLE_MTRUCK || veh->m_nVehicleSubClass == VEHICLE_QUAD) {
 								reinterpret_cast<CAutomobile*>(veh)->Fix();
 							} else {
 								veh->Fix();
+							}
+							CustomVehicleBindingManager::Instance().OnVehicleFixed(veh);
+						} else {
+							if (health >= 250.0f) {
+								if (veh->m_nVehicleSubClass == VEHICLE_AUTOMOBILE || veh->m_nVehicleSubClass == VEHICLE_MTRUCK || veh->m_nVehicleSubClass == VEHICLE_QUAD) {
+									auto* autoVeh = reinterpret_cast<CAutomobile*>(veh);
+									autoVeh->m_fBurningTimer = 0.0f;
+									if (autoVeh->m_pFireParticle) {
+										autoVeh->m_pFireParticle->Kill();
+										autoVeh->m_pFireParticle = nullptr;
+									}
+									if (autoVeh->m_pOverheatParticle) {
+										autoVeh->m_pOverheatParticle->Kill();
+										autoVeh->m_pOverheatParticle = nullptr;
+									}
+								}
+							}
+
+							if (health >= 990.0f) {
+								if (veh->m_nVehicleSubClass == VEHICLE_AUTOMOBILE || veh->m_nVehicleSubClass == VEHICLE_MTRUCK || veh->m_nVehicleSubClass == VEHICLE_QUAD) {
+									reinterpret_cast<CAutomobile*>(veh)->Fix();
+								} else {
+									veh->Fix();
+								}
+								CustomVehicleBindingManager::Instance().OnVehicleFixed(veh);
 							}
 						}
 					}
@@ -2788,18 +2937,28 @@ void InitializeHooks()
 			uint32_t panelDamage = 0, doorDamage = 0;
 			uint8_t lightDamage = 0, tireDamage = 0;
 			if (bs->Read(vehicleId) && bs->Read(panelDamage) && bs->Read(doorDamage) && bs->Read(lightDamage) && bs->Read(tireDamage)) {
-				if (panelDamage == 0 && doorDamage == 0 && lightDamage == 0 && tireDamage == 0) {
-					MainThreadQueue::Instance().Push([vehicleId]() {
-						CVehicle* veh = GetGameVehicleFromPool(vehicleId);
-						if (veh && IsVehiclePointerValid(veh)) {
+				MainThreadQueue::Instance().Push([vehicleId, panelDamage, doorDamage, lightDamage, tireDamage]() {
+					CVehicle* veh = GetGameVehicleFromPool(vehicleId);
+					if (veh && IsVehiclePointerValid(veh)) {
+						if (veh->m_fHealth > 1000.0f) {
+							// God-mode: preserve pristine status and enforce godmode
 							if (veh->m_nVehicleSubClass == VEHICLE_AUTOMOBILE || veh->m_nVehicleSubClass == VEHICLE_MTRUCK || veh->m_nVehicleSubClass == VEHICLE_QUAD) {
 								reinterpret_cast<CAutomobile*>(veh)->Fix();
 							} else {
 								veh->Fix();
 							}
+							CustomVehicleBindingManager::Instance().OnVehicleFixed(veh);
+							ApplyVehicleGodMode(veh, true);
+						} else if (panelDamage == 0 && doorDamage == 0 && lightDamage == 0 && tireDamage == 0) {
+							if (veh->m_nVehicleSubClass == VEHICLE_AUTOMOBILE || veh->m_nVehicleSubClass == VEHICLE_MTRUCK || veh->m_nVehicleSubClass == VEHICLE_QUAD) {
+								reinterpret_cast<CAutomobile*>(veh)->Fix();
+							} else {
+								veh->Fix();
+							}
+							CustomVehicleBindingManager::Instance().OnVehicleFixed(veh);
 						}
-					});
-				}
+					}
+				});
 			}
 			bs->SetReadOffset(originalOffset);
 			return true;
@@ -3118,10 +3277,19 @@ static void OnGameProcess()
 						} else {
 							cur.gameVeh->Fix();
 						}
+						CustomVehicleBindingManager::Instance().OnVehicleFixed(cur.gameVeh);
+					}
+					if (currentHealth > 1000.0f) {
+						ApplyVehicleGodMode(cur.gameVeh, true);
+					} else if (prevHealth > 1000.0f && currentHealth <= 1000.0f) {
+						ApplyVehicleGodMode(cur.gameVeh, false);
 					}
 					healthIt->second = currentHealth;
 				} else {
 					g_lastVehicleHealth[cur.gameVeh] = currentHealth;
+					if (currentHealth > 1000.0f) {
+						ApplyVehicleGodMode(cur.gameVeh, true);
+					}
 				}
 
 				// 1. Amphibious water driving for vehicles with MFLAG_IS_BOAT (0x8000000)
@@ -3597,6 +3765,78 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD dwReason, LPVOID lpReserved)
 			ClientLog(LogLevel::Error, std::format("Failed to hook CAutomobile::Fix (0x6A3440): {}", MH_StatusToString(fixStatus)));
 		}
 
+		MH_STATUS canDamStatus = MH_CreateHook(reinterpret_cast<void*>(0x6D1280), reinterpret_cast<void*>(&Hooked_CVehicle_CanVehicleBeDamaged), reinterpret_cast<void**>(&g_origCVehicle_CanVehicleBeDamaged));
+		if (canDamStatus == MH_OK) {
+			MH_STATUS enableStatus = MH_EnableHook(reinterpret_cast<void*>(0x6D1280));
+			if (enableStatus == MH_OK) {
+				ClientLog(LogLevel::Info, "CVehicle::CanVehicleBeDamaged (0x6D1280) hooked successfully via MinHook");
+			} else {
+				ClientLog(LogLevel::Error, std::format("Failed to enable CVehicle::CanVehicleBeDamaged hook: {}", MH_StatusToString(enableStatus)));
+			}
+		} else {
+			ClientLog(LogLevel::Error, std::format("Failed to hook CVehicle::CanVehicleBeDamaged (0x6D1280): {}", MH_StatusToString(canDamStatus)));
+		}
+
+		MH_STATUS vehDamStatus = MH_CreateHook(reinterpret_cast<void*>(0x6A7600), reinterpret_cast<void*>(&Hooked_CAutomobile_VehicleDamage), reinterpret_cast<void**>(&g_origCAutomobile_VehicleDamage));
+		if (vehDamStatus == MH_OK) {
+			MH_STATUS enableStatus = MH_EnableHook(reinterpret_cast<void*>(0x6A7600));
+			if (enableStatus == MH_OK) {
+				ClientLog(LogLevel::Info, "CAutomobile::VehicleDamage (0x6A7600) hooked successfully via MinHook");
+			} else {
+				ClientLog(LogLevel::Error, std::format("Failed to enable CAutomobile::VehicleDamage hook: {}", MH_StatusToString(enableStatus)));
+			}
+		} else {
+			ClientLog(LogLevel::Error, std::format("Failed to hook CAutomobile::VehicleDamage (0x6A7600): {}", MH_StatusToString(vehDamStatus)));
+		}
+
+		MH_STATUS popDoorStatus = MH_CreateHook(reinterpret_cast<void*>(0x6ADEF0), reinterpret_cast<void*>(&Hooked_CAutomobile_PopDoor), reinterpret_cast<void**>(&g_origCAutomobile_PopDoor));
+		if (popDoorStatus == MH_OK) {
+			MH_STATUS enableStatus = MH_EnableHook(reinterpret_cast<void*>(0x6ADEF0));
+			if (enableStatus == MH_OK) {
+				ClientLog(LogLevel::Info, "CAutomobile::PopDoor (0x6ADEF0) hooked successfully via MinHook");
+			} else {
+				ClientLog(LogLevel::Error, std::format("Failed to enable CAutomobile::PopDoor hook: {}", MH_StatusToString(enableStatus)));
+			}
+		} else {
+			ClientLog(LogLevel::Error, std::format("Failed to hook CAutomobile::PopDoor (0x6ADEF0): {}", MH_StatusToString(popDoorStatus)));
+		}
+
+		MH_STATUS popPanelStatus = MH_CreateHook(reinterpret_cast<void*>(0x6ADF80), reinterpret_cast<void*>(&Hooked_CAutomobile_PopPanel), reinterpret_cast<void**>(&g_origCAutomobile_PopPanel));
+		if (popPanelStatus == MH_OK) {
+			MH_STATUS enableStatus = MH_EnableHook(reinterpret_cast<void*>(0x6ADF80));
+			if (enableStatus == MH_OK) {
+				ClientLog(LogLevel::Info, "CAutomobile::PopPanel (0x6ADF80) hooked successfully via MinHook");
+			} else {
+				ClientLog(LogLevel::Error, std::format("Failed to enable CAutomobile::PopPanel hook: {}", MH_StatusToString(enableStatus)));
+			}
+		} else {
+			ClientLog(LogLevel::Error, std::format("Failed to hook CAutomobile::PopPanel (0x6ADF80): {}", MH_StatusToString(popPanelStatus)));
+		}
+
+		MH_STATUS blowUpStatus = MH_CreateHook(reinterpret_cast<void*>(0x6B3780), reinterpret_cast<void*>(&Hooked_CAutomobile_BlowUpCar), reinterpret_cast<void**>(&g_origCAutomobile_BlowUpCar));
+		if (blowUpStatus == MH_OK) {
+			MH_STATUS enableStatus = MH_EnableHook(reinterpret_cast<void*>(0x6B3780));
+			if (enableStatus == MH_OK) {
+				ClientLog(LogLevel::Info, "CAutomobile::BlowUpCar (0x6B3780) hooked successfully via MinHook");
+			} else {
+				ClientLog(LogLevel::Error, std::format("Failed to enable CAutomobile::BlowUpCar hook: {}", MH_StatusToString(enableStatus)));
+			}
+		} else {
+			ClientLog(LogLevel::Error, std::format("Failed to hook CAutomobile::BlowUpCar (0x6B3780): {}", MH_StatusToString(blowUpStatus)));
+		}
+
+		MH_STATUS delayExplStatus = MH_CreateHook(reinterpret_cast<void*>(0x6D1340), reinterpret_cast<void*>(&Hooked_CVehicle_ProcessDelayedExplosion), reinterpret_cast<void**>(&g_origCVehicle_ProcessDelayedExplosion));
+		if (delayExplStatus == MH_OK) {
+			MH_STATUS enableStatus = MH_EnableHook(reinterpret_cast<void*>(0x6D1340));
+			if (enableStatus == MH_OK) {
+				ClientLog(LogLevel::Info, "CVehicle::ProcessDelayedExplosion (0x6D1340) hooked successfully via MinHook");
+			} else {
+				ClientLog(LogLevel::Error, std::format("Failed to enable CVehicle::ProcessDelayedExplosion hook: {}", MH_StatusToString(enableStatus)));
+			}
+		} else {
+			ClientLog(LogLevel::Error, std::format("Failed to hook CVehicle::ProcessDelayedExplosion (0x6D1340): {}", MH_StatusToString(delayExplStatus)));
+		}
+
 		MH_STATUS bpStatus = MH_CreateHook(reinterpret_cast<void*>(0x6F49A0), reinterpret_cast<void*>(&Hooked_BouncingPanel_ProcessPanel), reinterpret_cast<void**>(&g_origBouncingPanel_ProcessPanel));
 		if (bpStatus == MH_OK) {
 			MH_STATUS enableStatus = MH_EnableHook(reinterpret_cast<void*>(0x6F49A0));
@@ -3809,6 +4049,42 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD dwReason, LPVOID lpReserved)
 			MH_DisableHook(reinterpret_cast<void*>(0x6A3440));
 			MH_RemoveHook(reinterpret_cast<void*>(0x6A3440));
 			g_origCAutomobile_Fix = nullptr;
+		}
+
+		if (g_origCVehicle_CanVehicleBeDamaged) {
+			MH_DisableHook(reinterpret_cast<void*>(0x6D1280));
+			MH_RemoveHook(reinterpret_cast<void*>(0x6D1280));
+			g_origCVehicle_CanVehicleBeDamaged = nullptr;
+		}
+
+		if (g_origCAutomobile_VehicleDamage) {
+			MH_DisableHook(reinterpret_cast<void*>(0x6A7600));
+			MH_RemoveHook(reinterpret_cast<void*>(0x6A7600));
+			g_origCAutomobile_VehicleDamage = nullptr;
+		}
+
+		if (g_origCAutomobile_PopDoor) {
+			MH_DisableHook(reinterpret_cast<void*>(0x6ADEF0));
+			MH_RemoveHook(reinterpret_cast<void*>(0x6ADEF0));
+			g_origCAutomobile_PopDoor = nullptr;
+		}
+
+		if (g_origCAutomobile_PopPanel) {
+			MH_DisableHook(reinterpret_cast<void*>(0x6ADF80));
+			MH_RemoveHook(reinterpret_cast<void*>(0x6ADF80));
+			g_origCAutomobile_PopPanel = nullptr;
+		}
+
+		if (g_origCAutomobile_BlowUpCar) {
+			MH_DisableHook(reinterpret_cast<void*>(0x6B3780));
+			MH_RemoveHook(reinterpret_cast<void*>(0x6B3780));
+			g_origCAutomobile_BlowUpCar = nullptr;
+		}
+
+		if (g_origCVehicle_ProcessDelayedExplosion) {
+			MH_DisableHook(reinterpret_cast<void*>(0x6D1340));
+			MH_RemoveHook(reinterpret_cast<void*>(0x6D1340));
+			g_origCVehicle_ProcessDelayedExplosion = nullptr;
 		}
 
 		if (g_origClumpCollisionRead) {

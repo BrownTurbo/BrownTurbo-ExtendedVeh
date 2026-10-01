@@ -426,7 +426,7 @@ void CustomVehicleBindingManager::SetVehicleExtras(uint16_t vehicleId, uint8_t m
 	}
 }
 
-void CustomVehicleBindingManager::OnVehicleFixed(CAutomobile* vehicle)
+void CustomVehicleBindingManager::OnVehicleFixed(CVehicle* vehicle)
 {
 	if (!vehicle || !IsVehiclePointerValid(vehicle))
 		return;
@@ -457,7 +457,13 @@ void CustomVehicleBindingManager::OnVehicleFixed(CAutomobile* vehicle)
 				return atomic;
 			}, nullptr);
 
-			// 3. Re-apply vehicle materials & custom coatings (paintjob, window tint, wheel color, license plate)
+			// 3. Re-apply vehicle materials & custom coatings (base colors, paintjob, window tint, wheel color, license plate)
+			auto* customModel = StreamingExtender::GetCustomModel(b.customModelId);
+			if (customModel) {
+				customModel->SetVehicleColour(vehicle->m_nPrimaryColor, vehicle->m_nSecondaryColor, vehicle->m_nTertiaryColor, vehicle->m_nQuaternaryColor);
+				customModel->SetEditableMaterials(clump);
+			}
+
 			if (b.paintjobIndex >= 0) {
 				ApplyPaintjobToVehicle(vehicle, b.paintjobIndex);
 			}
@@ -471,6 +477,22 @@ void CustomVehicleBindingManager::OnVehicleFixed(CAutomobile* vehicle)
 				ApplyPlateToVehicle(vehicle, b.customPlateText);
 			} else if (b.lastPlateText[0] != '\0') {
 				ApplyPlateToVehicle(vehicle, b.lastPlateText);
+			}
+
+			// 4. Reset popup headlights to current light state
+			if (b.hasPopupHeadlights && !b.popupFrames.empty()) {
+				bool isNight = (CClock::ms_nGameClockHours >= 20 || CClock::ms_nGameClockHours < 7);
+				bool lightsOn = (vehicle->bLightsOn != 0) || (vehicle->bEngineOn != 0 && isNight);
+				float targetAngle = lightsOn ? b.popupMaxAngle : 0.0f;
+				b.popupHeadlightAngle = targetAngle;
+				for (RwFrame* frame : b.popupFrames) {
+					if (frame) {
+						if (vehicle->m_nVehicleSubClass == VEHICLE_AUTOMOBILE || vehicle->m_nVehicleSubClass == VEHICLE_MTRUCK || vehicle->m_nVehicleSubClass == VEHICLE_QUAD) {
+							reinterpret_cast<CAutomobile*>(vehicle)->SetComponentRotation(frame, 0, targetAngle, true);
+						}
+						RwFrameUpdateObjects(frame);
+					}
+				}
 			}
 
 			return;
