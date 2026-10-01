@@ -12,6 +12,7 @@
 #include <vector>
 
 class CVehicle;
+class CAutomobile;
 class CColModel;
 class CVehicleModelInfo;
 struct RwFrame;
@@ -201,6 +202,7 @@ public:
 
 	void ApplyAudioSettingsToVehicle(CVehicle* vehicle);
 	void ApplyPlateToVehicle(CVehicle* vehicle, const char* text = nullptr);
+	void OnVehicleFixed(CAutomobile* vehicle);
 	void SetVehiclePlateText(uint16_t vehicleId, const char* text);
 	void SetVehiclePlateMesh(uint16_t vehicleId, bool isRear, const CustomVeh::Protocol::PlateMeshConfig& cfg);
 	void SetVehiclePlateTexture(uint16_t vehicleId, const char* textureName);

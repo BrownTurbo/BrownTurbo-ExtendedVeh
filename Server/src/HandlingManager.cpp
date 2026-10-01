@@ -417,7 +417,22 @@ void OnDestroyVehicle(int vehicleid)
 	vehicleHandlings.erase(vehicleid);
 	vehicleDoorStates.erase(static_cast<uint16_t>(vehicleid));
 	vehiclesIdMap.erase(vehicleid);
-	CustomVehicleBindingRegistry::Instance().Unbind(static_cast<uint16_t>(vehicleid));
+
+	uint16_t vId = static_cast<uint16_t>(vehicleid);
+	if (CustomVehicleBindingRegistry::Instance().Get(vId).has_value())
+	{
+		CustomVehicleBindingRegistry::Instance().Unbind(vId);
+		if (core_)
+		{
+			for (IPlayer* player : core_->getPlayers().players())
+			{
+				if (player && gPlayers.HasExtendedVeh(player->getID()))
+				{
+					CustomVehicleTransport::SendVehicleUnbind(*player, vId);
+				}
+			}
+		}
+	}
 }
 
 void OnPlayerAuthorized(IPlayer& player)

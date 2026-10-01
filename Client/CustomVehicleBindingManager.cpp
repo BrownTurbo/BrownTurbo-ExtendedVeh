@@ -253,6 +253,23 @@ void CustomVehicleBindingManager::Unbind(uint16_t vehicleId)
 					origModel->SetVehicleColour(vehicle->m_nPrimaryColor, vehicle->m_nSecondaryColor, vehicle->m_nTertiaryColor, vehicle->m_nQuaternaryColor);
 					origModel->SetEditableMaterials(origClump); // non-static: must call on model instance
 
+					RpClump* savedClump = origModel->m_pRwClump;
+					origModel->m_pRwClump = origClump;
+					origModel->SetAtomicRenderCallbacks();
+					origModel->m_pRwClump = savedClump;
+
+					RpClumpForAllAtomics(origClump, [](RpAtomic* atomic, void* data) -> RpAtomic* {
+						RwFrame* frame = RpAtomicGetFrame(atomic);
+						if (frame) {
+							const char* name = GetFrameNodeName(frame);
+							if (name && strstr(name, "_vlo")) {
+								RpAtomicSetFlags(atomic, 0);
+								CVisibilityPlugins::SetAtomicRenderCallback(atomic, (RpAtomic*(*)(RpAtomic*))0x7331E0);
+							}
+						}
+						return atomic;
+					}, nullptr);
+
 					char plateText[32] = {};
 					if (binding.hasCustomPlateText && binding.customPlateText[0] != '\0') {
 						strncpy_s(plateText, sizeof(plateText), binding.customPlateText, _TRUNCATE);
@@ -409,6 +426,58 @@ void CustomVehicleBindingManager::SetVehicleExtras(uint16_t vehicleId, uint8_t m
 	}
 }
 
+void CustomVehicleBindingManager::OnVehicleFixed(CAutomobile* vehicle)
+{
+	if (!vehicle || !IsVehiclePointerValid(vehicle))
+		return;
+
+	std::lock_guard lock(m_mutex);
+	for (auto& [id, b] : m_bindings) {
+		if (b.appliedGameVehicle == vehicle || GetGameVehicleFromPool(id) == vehicle) {
+			if (!b.modelApplied || !vehicle->m_pRwObject)
+				return;
+
+			RpClump* clump = reinterpret_cast<RpClump*>(vehicle->m_pRwObject);
+
+			// 1. Re-apply extras mask (prevents CAutomobile::Fix from making hidden extras visible)
+			if (b.hasExtras) {
+				ApplyExtrasToClump(clump, b.extrasMask);
+			}
+
+			// 2. Clear rpATOMICRENDER flag and enforce VehicleLODRenderCallback (0x7331E0) on any _vlo atomics
+			RpClumpForAllAtomics(clump, [](RpAtomic* atomic, void* data) -> RpAtomic* {
+				RwFrame* frame = RpAtomicGetFrame(atomic);
+				if (frame) {
+					const char* name = GetFrameNodeName(frame);
+					if (name && strstr(name, "_vlo")) {
+						RpAtomicSetFlags(atomic, 0);
+						CVisibilityPlugins::SetAtomicRenderCallback(atomic, (RpAtomic*(*)(RpAtomic*))0x7331E0);
+					}
+				}
+				return atomic;
+			}, nullptr);
+
+			// 3. Re-apply vehicle materials & custom coatings (paintjob, window tint, wheel color, license plate)
+			if (b.paintjobIndex >= 0) {
+				ApplyPaintjobToVehicle(vehicle, b.paintjobIndex);
+			}
+			if (b.hasWindowTint) {
+				ApplyWindowTintToVehicle(vehicle, b.windowTintAlpha, b.windowTintR, b.windowTintG, b.windowTintB);
+			}
+			if (b.hasWheelColor) {
+				ApplyWheelColorToVehicle(vehicle, b.wheelColorR, b.wheelColorG, b.wheelColorB);
+			}
+			if (b.hasCustomPlateText && b.customPlateText[0] != '\0') {
+				ApplyPlateToVehicle(vehicle, b.customPlateText);
+			} else if (b.lastPlateText[0] != '\0') {
+				ApplyPlateToVehicle(vehicle, b.lastPlateText);
+			}
+
+			return;
+		}
+	}
+}
+
 void CustomVehicleBindingManager::Process()
 {
 	std::lock_guard lock(m_mutex);
@@ -443,6 +512,12 @@ void CustomVehicleBindingManager::Process()
 			continue;
 		}
 
+		if (binding.hasBaseModelId && vehicle->m_nModelIndex != static_cast<int>(binding.baseModelId)) {
+			ClientLog(LogLevel::Warning, std::format("Vehicle {} model mismatch: expected baseModelId={} but vehicle has modelIndex={}. Skipping binding.",
+				vehicleId, binding.baseModelId, vehicle->m_nModelIndex));
+			continue;
+		}
+
 		if (binding.originalModelId < 0) {
 			binding.originalModelId = vehicle->m_nModelIndex;
 		}
@@ -460,6 +535,23 @@ void CustomVehicleBindingManager::Process()
 				CVisibilityPlugins::SetupVehicleVariables(newClump);
 				model->SetVehicleColour(vehicle->m_nPrimaryColor, vehicle->m_nSecondaryColor, vehicle->m_nTertiaryColor, vehicle->m_nQuaternaryColor);
 				model->SetEditableMaterials(newClump); // non-static: must call on model instance
+
+				RpClump* savedClump = model->m_pRwClump;
+				model->m_pRwClump = newClump;
+				model->SetAtomicRenderCallbacks();
+				model->m_pRwClump = savedClump;
+
+				RpClumpForAllAtomics(newClump, [](RpAtomic* atomic, void* data) -> RpAtomic* {
+					RwFrame* frame = RpAtomicGetFrame(atomic);
+					if (frame) {
+						const char* name = GetFrameNodeName(frame);
+						if (name && strstr(name, "_vlo")) {
+							RpAtomicSetFlags(atomic, 0);
+							CVisibilityPlugins::SetAtomicRenderCallback(atomic, (RpAtomic*(*)(RpAtomic*))0x7331E0);
+						}
+					}
+					return atomic;
+				}, nullptr);
 
 				char plateText[32] = {};
 				bool hasPlate = false;

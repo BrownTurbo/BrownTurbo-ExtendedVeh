@@ -179,7 +179,7 @@ enum CHandlingAttribType
 };
 
 /*
- * CHandling Native Declarations
+ * Native Declarations
  */
 native CHandlingAttribType:GetHandlingAttribType(CHandlingAttrib:attribute);
 native bool:IsPlayerUsingExtendedVeh(playerid);

@@ -38,6 +38,9 @@ constexpr uint16_t RPC_Spawn = 52;
 constexpr uint16_t RPC_ServerCommand = 50;
 constexpr uint16_t RPC_RequestClass = 128;
 constexpr uint16_t RPC_RequestSpawn = 129;
+constexpr uint16_t RPC_ScrSetVehicleDamageStatus = 106;
+constexpr uint16_t RPC_ScrRepairVehicle = 147;
+constexpr uint16_t RPC_ScrSetVehicleHealth = 148;
 
 constexpr uint32_t BASE_MODEL_START = 400;
 constexpr uint32_t BASE_MODEL_END = 611;
