@@ -5,5 +5,11 @@
     "editor.codeActions.triggerOnFocusChange": true,
     "editor.formatOnSaveMode": "modificationsIfAvailable",
     "editor.formatOnSave": false,
-    "terminal.integrated.tabStopWidth": 4
+    "terminal.integrated.tabStopWidth": 4,
+    "files.watcherExclude": {
+        "**/Client/~.dev/**": true
+    },
+    "C_Cpp.files.exclude": {
+        "**/Client/~.dev/**": true
+    }
 }

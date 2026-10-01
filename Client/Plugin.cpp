@@ -1001,7 +1001,7 @@ static void ApplyVehicleGodMode(CVehicle* veh, bool enable)
 static bool __fastcall Hooked_CVehicle_CanVehicleBeDamaged(CVehicle* thisVeh, void* edx, CEntity* damager, eWeaponType weapon, unsigned char* arg2)
 {
 	if (thisVeh && IsVehiclePointerValid(thisVeh)) {
-		if (thisVeh->m_fHealth > 1000.0f) {
+		if (thisVeh->m_fHealth > 1000.0f || thisVeh->bInvulnerable || !thisVeh->bCanBeDamaged) {
 			return false; // SA-MP God-mode: completely prevent damage
 		}
 	}
@@ -1013,7 +1013,7 @@ static bool __fastcall Hooked_CVehicle_CanVehicleBeDamaged(CVehicle* thisVeh, vo
 static void __fastcall Hooked_CAutomobile_VehicleDamage(CAutomobile* thisCar, void* edx, float damageIntensity, unsigned short collisionComponent, CEntity* damager, CVector* vecCollisionCoors, CVector* vecCollisionDirection, eWeaponType weapon)
 {
 	if (thisCar && IsVehiclePointerValid(thisCar)) {
-		if (thisCar->m_fHealth > 1000.0f) {
+		if (thisCar->m_fHealth > 1000.0f || thisCar->bInvulnerable || !thisCar->bCanBeDamaged) {
 			return; // SA-MP God-mode: completely ignore vehicle damage & dents
 		}
 	}
@@ -1024,7 +1024,7 @@ static void __fastcall Hooked_CAutomobile_VehicleDamage(CAutomobile* thisCar, vo
 static void __fastcall Hooked_CAutomobile_PopDoor(CAutomobile* thisCar, void* edx, int nodeIndex, eDoors door, bool showVisualEffect)
 {
 	if (thisCar && IsVehiclePointerValid(thisCar)) {
-		if (thisCar->m_fHealth > 1000.0f) {
+		if (thisCar->m_fHealth > 1000.0f || thisCar->bInvulnerable || !thisCar->bCanBeDamaged) {
 			return; // SA-MP God-mode: never detach or pop doors
 		}
 	}
@@ -1035,7 +1035,7 @@ static void __fastcall Hooked_CAutomobile_PopDoor(CAutomobile* thisCar, void* ed
 static void __fastcall Hooked_CAutomobile_PopPanel(CAutomobile* thisCar, void* edx, int nodeIndex, ePanels panel, bool showVisualEffect)
 {
 	if (thisCar && IsVehiclePointerValid(thisCar)) {
-		if (thisCar->m_fHealth > 1000.0f) {
+		if (thisCar->m_fHealth > 1000.0f || thisCar->bInvulnerable || !thisCar->bCanBeDamaged) {
 			return; // SA-MP God-mode: never detach or pop panels
 		}
 	}
@@ -1046,7 +1046,7 @@ static void __fastcall Hooked_CAutomobile_PopPanel(CAutomobile* thisCar, void* e
 static void __fastcall Hooked_CAutomobile_BlowUpCar(CAutomobile* thisCar, void* edx, CEntity* damager, bool bHideExplosion)
 {
 	if (thisCar && IsVehiclePointerValid(thisCar)) {
-		if (thisCar->m_fHealth > 1000.0f) {
+		if (thisCar->m_fHealth > 1000.0f || thisCar->bInvulnerable || !thisCar->bCanBeDamaged) {
 			return; // SA-MP God-mode: never blow up
 		}
 	}
@@ -1057,7 +1057,7 @@ static void __fastcall Hooked_CAutomobile_BlowUpCar(CAutomobile* thisCar, void* 
 static void __fastcall Hooked_CVehicle_ProcessDelayedExplosion(CVehicle* thisVeh, void* edx)
 {
 	if (thisVeh && IsVehiclePointerValid(thisVeh)) {
-		if (thisVeh->m_fHealth > 1000.0f) {
+		if (thisVeh->m_fHealth > 1000.0f || thisVeh->bInvulnerable || !thisVeh->bCanBeDamaged) {
 			return; // SA-MP God-mode: do not explode
 		}
 	}
@@ -1075,11 +1075,30 @@ static void __fastcall Hooked_CAutomobile_Fix(CAutomobile* thisCar, void* edx)
 
 	float savedHealth = thisCar->m_fHealth;
 
+	auto* binding = CustomVehicleBindingManager::Instance().FindByVehicle(thisCar);
+	if (binding && binding->modelApplied && thisCar->m_pRwObject) {
+		// Custom vehicle: DO NOT invoke native CAutomobile::Fix (0x6A3440)!
+		// Native 0x6A3440 force-resets frame rotations to axis-aligned identity [1,0,0],[0,1,0],[0,0,1],
+		// which tilts custom modelled doors outwards and breaks custom glass/sunroof/panel orientations.
+		CustomVehicleBindingManager::Instance().OnVehicleFixed(thisCar);
+
+		// Preserve God-mode health if health was > 1000.0f before Fix(), otherwise restore to 1000.0f
+		if (savedHealth > 1000.0f) {
+			thisCar->m_fHealth = savedHealth;
+			ApplyVehicleGodMode(thisCar, true);
+		} else {
+			thisCar->m_fHealth = 1000.0f;
+		}
+		g_lastVehicleHealth[thisCar] = thisCar->m_fHealth;
+		return;
+	}
+
+	// Regular / vanilla GTA SA vehicle: call native fix
 	if (g_origCAutomobile_Fix)
 		g_origCAutomobile_Fix(thisCar, edx);
 
-	// GTA SA CAutomobile::Fix (0x6A3440) does NOT repair door angles, rotations, or states.
-	// Restore all doors cleanly: bonnet, boot, front-left, front-right, rear-left, rear-right.
+	// Native CAutomobile::Fix (0x6A3440) does NOT repair door angles, rotations, or states.
+	// Restore all doors cleanly for vanilla models:
 	static const struct {
 		int nodeIdx;
 		eDoors door;
@@ -1151,9 +1170,6 @@ static void __fastcall Hooked_CAutomobile_Fix(CAutomobile* thisCar, void* edx)
 		thisCar->m_fHealth = 1000.0f;
 	}
 	g_lastVehicleHealth[thisCar] = thisCar->m_fHealth;
-
-	// Notify CustomVehicleBindingManager to restore extras, materials, colors, and suppress _vlo LOD atomics
-	CustomVehicleBindingManager::Instance().OnVehicleFixed(thisCar);
 }
 
 static void(__fastcall* g_origCAutomobile_PreRender)(CAutomobile* thisCar, void* edx) = nullptr;
@@ -1228,8 +1244,32 @@ static void __fastcall Hooked_AddExhaustParticles(CVehicle* thisVehicle, void* e
 		auto* baseModel = reinterpret_cast<CVehicleModelInfo*>(CModelInfo::GetModelInfo(thisVehicle->m_nModelIndex));
 		DummySwapGuard guard(baseModel, customModel);
 
+		// Double exhaust support for custom vehicles (e.g. BMW M5 quad exhaust):
+		// GTA SA's CVehicle::AddExhaustParticles checks thisVehicle->m_pHandlingData->m_bDoubleExhaust.
+		// If the custom model has 0x2000 in modelFlags, a secondary exhaust dummy, or an offset exhaust dummy (|x| > 0.15f),
+		// ensure m_bDoubleExhaust is enabled so exhaust smoke emits from BOTH sides.
+		bool savedDouble = false;
+		bool modifiedHandling = false;
+		bool isDoubleExhaust = false;
+		if (thisVehicle->m_pHandlingData) {
+			savedDouble = thisVehicle->m_pHandlingData->m_bDoubleExhaust;
+			bool hasDoubleFlag = (thisVehicle->m_pHandlingData->m_nModelFlags & 0x2000) != 0;
+			bool hasSecDummy = (customModel && customModel->m_pVehicleStruct && customModel->m_pVehicleStruct->m_avDummyPos[11].Magnitude() > 0.001f);
+			bool hasOffsetExhaust = (customModel && customModel->m_pVehicleStruct && fabsf(customModel->m_pVehicleStruct->m_avDummyPos[6].x) > 0.15f);
+
+			if (hasDoubleFlag || hasSecDummy || hasOffsetExhaust) {
+				thisVehicle->m_pHandlingData->m_bDoubleExhaust = 1;
+				modifiedHandling = true;
+				isDoubleExhaust = true;
+			}
+		}
+
 		if (g_origAddExhaustParticles)
 			g_origAddExhaustParticles(thisVehicle, edx);
+
+		if (modifiedHandling && thisVehicle->m_pHandlingData) {
+			thisVehicle->m_pHandlingData->m_bDoubleExhaust = savedDouble;
+		}
 
 		if (binding->backfireEnabled && thisVehicle->m_nVehicleSubClass == VEHICLE_AUTOMOBILE) {
 			auto* car = reinterpret_cast<CAutomobile*>(thisVehicle);
@@ -1250,20 +1290,32 @@ static void __fastcall Hooked_AddExhaustParticles(CVehicle* thisVehicle, void* e
 					// which performs: pos + right*v.x + forward*v.y + up*v.z (i.e. local-to-world transform)
 					CVector exhaustWorld = thisVehicle->GetMatrix() * exhaustLocal;
 					CVector backwardDir = -thisVehicle->GetMatrix().GetForward();
-
-					CCoronas::RegisterCorona(
-						reinterpret_cast<uintptr_t>(thisVehicle) + 0x20,
-						nullptr,
-						255, 140, 40, 255,
-						exhaustWorld,
-						0.45f,
-						35.0f,
-						CORONATYPE_SHINYSTAR,
-						FLARETYPE_NONE,
-						false, false, 0, 0.0f, false, 0.05f, 0, 15.0f, false, false);
-
 					CVector rightDir = thisVehicle->GetMatrix().GetRight();
-					g_fx.AddSparks(exhaustWorld, backwardDir, 3.5f, 15, rightDir, 0, 0.25f, 0.2f);
+
+					auto fireBackfireEffect = [&](CVector pos, uintptr_t idOffset) {
+						CCoronas::RegisterCorona(
+							reinterpret_cast<uintptr_t>(thisVehicle) + idOffset,
+							nullptr,
+							255, 140, 40, 255,
+							pos,
+							0.45f,
+							35.0f,
+							CORONATYPE_SHINYSTAR,
+							FLARETYPE_NONE,
+							false, false, 0, 0.0f, false, 0.05f, 0, 15.0f, false, false);
+						g_fx.AddSparks(pos, backwardDir, 3.5f, 15, rightDir, 0, 0.25f, 0.2f);
+					};
+
+					fireBackfireEffect(exhaustWorld, 0x20);
+
+					if (isDoubleExhaust) {
+						CVector secondLocal(-exhaustLocal.x, exhaustLocal.y, exhaustLocal.z);
+						if (customModel && customModel->m_pVehicleStruct && customModel->m_pVehicleStruct->m_avDummyPos[11].Magnitude() > 0.001f) {
+							secondLocal = customModel->m_pVehicleStruct->m_avDummyPos[11];
+						}
+						CVector secondWorld = thisVehicle->GetMatrix() * secondLocal;
+						fireBackfireEffect(secondWorld, 0x24);
+					}
 
 					AudioEngine.ReportMissionAudioEvent(static_cast<eAudioEvents>(1131), &exhaustWorld);
 				}
@@ -2869,15 +2921,20 @@ void InitializeHooks()
 				MainThreadQueue::Instance().Push([vehicleId]() {
 					CVehicle* veh = GetGameVehicleFromPool(vehicleId);
 					if (veh && IsVehiclePointerValid(veh)) {
+						float currentHealth = veh->m_fHealth;
 						if (veh->m_nVehicleSubClass == VEHICLE_AUTOMOBILE || veh->m_nVehicleSubClass == VEHICLE_MTRUCK || veh->m_nVehicleSubClass == VEHICLE_QUAD) {
 							reinterpret_cast<CAutomobile*>(veh)->Fix();
 						} else {
 							veh->Fix();
 						}
 						CustomVehicleBindingManager::Instance().OnVehicleFixed(veh);
-						if (veh->m_fHealth > 1000.0f) {
+						if (currentHealth > 1000.0f) {
+							veh->m_fHealth = currentHealth;
 							ApplyVehicleGodMode(veh, true);
+						} else {
+							veh->m_fHealth = 1000.0f;
 						}
+						g_lastVehicleHealth[veh] = veh->m_fHealth;
 					}
 				});
 			}
@@ -2892,6 +2949,7 @@ void InitializeHooks()
 					CVehicle* veh = GetGameVehicleFromPool(vehicleId);
 					if (veh && IsVehiclePointerValid(veh)) {
 						veh->m_fHealth = health;
+						g_lastVehicleHealth[veh] = health;
 
 						if (health > 1000.0f) {
 							ApplyVehicleGodMode(veh, true);
@@ -2901,7 +2959,10 @@ void InitializeHooks()
 								veh->Fix();
 							}
 							CustomVehicleBindingManager::Instance().OnVehicleFixed(veh);
+							veh->m_fHealth = health;
 						} else {
+							ApplyVehicleGodMode(veh, false);
+
 							if (health >= 250.0f) {
 								if (veh->m_nVehicleSubClass == VEHICLE_AUTOMOBILE || veh->m_nVehicleSubClass == VEHICLE_MTRUCK || veh->m_nVehicleSubClass == VEHICLE_QUAD) {
 									auto* autoVeh = reinterpret_cast<CAutomobile*>(veh);
@@ -2924,6 +2985,7 @@ void InitializeHooks()
 									veh->Fix();
 								}
 								CustomVehicleBindingManager::Instance().OnVehicleFixed(veh);
+								veh->m_fHealth = health;
 							}
 						}
 					}
@@ -2942,12 +3004,14 @@ void InitializeHooks()
 					if (veh && IsVehiclePointerValid(veh)) {
 						if (veh->m_fHealth > 1000.0f) {
 							// God-mode: preserve pristine status and enforce godmode
+							float currentHealth = veh->m_fHealth;
 							if (veh->m_nVehicleSubClass == VEHICLE_AUTOMOBILE || veh->m_nVehicleSubClass == VEHICLE_MTRUCK || veh->m_nVehicleSubClass == VEHICLE_QUAD) {
 								reinterpret_cast<CAutomobile*>(veh)->Fix();
 							} else {
 								veh->Fix();
 							}
 							CustomVehicleBindingManager::Instance().OnVehicleFixed(veh);
+							veh->m_fHealth = currentHealth;
 							ApplyVehicleGodMode(veh, true);
 						} else if (panelDamage == 0 && doorDamage == 0 && lightDamage == 0 && tireDamage == 0) {
 							if (veh->m_nVehicleSubClass == VEHICLE_AUTOMOBILE || veh->m_nVehicleSubClass == VEHICLE_MTRUCK || veh->m_nVehicleSubClass == VEHICLE_QUAD) {
@@ -3777,16 +3841,16 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD dwReason, LPVOID lpReserved)
 			ClientLog(LogLevel::Error, std::format("Failed to hook CVehicle::CanVehicleBeDamaged (0x6D1280): {}", MH_StatusToString(canDamStatus)));
 		}
 
-		MH_STATUS vehDamStatus = MH_CreateHook(reinterpret_cast<void*>(0x6A7600), reinterpret_cast<void*>(&Hooked_CAutomobile_VehicleDamage), reinterpret_cast<void**>(&g_origCAutomobile_VehicleDamage));
+		MH_STATUS vehDamStatus = MH_CreateHook(reinterpret_cast<void*>(0x6A7650), reinterpret_cast<void*>(&Hooked_CAutomobile_VehicleDamage), reinterpret_cast<void**>(&g_origCAutomobile_VehicleDamage));
 		if (vehDamStatus == MH_OK) {
-			MH_STATUS enableStatus = MH_EnableHook(reinterpret_cast<void*>(0x6A7600));
+			MH_STATUS enableStatus = MH_EnableHook(reinterpret_cast<void*>(0x6A7650));
 			if (enableStatus == MH_OK) {
-				ClientLog(LogLevel::Info, "CAutomobile::VehicleDamage (0x6A7600) hooked successfully via MinHook");
+				ClientLog(LogLevel::Info, "CAutomobile::VehicleDamage (0x6A7650) hooked successfully via MinHook");
 			} else {
 				ClientLog(LogLevel::Error, std::format("Failed to enable CAutomobile::VehicleDamage hook: {}", MH_StatusToString(enableStatus)));
 			}
 		} else {
-			ClientLog(LogLevel::Error, std::format("Failed to hook CAutomobile::VehicleDamage (0x6A7600): {}", MH_StatusToString(vehDamStatus)));
+			ClientLog(LogLevel::Error, std::format("Failed to hook CAutomobile::VehicleDamage (0x6A7650): {}", MH_StatusToString(vehDamStatus)));
 		}
 
 		MH_STATUS popDoorStatus = MH_CreateHook(reinterpret_cast<void*>(0x6ADEF0), reinterpret_cast<void*>(&Hooked_CAutomobile_PopDoor), reinterpret_cast<void**>(&g_origCAutomobile_PopDoor));
@@ -4058,8 +4122,8 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD dwReason, LPVOID lpReserved)
 		}
 
 		if (g_origCAutomobile_VehicleDamage) {
-			MH_DisableHook(reinterpret_cast<void*>(0x6A7600));
-			MH_RemoveHook(reinterpret_cast<void*>(0x6A7600));
+			MH_DisableHook(reinterpret_cast<void*>(0x6A7650));
+			MH_RemoveHook(reinterpret_cast<void*>(0x6A7650));
 			g_origCAutomobile_VehicleDamage = nullptr;
 		}
 

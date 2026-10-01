@@ -7,6 +7,7 @@
 #include <game_sa/CAutomobile.h>
 #include <game_sa/CBike.h>
 #include <game_sa/CBoat.h>
+#include <game_sa/CClock.h>
 #include <game_sa/CColModel.h>
 #include <game_sa/CCollisionData.h>
 #include <game_sa/CCustomCarPlateMgr.h>
@@ -24,6 +25,7 @@
 #include <fstream>
 #include <shared_mutex>
 #include <sstream>
+#include <cstring>
 #include <unordered_set>
 
 static bool IsFrameOrChildOf(RwFrame* frame, RwFrame* targetParent)
@@ -53,40 +55,69 @@ static RpClump* CloneClumpPreservingOrder(RpClump* srcClump)
 	return clone;
 }
 
+static bool IsExtraFrame(RwFrame* frame)
+{
+	for (RwFrame* f = frame; f != nullptr; f = RwFrameGetParent(f)) {
+		const char* name = GetFrameNodeName(f);
+		if (name) {
+			std::string lower = name;
+			std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+			if (lower.find("extra") != std::string::npos) {
+				return true;
+			}
+		}
+	}
+	return false;
+}
+
 static void ApplyExtrasToClump(RpClump* clump, uint8_t mask)
 {
 	if (!clump)
 		return;
 
+	// First pass: Hide ALL atomics belonging to any extra hierarchy
+	RpClumpForAllAtomics(clump, [](RpAtomic* atomic, void* data) -> RpAtomic* {
+		RwFrame* frame = RpAtomicGetFrame(atomic);
+		if (frame && IsExtraFrame(frame)) {
+			RpAtomicSetFlags(atomic, 0);
+		}
+		return atomic;
+	}, nullptr);
+
+	// Second pass: For any bit enabled in mask (bits 0..7), enable that extra's atomics
 	for (int i = 1; i <= 8; ++i) {
+		bool visible = (mask & (1 << (i - 1))) != 0;
+		if (!visible)
+			continue;
+
 		std::string extraName = std::format("extra{}", i);
 		RwFrame* frame = CClumpModelInfo::GetFrameFromName(clump, extraName.c_str());
 		if (!frame) {
 			std::string extraNameUnder = std::format("extra_{}", i);
 			frame = CClumpModelInfo::GetFrameFromName(clump, extraNameUnder.c_str());
 		}
+		if (!frame) {
+			std::string extraNameCap = std::format("EXTRA{}", i);
+			frame = CClumpModelInfo::GetFrameFromName(clump, extraNameCap.c_str());
+		}
+		if (!frame) {
+			std::string extraNameCapUnder = std::format("EXTRA_{}", i);
+			frame = CClumpModelInfo::GetFrameFromName(clump, extraNameCapUnder.c_str());
+		}
 		if (!frame)
 			continue;
 
-		bool visible = (mask & (1 << (i - 1))) != 0;
-
 		struct AtomicExtraContext {
 			RwFrame* targetFrame;
-			bool isVisible;
-		} ctx { frame, visible };
+		} ctx { frame };
 
 		RpClumpForAllAtomics(clump, [](RpAtomic* atomic, void* data) -> RpAtomic* {
 			auto* c = reinterpret_cast<AtomicExtraContext*>(data);
 			if (IsFrameOrChildOf(RpAtomicGetFrame(atomic), c->targetFrame)) {
-				if (c->isVisible) {
-					RpAtomicSetFlags(atomic, rpATOMICRENDER);
-				} else {
-					RpAtomicSetFlags(atomic, 0);
-				}
+				RpAtomicSetFlags(atomic, rpATOMICRENDER);
 			}
 			return atomic;
-		},
-			&ctx);
+		}, &ctx);
 	}
 }
 
@@ -438,13 +469,145 @@ void CustomVehicleBindingManager::OnVehicleFixed(CVehicle* vehicle)
 				return;
 
 			RpClump* clump = reinterpret_cast<RpClump*>(vehicle->m_pRwObject);
+			auto* customModel = StreamingExtender::GetCustomModel(b.customModelId);
+			if (!customModel || !customModel->m_pRwClump)
+				return;
 
-			// 1. Re-apply extras mask (prevents CAutomobile::Fix from making hidden extras visible)
-			if (b.hasExtras) {
-				ApplyExtrasToClump(clump, b.extrasMask);
+			// 1. Restore pristine matrices for known movable/damageable dummy nodes from template DFF.
+			// NEVER perform blind structural tree walks or sibling pointer walks on live vehicle clumps,
+			// because dynamic plates (bt_platefront/rear) and tuning upgrades create mismatched child counts
+			// that desync sibling pairing and displace components (e.g. doors, glass, sunroof) across the tree.
+			static const struct {
+				int nodeIdx;
+				const char* dummyName;
+			} kDamageNodes[] = {
+				{ CAR_BONNET, "bonnet_dummy" },
+				{ CAR_BOOT, "boot_dummy" },
+				{ CAR_DOOR_LF, "door_lf_dummy" },
+				{ CAR_DOOR_RF, "door_rf_dummy" },
+				{ CAR_DOOR_LR, "door_lr_dummy" },
+				{ CAR_DOOR_RR, "door_rr_dummy" },
+				{ CAR_BUMP_FRONT, "bump_front_dummy" },
+				{ CAR_BUMP_REAR, "bump_rear_dummy" },
+				{ CAR_WING_LF, "wing_lf_dummy" },
+				{ CAR_WING_RF, "wing_rf_dummy" },
+				{ CAR_WINDSCREEN, "windscreen_dummy" },
+			};
+
+			for (const auto& node : kDamageNodes) {
+				RwFrame* tmplFrame = CClumpModelInfo::GetFrameFromName(customModel->m_pRwClump, node.dummyName);
+				if (!tmplFrame)
+					continue;
+
+				RwFrame* vehFrame = nullptr;
+				if (vehicle->m_nVehicleSubClass == VEHICLE_AUTOMOBILE ||
+				    vehicle->m_nVehicleSubClass == VEHICLE_MTRUCK ||
+				    vehicle->m_nVehicleSubClass == VEHICLE_QUAD) {
+					auto* car = reinterpret_cast<CAutomobile*>(vehicle);
+					if (node.nodeIdx >= 0 && node.nodeIdx < CAR_NUM_NODES) {
+						vehFrame = car->m_aCarNodes[node.nodeIdx];
+					}
+				}
+				if (!vehFrame) {
+					vehFrame = CClumpModelInfo::GetFrameFromName(clump, node.dummyName);
+				}
+
+				if (vehFrame) {
+					vehFrame->modelling = tmplFrame->modelling;
+					RwFrameUpdateObjects(vehFrame);
+				}
 			}
 
-			// 2. Clear rpATOMICRENDER flag and enforce VehicleLODRenderCallback (0x7331E0) on any _vlo atomics
+			// 2. Reset vehicle subclass nodes and door/panel/damage states
+			if (vehicle->m_nVehicleSubClass == VEHICLE_AUTOMOBILE || vehicle->m_nVehicleSubClass == VEHICLE_MTRUCK || vehicle->m_nVehicleSubClass == VEHICLE_QUAD) {
+				auto* car = reinterpret_cast<CAutomobile*>(vehicle);
+				car->SetupModelNodes();
+
+				// Reset all 6 doors cleanly
+				static const struct {
+					int nodeIdx;
+					eDoors door;
+				} kDoors[] = {
+					{ CAR_BONNET, BONNET },
+					{ CAR_BOOT, BOOT },
+					{ CAR_DOOR_LF, DOOR_FRONT_LEFT },
+					{ CAR_DOOR_RF, DOOR_FRONT_RIGHT },
+					{ CAR_DOOR_LR, DOOR_REAR_LEFT },
+					{ CAR_DOOR_RR, DOOR_REAR_RIGHT }
+				};
+
+				for (const auto& d : kDoors) {
+					car->FixDoor(d.nodeIdx, d.door);
+					car->m_doors[d.door].m_fAngle = 0.0f;
+					car->m_doors[d.door].m_fPrevAngle = 0.0f;
+					car->m_doors[d.door].m_fAngVel = 0.0f;
+					car->m_doors[d.door].m_nDoorState = DOOR_NOTHING;
+
+					RwFrame* doorFrame = car->m_aCarNodes[d.nodeIdx];
+					if (doorFrame) {
+						car->SetComponentVisibility(doorFrame, 1);
+					}
+				}
+
+				// Reset all 5 panels cleanly
+				static const struct {
+					int nodeIdx;
+					ePanels panel;
+				} kPanels[] = {
+					{ CAR_BUMP_FRONT, BUMP_FRONT },
+					{ CAR_BUMP_REAR, BUMP_REAR },
+					{ CAR_WING_LF, WING_FRONT_LEFT },
+					{ CAR_WING_RF, WING_FRONT_RIGHT },
+					{ CAR_WINDSCREEN, WINDSCREEN }
+				};
+
+				for (const auto& p : kPanels) {
+					car->FixPanel(p.nodeIdx, p.panel);
+					RwFrame* panelFrame = car->m_aCarNodes[p.nodeIdx];
+					if (panelFrame) {
+						car->SetComponentVisibility(panelFrame, 1);
+					}
+				}
+
+				// Reset bouncing panels
+				for (int p = 0; p < 3; ++p) {
+					car->m_panels[p].m_nFrameId = -1;
+					car->m_panels[p].ResetPanel();
+				}
+
+				// Reset damage manager & flag
+				car->m_damageManager.ResetDamageStatus();
+				car->bIsDamaged = false;
+				reinterpret_cast<uint8_t*>(car)[0x42A] &= ~1;
+
+				// Fix tyres
+				for (int w = 0; w < 4; ++w) {
+					car->FixTyre(static_cast<eWheels>(w));
+				}
+
+				// Kill fire and overheat particles
+				car->m_fBurningTimer = 0.0f;
+				if (car->m_pFireParticle) {
+					car->m_pFireParticle->Kill();
+					car->m_pFireParticle = nullptr;
+				}
+				if (car->m_pOverheatParticle) {
+					car->m_pOverheatParticle->Kill();
+					car->m_pOverheatParticle = nullptr;
+				}
+			} else if (vehicle->m_nVehicleSubClass == VEHICLE_BIKE || vehicle->m_nVehicleSubClass == VEHICLE_BMX) {
+				reinterpret_cast<CBike*>(vehicle)->SetupModelNodes();
+			} else if (vehicle->m_nVehicleSubClass == VEHICLE_BOAT) {
+				reinterpret_cast<CBoat*>(vehicle)->SetupModelNodes();
+			}
+
+			// 3. Reset atomic callbacks from model info
+			RpClump* savedClump = customModel->m_pRwClump;
+			customModel->m_pRwClump = clump;
+			customModel->SetAtomicRenderCallbacks();
+			customModel->m_pRwClump = savedClump;
+
+			// 4. Suppress _vlo LOD atomics (flags = 0, callback = 0x7331E0)
 			RpClumpForAllAtomics(clump, [](RpAtomic* atomic, void* data) -> RpAtomic* {
 				RwFrame* frame = RpAtomicGetFrame(atomic);
 				if (frame) {
@@ -457,12 +620,37 @@ void CustomVehicleBindingManager::OnVehicleFixed(CVehicle* vehicle)
 				return atomic;
 			}, nullptr);
 
-			// 3. Re-apply vehicle materials & custom coatings (base colors, paintjob, window tint, wheel color, license plate)
-			auto* customModel = StreamingExtender::GetCustomModel(b.customModelId);
-			if (customModel) {
-				customModel->SetVehicleColour(vehicle->m_nPrimaryColor, vehicle->m_nSecondaryColor, vehicle->m_nTertiaryColor, vehicle->m_nQuaternaryColor);
-				customModel->SetEditableMaterials(clump);
+			// 5. Restore atomic visibility flags directly from pristine template clump (customModel->m_pRwClump).
+			// This hides _dam meshes, restores _ok meshes, preserves baseline tuning parts (e.g. bumper_f0),
+			// and keeps aftermarket variations (*1, *2, *3, extra spoilers) hidden, matching a brand new vehicle.
+			struct AtomicSyncContext {
+				std::vector<uint32_t> tmplFlags;
+				size_t idx { 0 };
+			} syncCtx;
+
+			RpClumpForAllAtomics(customModel->m_pRwClump, [](RpAtomic* atomic, void* data) -> RpAtomic* {
+				auto* ctx = reinterpret_cast<AtomicSyncContext*>(data);
+				ctx->tmplFlags.push_back(RpAtomicGetFlags(atomic));
+				return atomic;
+			}, &syncCtx);
+
+			RpClumpForAllAtomics(clump, [](RpAtomic* atomic, void* data) -> RpAtomic* {
+				auto* ctx = reinterpret_cast<AtomicSyncContext*>(data);
+				if (ctx->idx < ctx->tmplFlags.size()) {
+					RpAtomicSetFlags(atomic, ctx->tmplFlags[ctx->idx]);
+					ctx->idx++;
+				}
+				return atomic;
+			}, &syncCtx);
+
+			// 6. Re-apply extras mask if a custom mask was set
+			if (b.hasExtras) {
+				ApplyExtrasToClump(clump, b.extrasMask);
 			}
+
+			// 9. Re-apply vehicle materials & custom coatings (base colors, paintjob, window tint, wheel color, license plate)
+			customModel->SetVehicleColour(vehicle->m_nPrimaryColor, vehicle->m_nSecondaryColor, vehicle->m_nTertiaryColor, vehicle->m_nQuaternaryColor);
+			customModel->SetEditableMaterials(clump);
 
 			if (b.paintjobIndex >= 0) {
 				ApplyPaintjobToVehicle(vehicle, b.paintjobIndex);
@@ -479,7 +667,7 @@ void CustomVehicleBindingManager::OnVehicleFixed(CVehicle* vehicle)
 				ApplyPlateToVehicle(vehicle, b.lastPlateText);
 			}
 
-			// 4. Reset popup headlights to current light state
+			// 10. Synchronize popup headlights
 			if (b.hasPopupHeadlights && !b.popupFrames.empty()) {
 				bool isNight = (CClock::ms_nGameClockHours >= 20 || CClock::ms_nGameClockHours < 7);
 				bool lightsOn = (vehicle->bLightsOn != 0) || (vehicle->bEngineOn != 0 && isNight);
@@ -531,12 +719,6 @@ void CustomVehicleBindingManager::Process()
 			binding.appliedGameVehicle = nullptr;
 			binding.modelApplied = false;
 			binding.originalModelId = -1;
-			continue;
-		}
-
-		if (binding.hasBaseModelId && vehicle->m_nModelIndex != static_cast<int>(binding.baseModelId)) {
-			ClientLog(LogLevel::Warning, std::format("Vehicle {} model mismatch: expected baseModelId={} but vehicle has modelIndex={}. Skipping binding.",
-				vehicleId, binding.baseModelId, vehicle->m_nModelIndex));
 			continue;
 		}
 

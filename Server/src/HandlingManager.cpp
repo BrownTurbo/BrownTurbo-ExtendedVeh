@@ -1312,6 +1312,14 @@ bool CommitCustomVehicleDef(uint32_t customModelId)
 		core_->logLn(LogLevel::Message, "[ExtendedVeh] Custom vehicle model %u committed successfully (flags=0x%X)", customModelId, customVehicleDefs[customModelId].flags);
 
 	SendCustomVehicleDefToAll(customModelId);
+
+	// Queue handling modifications (from model.ini) for broadcast to clients
+	auto hIt = gCustomModelHandlings.find(customModelId);
+	if (hIt != gCustomModelHandlings.end() && !hIt->second.handlingModMap.empty())
+	{
+		std::lock_guard lock(g_outgoingModsMutex);
+		usOutgoingModelMods.insert(customModelId);
+	}
 	return true;
 }
 
