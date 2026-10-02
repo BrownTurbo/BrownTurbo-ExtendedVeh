@@ -198,10 +198,13 @@ public:
 
 	void ApplyWheelColorToVehicle(CVehicle* vehicle, uint8_t r, uint8_t g, uint8_t b);
 
+	void ApplyVehicleColors(CVehicle* vehicle, uint8_t prim, uint8_t sec, uint8_t tert = 0, uint8_t quat = 0);
+
 	void ApplyWheelToVehicle(CVehicle* vehicle, int16_t wheelModelId);
 
 	void ApplyAudioSettingsToVehicle(CVehicle* vehicle);
 	void ApplyPlateToVehicle(CVehicle* vehicle, const char* text = nullptr);
+	void UpdateVehiclePlateVisibility(CVehicle* vehicle);
 	void OnVehicleFixed(CVehicle* vehicle);
 	void SetVehiclePlateText(uint16_t vehicleId, const char* text);
 	void SetVehiclePlateMesh(uint16_t vehicleId, bool isRear, const CustomVeh::Protocol::PlateMeshConfig& cfg);

@@ -346,6 +346,57 @@ public:
 		RwFrame* rootFrame = RpClumpGetFrame(pClump);
 		if (rootFrame) {
 			NormalizeFrameNamesRecursive(rootFrame);
+
+			// Frame sanitation for custom vehicle models:
+			// 1. Ensure a chassis dummy exists.
+			// GTA SA requires "chassis_dummy" or "chassis" for CAR_CHASSIS (m_aCarNodes[CAR_CHASSIS]).
+			// If missing, find a primary body frame (e.g. "body", "carbody") and rename it to "chassis_dummy".
+			RwFrame* chassis = CClumpModelInfo::GetFrameFromName(pClump, "chassis_dummy");
+			if (!chassis) {
+				chassis = CClumpModelInfo::GetFrameFromName(pClump, "chassis");
+			}
+			if (!chassis) {
+				const char* bodyNames[] = { "body", "carbody", "bodyshell", "shell" };
+				for (const char* bname : bodyNames) {
+					RwFrame* bf = CClumpModelInfo::GetFrameFromName(pClump, bname);
+					if (bf) {
+						SetFrameNodeName(bf, "chassis_dummy");
+						ClientLog(LogLevel::Info, std::format("Renamed frame '{}' to 'chassis_dummy'", bname));
+						chassis = bf;
+						break;
+					}
+				}
+			}
+
+			// 2. Re-parent wheel dummies to clump root.
+			// In standard GTA SA vehicles, wheel dummies are direct children of the clump root.
+			// If a custom model placed wheels as children of "body" / "chassis", re-parent them to rootFrame
+			// and adjust their local modelling matrices so they remain in root coordinate space.
+			RwFrameUpdateObjects(rootFrame);
+			const char* wheelDummyNames[] = {
+				"wheel_rf_dummy", "wheel_lf_dummy", "wheel_rb_dummy", "wheel_lb_dummy",
+				"wheel_rf", "wheel_lf", "wheel_rb", "wheel_lb"
+			};
+			for (const char* wname : wheelDummyNames) {
+				RwFrame* wf = CClumpModelInfo::GetFrameFromName(pClump, wname);
+				RwFrame* wfParent = wf ? RwFrameGetParent(wf) : nullptr;
+				if (wf && wfParent && wfParent != rootFrame) {
+					RwMatrix* ltmWheel = RwFrameGetLTM(wf);
+					RwMatrix* ltmRoot = RwFrameGetLTM(rootFrame);
+					RwMatrix newLocal;
+					RwMatrix invRoot;
+					if (ltmWheel && ltmRoot && RwMatrixInvert(&invRoot, ltmRoot)) {
+						RwMatrixMultiply(&newLocal, ltmWheel, &invRoot);
+					} else if (ltmWheel) {
+						newLocal = *ltmWheel;
+					}
+					RwFrameRemoveChild(wf);
+					RwFrameAddChild(rootFrame, wf);
+					std::memcpy(&wf->modelling, &newLocal, sizeof(RwMatrix));
+					RwFrameUpdateObjects(rootFrame);
+					ClientLog(LogLevel::Info, std::format("Re-parented wheel dummy '{}' to clump root (pos: {:.3f}, {:.3f}, {:.3f})", wname, newLocal.pos.x, newLocal.pos.y, newLocal.pos.z));
+				}
+			}
 		}
 
 		ClientLog(LogLevel::Debug, "FinalizeClump -> BEFORE SetupVehicleVariables");
@@ -366,9 +417,61 @@ public:
 			pInfo->m_pVehicleStruct->m_nMaskComponentsDamagable |= (1 << CAR_DOOR_RF) | (1 << CAR_DOOR_RR) | (1 << CAR_DOOR_LF) | (1 << CAR_DOOR_LR) | (1 << CAR_BONNET) | (1 << CAR_BOOT) | (1 << CAR_BUMP_FRONT) | (1 << CAR_BUMP_REAR) | (1 << CAR_WING_RF) | (1 << CAR_WING_LF) | (1 << CAR_WINDSCREEN);
 		}
 
+		// Copy tuning upgrades and remap TXD descriptions from base vehicle model info.
+		// SetClump allocates a fresh CVehicleStructure from CPool<CVehicleStructure>, which leaves
+		// m_aUpgrades (UpgradePosnDesc[18]), m_anUpgrades[18], and m_anRemapTxds[4] uninitialized/zeroed.
+		// Without copying them, CVehicle::AddUpgrade (0x6DFA20) reads parentComponentId=0 (CAR_NODE_NONE),
+		// causing CClumpModelInfo::GetFrameFromId to fail and tuning mods (spoilers, hoods, scoops, nitro)
+		// to attach at (0,0,0) or fail completely.
+		if (pBaseInfo && pBaseInfo->m_pVehicleStruct && pInfo->m_pVehicleStruct) {
+			memcpy(pInfo->m_pVehicleStruct->m_aUpgrades, pBaseInfo->m_pVehicleStruct->m_aUpgrades, sizeof(pInfo->m_pVehicleStruct->m_aUpgrades));
+			memcpy(pInfo->m_anUpgrades, pBaseInfo->m_anUpgrades, sizeof(pInfo->m_anUpgrades));
+			memcpy(pInfo->m_anRemapTxds, pBaseInfo->m_anRemapTxds, sizeof(pInfo->m_anRemapTxds));
+		}
+
 		ClientLog(LogLevel::Debug, "FinalizeClump -> BEFORE SetAtomicRenderCallbacks");
 		pInfo->SetAtomicRenderCallbacks();
 		ClientLog(LogLevel::Debug, "FinalizeClump -> AFTER SetAtomicRenderCallbacks");
+
+		// Auto-detect wheel sizes if model has wheel atomics under wheel dummies
+		if (pInfo->m_fWheelSizeFront < 0.1f || fabsf(pInfo->m_fWheelSizeFront - 0.7f) < 0.01f) {
+			const char* testWheelDummies[] = { "wheel_rf_dummy", "wheel_lf_dummy", "wheel_rb_dummy", "wheel_lb_dummy" };
+			for (const char* wd : testWheelDummies) {
+				RwFrame* wf = CClumpModelInfo::GetFrameFromName(pClump, wd);
+				if (wf) {
+					struct WheelSizeFinder {
+						float maxRadius { 0.0f };
+					} wsf;
+
+					auto checkAtomic = [](RwObject* obj, void* data) -> RwObject* {
+						if (obj && obj->type == rpATOMIC) {
+							RpAtomic* atomic = reinterpret_cast<RpAtomic*>(obj);
+							RpGeometry* geom = RpAtomicGetGeometry(atomic);
+							if (geom) {
+								const RwSphere* sph = RpAtomicGetBoundingSphere(atomic);
+								if (sph && sph->radius > 0.1f && sph->radius < 1.2f) {
+									auto* ctx = reinterpret_cast<WheelSizeFinder*>(data);
+									ctx->maxRadius = std::max(ctx->maxRadius, sph->radius);
+								}
+							}
+						}
+						return obj;
+					};
+
+					RwFrameForAllObjects(wf, checkAtomic, &wsf);
+					for (RwFrame* child = wf->child; child != nullptr; child = child->next) {
+						RwFrameForAllObjects(child, checkAtomic, &wsf);
+					}
+
+					if (wsf.maxRadius > 0.15f) {
+						pInfo->m_fWheelSizeFront = wsf.maxRadius * 2.0f;
+						pInfo->m_fWheelSizeRear = wsf.maxRadius * 2.0f;
+						ClientLog(LogLevel::Info, std::format("Auto-detected wheel size: {:.3f} (radius: {:.3f}) from '{}'", static_cast<float>(pInfo->m_fWheelSizeFront), static_cast<float>(wsf.maxRadius), wd));
+						break;
+					}
+				}
+			}
+		}
 
 		if (!pInfo->m_pPlateMaterial) {
 			struct PlateFinderCtx {

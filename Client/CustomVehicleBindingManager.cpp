@@ -267,6 +267,7 @@ void CustomVehicleBindingManager::Unbind(uint16_t vehicleId)
 					savedUpgrades[i] = vehicle->m_anUpgrades[i];
 					vehicle->m_anUpgrades[i] = -1;
 				}
+				unsigned char savedNitroBoosts = vehicle->m_nNitroBoosts;
 
 				RwMatrix savedRwMatrix;
 				bool hadMatrix = (vehicle->m_matrix != nullptr);
@@ -335,6 +336,8 @@ void CustomVehicleBindingManager::Unbind(uint16_t vehicleId)
 								car->m_panels[p].ResetPanel();
 							}
 						}
+						car->SetupSuspensionLines();
+						car->ResetSuspension();
 					} else if (vehicle->m_nVehicleSubClass == VEHICLE_BIKE || vehicle->m_nVehicleSubClass == VEHICLE_BMX) {
 						reinterpret_cast<CBike*>(vehicle)->SetupModelNodes();
 					} else if (vehicle->m_nVehicleSubClass == VEHICLE_BOAT) {
@@ -342,9 +345,20 @@ void CustomVehicleBindingManager::Unbind(uint16_t vehicleId)
 					}
 
 					for (int i = 0; i < 15; ++i) {
-						if (savedUpgrades[i] >= 1000 && savedUpgrades[i] <= 1193) {
-							vehicle->AddUpgrade(savedUpgrades[i], i);
+						int upg = savedUpgrades[i];
+						if (upg >= 1000 && upg <= 1193) {
+							if (!CStreaming::HasModelLoaded(upg)) {
+								CStreaming::RequestModel(upg, 0x16);
+								CStreaming::LoadAllRequestedModels(false);
+							}
+							if (CStreaming::HasModelLoaded(upg)) {
+								vehicle->AddVehicleUpgrade(upg);
+							}
 						}
+					}
+					if (savedNitroBoosts > 0) {
+						vehicle->m_nNitroBoosts = savedNitroBoosts;
+						vehicle->m_nHandlingFlagsIntValue = static_cast<eVehicleHandlingFlags>(vehicle->m_nHandlingFlagsIntValue | 0x80000);
 					}
 
 					CWorld::Add(vehicle);
@@ -539,8 +553,8 @@ void CustomVehicleBindingManager::OnVehicleFixed(CVehicle* vehicle)
 
 				for (const auto& d : kDoors) {
 					car->FixDoor(d.nodeIdx, d.door);
-					car->m_doors[d.door].m_fAngle = 0.0f;
-					car->m_doors[d.door].m_fPrevAngle = 0.0f;
+					car->m_doors[d.door].m_fAngle = car->m_doors[d.door].m_fClosedAngle;
+					car->m_doors[d.door].m_fPrevAngle = car->m_doors[d.door].m_fClosedAngle;
 					car->m_doors[d.door].m_fAngVel = 0.0f;
 					car->m_doors[d.door].m_nDoorState = DOOR_NOTHING;
 
@@ -622,30 +636,77 @@ void CustomVehicleBindingManager::OnVehicleFixed(CVehicle* vehicle)
 			},
 				nullptr);
 
-			// 5. Restore atomic visibility flags directly from pristine template clump (customModel->m_pRwClump).
-			// This hides _dam meshes, restores _ok meshes, preserves baseline tuning parts (e.g. bumper_f0),
-			// and keeps aftermarket variations (*1, *2, *3, extra spoilers) hidden, matching a brand new vehicle.
-			struct AtomicSyncContext {
-				std::vector<uint32_t> tmplFlags;
-				size_t idx { 0 };
-			} syncCtx;
-
+			// 5. Restore atomic visibility flags and pristine geometry vertices from template clump (customModel->m_pRwClump).
+			// Name-based matching prevents atomic sequence desync from dynamic plates, custom wheels, or tuning parts.
+			// Hides _dam meshes, restores _ok meshes, preserves baseline tuning parts (e.g. bumper_f0),
+			// and restores undeformed morph target vertex coordinates to eliminate collision crumpling.
+			std::unordered_map<std::string, RpAtomic*> tmplAtomicMap;
 			RpClumpForAllAtomics(customModel->m_pRwClump, [](RpAtomic* atomic, void* data) -> RpAtomic* {
-				auto* ctx = reinterpret_cast<AtomicSyncContext*>(data);
-				ctx->tmplFlags.push_back(RpAtomicGetFlags(atomic));
-				return atomic;
-			},
-				&syncCtx);
-
-			RpClumpForAllAtomics(clump, [](RpAtomic* atomic, void* data) -> RpAtomic* {
-				auto* ctx = reinterpret_cast<AtomicSyncContext*>(data);
-				if (ctx->idx < ctx->tmplFlags.size()) {
-					RpAtomicSetFlags(atomic, ctx->tmplFlags[ctx->idx]);
-					ctx->idx++;
+				auto* map = reinterpret_cast<std::unordered_map<std::string, RpAtomic*>*>(data);
+				RwFrame* frame = RpAtomicGetFrame(atomic);
+				const char* name = frame ? GetFrameNodeName(frame) : nullptr;
+				if (name && *name) {
+					(*map)[name] = atomic;
 				}
 				return atomic;
 			},
-				&syncCtx);
+				&tmplAtomicMap);
+
+			RpClumpForAllAtomics(clump, [](RpAtomic* atomic, void* data) -> RpAtomic* {
+				auto* map = reinterpret_cast<std::unordered_map<std::string, RpAtomic*>*>(data);
+				RwFrame* frame = RpAtomicGetFrame(atomic);
+				const char* name = frame ? GetFrameNodeName(frame) : nullptr;
+				if (!name || !*name)
+					return atomic;
+
+				if (strstr(name, "bt_platefront") || strstr(name, "bt_platerear")) {
+					return atomic; // Skip dynamic plate atomics
+				}
+
+				std::string nameLower = name;
+				std::transform(nameLower.begin(), nameLower.end(), nameLower.begin(), ::tolower);
+
+				// Explicit damaged mesh handling: force-hide
+				if (nameLower.find("_dam") != std::string::npos) {
+					RpAtomicSetFlags(atomic, 0);
+					CVisibilityPlugins::SetUserValue(atomic, 2);
+					return atomic;
+				}
+
+				// Explicit undamaged mesh handling: force-show
+				if (nameLower.find("_ok") != std::string::npos) {
+					uint32_t flags = RpAtomicGetFlags(atomic) | rpATOMICRENDER;
+					RpAtomicSetFlags(atomic, flags);
+					CVisibilityPlugins::SetUserValue(atomic, 1);
+				}
+
+				// Match by name in pristine template clump
+				auto it = map->find(name);
+				if (it != map->end()) {
+					RpAtomic* tmplAtomic = it->second;
+					uint32_t tmplFlags = RpAtomicGetFlags(tmplAtomic);
+					if (nameLower.find("_dam") != std::string::npos) {
+						tmplFlags = 0;
+					} else if (nameLower.find("_ok") != std::string::npos) {
+						tmplFlags |= rpATOMICRENDER;
+					}
+					RpAtomicSetFlags(atomic, tmplFlags);
+
+					// Restore pristine morph target vertices (removes collision denting/crumpling)
+					RpGeometry* vehGeom = RpAtomicGetGeometry(atomic);
+					RpGeometry* tmplGeom = RpAtomicGetGeometry(tmplAtomic);
+					if (vehGeom && tmplGeom && vehGeom->numVertices == tmplGeom->numVertices && vehGeom->numMorphTargets > 0 && tmplGeom->numMorphTargets > 0) {
+						if (vehGeom->morphTarget[0].verts && tmplGeom->morphTarget[0].verts) {
+							memcpy(vehGeom->morphTarget[0].verts, tmplGeom->morphTarget[0].verts, sizeof(RwV3d) * vehGeom->numVertices);
+							vehGeom->morphTarget[0].boundingSphere = tmplGeom->morphTarget[0].boundingSphere;
+							RpGeometryUnlock(vehGeom);
+						}
+					}
+				}
+
+				return atomic;
+			},
+				&tmplAtomicMap);
 
 			// 6. Re-apply extras mask if a custom mask was set
 			if (b.hasExtras) {
@@ -655,6 +716,7 @@ void CustomVehicleBindingManager::OnVehicleFixed(CVehicle* vehicle)
 			// 9. Re-apply vehicle materials & custom coatings (base colors, paintjob, window tint, wheel color, license plate)
 			customModel->SetVehicleColour(vehicle->m_nPrimaryColor, vehicle->m_nSecondaryColor, vehicle->m_nTertiaryColor, vehicle->m_nQuaternaryColor);
 			customModel->SetEditableMaterials(clump);
+			ApplyVehicleColors(vehicle, vehicle->m_nPrimaryColor, vehicle->m_nSecondaryColor, vehicle->m_nTertiaryColor, vehicle->m_nQuaternaryColor);
 
 			if (b.paintjobIndex >= 0) {
 				ApplyPaintjobToVehicle(vehicle, b.paintjobIndex);
@@ -670,6 +732,7 @@ void CustomVehicleBindingManager::OnVehicleFixed(CVehicle* vehicle)
 			} else if (b.lastPlateText[0] != '\0') {
 				ApplyPlateToVehicle(vehicle, b.lastPlateText);
 			}
+			UpdateVehiclePlateVisibility(vehicle);
 
 			// 10. Synchronize popup headlights
 			if (b.hasPopupHeadlights && !b.popupFrames.empty()) {
@@ -807,6 +870,7 @@ void CustomVehicleBindingManager::Process()
 					savedUpgrades[i] = vehicle->m_anUpgrades[i];
 					vehicle->m_anUpgrades[i] = -1;
 				}
+				unsigned char savedNitroBoosts = vehicle->m_nNitroBoosts;
 
 				RwMatrix savedRwMatrix;
 				bool hadMatrix = (vehicle->m_matrix != nullptr);
@@ -865,10 +929,27 @@ void CustomVehicleBindingManager::Process()
 						if (!car->m_aCarNodes[CAR_CHASSIS]) {
 							car->m_aCarNodes[CAR_CHASSIS] = CClumpModelInfo::GetFrameFromName(newClump, "chassis");
 						}
+						if (!car->m_aCarNodes[CAR_CHASSIS]) {
+							car->m_aCarNodes[CAR_CHASSIS] = CClumpModelInfo::GetFrameFromName(newClump, "body");
+						}
 					}
 					if (car->m_aCarNodes[CAR_CHASSIS]) {
 						binding.chassisBasePos = car->m_aCarNodes[CAR_CHASSIS]->modelling.pos;
 						binding.hasChassisBasePos = true;
+					}
+
+					// Update suspension parameters for custom model
+					tHandlingData* handling = car->m_pHandlingData;
+					if (handling && model) {
+						float upper = handling->m_fSuspensionUpperLimit;
+						float lower = handling->m_fSuspensionLowerLimit;
+						for (int w = 0; w < 4; ++w) {
+							float wheelRadius = (w == 0 || w == 1) ? (model->m_fWheelSizeFront * 0.5f) : (model->m_fWheelSizeRear * 0.5f);
+							if (wheelRadius < 0.1f) wheelRadius = 0.35f;
+							car->m_aSuspensionSpringLength[w] = upper - lower;
+							car->m_aSuspensionLineLength[w] = (upper - lower) + wheelRadius;
+						}
+						car->ResetSuspension();
 					}
 				} else if (vehicle->m_nVehicleSubClass == VEHICLE_BIKE || vehicle->m_nVehicleSubClass == VEHICLE_BMX) {
 					reinterpret_cast<CBike*>(vehicle)->SetupModelNodes();
@@ -877,9 +958,20 @@ void CustomVehicleBindingManager::Process()
 				}
 
 				for (int i = 0; i < 15; ++i) {
-					if (savedUpgrades[i] >= 1000 && savedUpgrades[i] <= 1193) {
-						vehicle->AddUpgrade(savedUpgrades[i], i);
+					int upg = savedUpgrades[i];
+					if (upg >= 1000 && upg <= 1193) {
+						if (!CStreaming::HasModelLoaded(upg)) {
+							CStreaming::RequestModel(upg, 0x16);
+							CStreaming::LoadAllRequestedModels(false);
+						}
+						if (CStreaming::HasModelLoaded(upg)) {
+							vehicle->AddVehicleUpgrade(upg);
+						}
 					}
+				}
+				if (savedNitroBoosts > 0) {
+					vehicle->m_nNitroBoosts = savedNitroBoosts;
+					vehicle->m_nHandlingFlagsIntValue = static_cast<eVehicleHandlingFlags>(vehicle->m_nHandlingFlagsIntValue | 0x80000);
 				}
 
 				binding.popupFrames.clear();
@@ -940,6 +1032,8 @@ void CustomVehicleBindingManager::Process()
 					}
 				}
 
+				ApplyVehicleColors(vehicle, vehicle->m_nPrimaryColor, vehicle->m_nSecondaryColor, vehicle->m_nTertiaryColor, vehicle->m_nQuaternaryColor);
+
 				if (binding.hasPaintjob) {
 					ApplyPaintjobToVehicle(vehicle, binding.paintjobIndex);
 				}
@@ -953,6 +1047,7 @@ void CustomVehicleBindingManager::Process()
 				ApplyAudioSettingsToVehicle(vehicle);
 
 				HandlingManager::OnVehicleStreamIn(vehicle, static_cast<uint16_t>(vehicleId));
+				UpdateVehiclePlateVisibility(vehicle);
 			}
 		} else {
 			// Model is already applied - check if vehicle colors changed (e.g. ChangeVehicleColor or Respray)
@@ -966,6 +1061,7 @@ void CustomVehicleBindingManager::Process()
 				if (clump && model) {
 					model->SetVehicleColour(vehicle->m_nPrimaryColor, vehicle->m_nSecondaryColor, vehicle->m_nTertiaryColor, vehicle->m_nQuaternaryColor);
 					model->SetEditableMaterials(clump);
+					ApplyVehicleColors(vehicle, vehicle->m_nPrimaryColor, vehicle->m_nSecondaryColor, vehicle->m_nTertiaryColor, vehicle->m_nQuaternaryColor);
 					if (binding.hasPaintjob) {
 						ApplyPaintjobToVehicle(vehicle, binding.paintjobIndex);
 					}
@@ -1013,6 +1109,8 @@ void CustomVehicleBindingManager::Process()
 			if (hasPlate && std::strncmp(binding.lastPlateText, currentEffectivePlate, sizeof(binding.lastPlateText)) != 0) {
 				ApplyPlateToVehicle(vehicle, currentEffectivePlate);
 			}
+
+			UpdateVehiclePlateVisibility(vehicle);
 		}
 	}
 }
@@ -1022,7 +1120,7 @@ void CustomVehicleBindingManager::SetVehiclePaintjob(uint16_t vehicleId, int pai
 	std::lock_guard lock(m_mutex);
 	auto it = m_bindings.find(vehicleId);
 	if (it != m_bindings.end()) {
-		it->second.hasPaintjob = true;
+		it->second.hasPaintjob = (paintjobIndex >= 0);
 		it->second.paintjobIndex = paintjobIndex;
 		if (it->second.modelApplied && it->second.appliedGameVehicle && IsVehiclePointerValid(it->second.appliedGameVehicle)) {
 			ApplyPaintjobToVehicle(it->second.appliedGameVehicle, paintjobIndex);
@@ -1168,7 +1266,7 @@ void CustomVehicleBindingManager::ApplyWheelToVehicle(CVehicle* vehicle, int16_t
 		}
 
 		if (CStreaming::HasModelLoaded(wheelModelId)) {
-			vehicle->AddUpgrade(wheelModelId, -1);
+			vehicle->AddVehicleUpgrade(wheelModelId);
 			auto* binding = FindByVehicle(vehicle);
 			if (binding && binding->hasWheelColor) {
 				ApplyWheelColorToVehicle(vehicle, binding->wheelColorR, binding->wheelColorG, binding->wheelColorB);
@@ -1365,6 +1463,123 @@ void CustomVehicleBindingManager::SetVehiclePlateTexture(uint16_t vehicleId, con
 	}
 }
 
+static RwFrame* FindPlateParentFrame(RpClump* clump, bool isRear)
+{
+	if (!clump) return nullptr;
+	RwFrame* parentFrame = nullptr;
+	if (!isRear) {
+		parentFrame = CClumpModelInfo::GetFrameFromName(clump, "bump_front_dummy");
+		if (!parentFrame) parentFrame = CClumpModelInfo::GetFrameFromName(clump, "bump_front");
+		if (!parentFrame) parentFrame = CClumpModelInfo::GetFrameFromName(clump, "bump_front_ok");
+		if (!parentFrame) parentFrame = CClumpModelInfo::GetFrameFromName(clump, "bumper_f0");
+		if (!parentFrame) parentFrame = CClumpModelInfo::GetFrameFromName(clump, "bumper_front");
+		if (!parentFrame) parentFrame = CClumpModelInfo::GetFrameFromName(clump, "bumper_f");
+		if (!parentFrame) parentFrame = CClumpModelInfo::GetFrameFromName(clump, "f_bumper");
+	} else {
+		parentFrame = CClumpModelInfo::GetFrameFromName(clump, "bump_rear_dummy");
+		if (!parentFrame) parentFrame = CClumpModelInfo::GetFrameFromName(clump, "bump_rear");
+		if (!parentFrame) parentFrame = CClumpModelInfo::GetFrameFromName(clump, "bump_rear_ok");
+		if (!parentFrame) parentFrame = CClumpModelInfo::GetFrameFromName(clump, "bumper_r0");
+		if (!parentFrame) parentFrame = CClumpModelInfo::GetFrameFromName(clump, "bumper_rear");
+		if (!parentFrame) parentFrame = CClumpModelInfo::GetFrameFromName(clump, "bumper_r");
+		if (!parentFrame) parentFrame = CClumpModelInfo::GetFrameFromName(clump, "r_bumper");
+		if (!parentFrame) parentFrame = CClumpModelInfo::GetFrameFromName(clump, "boot_dummy");
+		if (!parentFrame) parentFrame = CClumpModelInfo::GetFrameFromName(clump, "boot");
+		if (!parentFrame) parentFrame = CClumpModelInfo::GetFrameFromName(clump, "boot_ok");
+	}
+	if (!parentFrame) {
+		parentFrame = CClumpModelInfo::GetFrameFromName(clump, "chassis_dummy");
+	}
+	if (!parentFrame) {
+		parentFrame = CClumpModelInfo::GetFrameFromName(clump, "chassis");
+	}
+	if (!parentFrame) {
+		parentFrame = reinterpret_cast<RwFrame*>(RpClumpGetFrame(clump));
+	}
+	return parentFrame;
+}
+
+static void CalculatePlateModellingMatrix(
+	RpClump* clump,
+	RwFrame* parentFrame,
+	const CustomVeh::Protocol::PlateMeshConfig& cfg,
+	RwMatrix* outLocalMat)
+{
+	if (!outLocalMat) return;
+
+	RwMatrix targetMat;
+	RwMatrixSetIdentity(&targetMat);
+	const RwV3d axisX = { 1.0f, 0.0f, 0.0f };
+	const RwV3d axisY = { 0.0f, 1.0f, 0.0f };
+	const RwV3d axisZ = { 0.0f, 0.0f, 1.0f };
+	if (cfg.rotX != 0.0f)
+		RwMatrixRotate(&targetMat, &axisX, cfg.rotX, rwCOMBINEPOSTCONCAT);
+	if (cfg.rotY != 0.0f)
+		RwMatrixRotate(&targetMat, &axisY, cfg.rotY, rwCOMBINEPOSTCONCAT);
+	if (cfg.rotZ != 0.0f)
+		RwMatrixRotate(&targetMat, &axisZ, cfg.rotZ, rwCOMBINEPOSTCONCAT);
+	const RwV3d pos = { cfg.offsetX, cfg.offsetY, cfg.offsetZ };
+	RwMatrixTranslate(&targetMat, &pos, rwCOMBINEPOSTCONCAT);
+
+	// Try to use pristine template clump if this clump belongs to a known bound vehicle.
+	// Template frames are ALWAYS in pristine rest pose (never dented, rotated by CBouncingPanel, or damaged).
+	RpClump* refClump = clump;
+	RwFrame* refParent = parentFrame;
+	RwFrame* refChassis = nullptr;
+
+	RpClump* pristineClump = nullptr;
+	CustomVehicleBindingManager::Instance().ForEachBinding([&](uint16_t, const CustomVehicleBindingManager::Binding& b) {
+		if (!pristineClump && b.appliedGameVehicle && b.appliedGameVehicle->m_pRwObject == reinterpret_cast<RwObject*>(clump)) {
+			auto* cm = StreamingExtender::GetCustomModel(b.customModelId);
+			if (cm && cm->m_pRwClump) {
+				pristineClump = cm->m_pRwClump;
+			}
+		}
+	});
+
+	if (pristineClump) {
+		const char* parentNodeName = parentFrame ? GetFrameNodeName(parentFrame) : nullptr;
+		RwFrame* pristineParent = parentNodeName ? CClumpModelInfo::GetFrameFromName(pristineClump, parentNodeName) : nullptr;
+		RwFrame* pristineChassis = CClumpModelInfo::GetFrameFromName(pristineClump, "chassis_dummy");
+		if (!pristineChassis)
+			pristineChassis = CClumpModelInfo::GetFrameFromName(pristineClump, "chassis");
+		if (!pristineChassis)
+			pristineChassis = reinterpret_cast<RwFrame*>(RpClumpGetFrame(pristineClump));
+
+		if (pristineParent && pristineChassis) {
+			refClump = pristineClump;
+			refParent = pristineParent;
+			refChassis = pristineChassis;
+		}
+	}
+
+	if (!refChassis) {
+		refChassis = CClumpModelInfo::GetFrameFromName(refClump, "chassis_dummy");
+		if (!refChassis)
+			refChassis = CClumpModelInfo::GetFrameFromName(refClump, "chassis");
+		if (!refChassis)
+			refChassis = reinterpret_cast<RwFrame*>(RpClumpGetFrame(refClump));
+	}
+
+	if (refParent && refChassis && refParent != refChassis) {
+		RwFrameUpdateObjects(reinterpret_cast<RwFrame*>(RpClumpGetFrame(refClump)));
+		const RwMatrix* ltmParent = RwFrameGetLTM(refParent);
+		const RwMatrix* ltmChassis = RwFrameGetLTM(refChassis);
+
+		if (ltmParent && ltmChassis) {
+			RwMatrix invParent;
+			if (RwMatrixInvert(&invParent, ltmParent)) {
+				RwMatrix worldTarget;
+				RwMatrixMultiply(&worldTarget, &targetMat, ltmChassis);
+				RwMatrixMultiply(outLocalMat, &worldTarget, &invParent);
+				return;
+			}
+		}
+	}
+
+	*outLocalMat = targetMat;
+}
+
 RpAtomic* CustomVehicleBindingManager::CreatePlateQuadAtomic(
 	RpClump* clump,
 	const CustomVeh::Protocol::PlateMeshConfig& cfg,
@@ -1409,18 +1624,17 @@ RpAtomic* CustomVehicleBindingManager::CreatePlateQuadAtomic(
 
 	// If atomic already exists on clump, update its transform and plate texture
 	if (existingFrame) {
-		RwFrameSetIdentity(existingFrame);
-		const RwV3d axisX = { 1.0f, 0.0f, 0.0f };
-		const RwV3d axisY = { 0.0f, 1.0f, 0.0f };
-		const RwV3d axisZ = { 0.0f, 0.0f, 1.0f };
-		if (cfg.rotX != 0.0f)
-			RwFrameRotate(existingFrame, &axisX, cfg.rotX, rwCOMBINEPOSTCONCAT);
-		if (cfg.rotY != 0.0f)
-			RwFrameRotate(existingFrame, &axisY, cfg.rotY, rwCOMBINEPOSTCONCAT);
-		if (cfg.rotZ != 0.0f)
-			RwFrameRotate(existingFrame, &axisZ, cfg.rotZ, rwCOMBINEPOSTCONCAT);
-		const RwV3d pos = { cfg.offsetX, cfg.offsetY, cfg.offsetZ };
-		RwFrameTranslate(existingFrame, &pos, rwCOMBINEPOSTCONCAT);
+		RwFrame* parentFrame = FindPlateParentFrame(clump, isRear);
+		RwFrame* currentParent = RwFrameGetParent(existingFrame);
+		if (parentFrame && currentParent != parentFrame) {
+			if (currentParent)
+				RwFrameRemoveChild(existingFrame);
+			RwFrameAddChild(parentFrame, existingFrame);
+		}
+
+		RwMatrix localMat;
+		CalculatePlateModellingMatrix(clump, parentFrame, cfg, &localMat);
+		existingFrame->modelling = localMat;
 		RwFrameUpdateObjects(existingFrame);
 
 		struct FindAtomicCtx {
@@ -1439,6 +1653,7 @@ RpAtomic* CustomVehicleBindingManager::CreatePlateQuadAtomic(
 			&ctx);
 
 		if (ctx.foundAtomic) {
+			CVisibilityPlugins::SetUserValue(ctx.foundAtomic, 1);
 			RpGeometry* geom = RpAtomicGetGeometry(ctx.foundAtomic);
 			if (geom) {
 				if (geom->numVertices == 4 && geom->numTriangles == 4) {
@@ -1563,33 +1778,21 @@ RpAtomic* CustomVehicleBindingManager::CreatePlateQuadAtomic(
 	}
 	SetFrameNodeName(frame, nodeName);
 
-	RwFrameSetIdentity(frame);
-	const RwV3d axisX = { 1.0f, 0.0f, 0.0f };
-	const RwV3d axisY = { 0.0f, 1.0f, 0.0f };
-	const RwV3d axisZ = { 0.0f, 0.0f, 1.0f };
-	if (cfg.rotX != 0.0f)
-		RwFrameRotate(frame, &axisX, cfg.rotX, rwCOMBINEPOSTCONCAT);
-	if (cfg.rotY != 0.0f)
-		RwFrameRotate(frame, &axisY, cfg.rotY, rwCOMBINEPOSTCONCAT);
-	if (cfg.rotZ != 0.0f)
-		RwFrameRotate(frame, &axisZ, cfg.rotZ, rwCOMBINEPOSTCONCAT);
-	const RwV3d pos = { cfg.offsetX, cfg.offsetY, cfg.offsetZ };
-	RwFrameTranslate(frame, &pos, rwCOMBINEPOSTCONCAT);
-
-	RpAtomicSetFrame(atomic, frame);
-
-	RwFrame* parentFrame = CClumpModelInfo::GetFrameFromName(clump, "chassis_dummy");
-	if (!parentFrame)
-		parentFrame = CClumpModelInfo::GetFrameFromName(clump, "chassis");
-	if (!parentFrame)
-		parentFrame = reinterpret_cast<RwFrame*>(RpClumpGetFrame(clump));
+	RwFrame* parentFrame = FindPlateParentFrame(clump, isRear);
 	if (parentFrame) {
 		RwFrameAddChild(parentFrame, frame);
 	}
+
+	RwMatrix localMat;
+	CalculatePlateModellingMatrix(clump, parentFrame, cfg, &localMat);
+	frame->modelling = localMat;
 	RwFrameUpdateObjects(parentFrame ? parentFrame : frame);
 
+	RpAtomicSetFrame(atomic, frame);
+	CVisibilityPlugins::SetUserValue(atomic, 1);
 	RpClumpAddAtomic(clump, atomic);
-	ClientLog(LogLevel::Info, std::format("CreatePlateQuadAtomic: Created {} 3D plate quad on clump (pos={:.2f}, {:.2f}, {:.2f}, rot={:.1f}, {:.1f}, {:.1f}, scale={:.2f})", isRear ? "rear" : "front", cfg.offsetX, cfg.offsetY, cfg.offsetZ, cfg.rotX, cfg.rotY, cfg.rotZ, cfg.scale));
+	ClientLog(LogLevel::Info, std::format("CreatePlateQuadAtomic: Created {} 3D plate quad on clump (parent='{}', pos={:.2f}, {:.2f}, {:.2f}, rot={:.1f}, {:.1f}, {:.1f}, scale={:.2f})",
+		isRear ? "rear" : "front", parentFrame ? (GetFrameNodeName(parentFrame) ? GetFrameNodeName(parentFrame) : "unknown") : "none", cfg.offsetX, cfg.offsetY, cfg.offsetZ, cfg.rotX, cfg.rotY, cfg.rotZ, cfg.scale));
 	return atomic;
 }
 
@@ -1931,6 +2134,255 @@ void CustomVehicleBindingManager::ApplyPlateToVehicle(CVehicle* vehicle, const c
 	}
 
 	ApplyPlateToClump(clump, customModel, finalPlate, lastKnownText, customModelId, targetTex, pFrontPlate, pRearPlate);
+	UpdateVehiclePlateVisibility(vehicle);
+}
+
+void CustomVehicleBindingManager::UpdateVehiclePlateVisibility(CVehicle* vehicle)
+{
+	if (!vehicle || !IsVehiclePointerValid(vehicle) || !vehicle->m_pRwObject)
+		return;
+
+	RpClump* clump = reinterpret_cast<RpClump*>(vehicle->m_pRwObject);
+	if (!clump)
+		return;
+
+	bool isAutomobile = (vehicle->m_nVehicleSubClass == VEHICLE_AUTOMOBILE ||
+	                     vehicle->m_nVehicleSubClass == VEHICLE_MTRUCK ||
+	                     vehicle->m_nVehicleSubClass == VEHICLE_QUAD);
+	CAutomobile* car = isAutomobile ? reinterpret_cast<CAutomobile*>(vehicle) : nullptr;
+
+	auto countFrameAtomics = [](RwFrame* root) -> size_t {
+		if (!root) return 0;
+		size_t count = 0;
+		auto countRec = [&](RwFrame* f, auto& self) -> void {
+			if (!f) return;
+			RwFrameForAllObjects(f, [](RwObject* obj, void* data) -> RwObject* {
+				if (obj && RwObjectGetType(obj) == rpATOMIC) {
+					*reinterpret_cast<size_t*>(data) += 1;
+				}
+				return obj;
+			}, &count);
+			for (RwFrame* child = f->child; child; child = child->next) {
+				const char* cname = GetFrameNodeName(child);
+				if (cname && (strstr(cname, "bt_platefront") || strstr(cname, "bt_platerear")))
+					continue;
+				self(child, self);
+			}
+		};
+		countRec(root, countRec);
+		return count;
+	};
+
+	auto frameHasVisibleAtomics = [](RwFrame* root) -> bool {
+		if (!root) return false;
+		bool found = false;
+		auto searchRec = [&](RwFrame* f, auto& self) -> void {
+			if (!f || found) return;
+			RwFrameForAllObjects(f, [](RwObject* obj, void* data) -> RwObject* {
+				if (obj && RwObjectGetType(obj) == rpATOMIC) {
+					RpAtomic* a = reinterpret_cast<RpAtomic*>(obj);
+					if (RpAtomicGetFlags(a) & rpATOMICRENDER) {
+						*reinterpret_cast<bool*>(data) = true;
+					}
+				}
+				return obj;
+			}, &found);
+			if (found) return;
+			for (RwFrame* child = f->child; child; child = child->next) {
+				const char* cname = GetFrameNodeName(child);
+				if (cname && (strstr(cname, "bt_platefront") || strstr(cname, "bt_platerear")))
+					continue;
+				self(child, self);
+			}
+		};
+		searchRec(root, searchRec);
+		return found;
+	};
+
+	// 1. Front plate visibility
+	RwFrame* frontFrame = CClumpModelInfo::GetFrameFromName(clump, "bt_platefront");
+	if (frontFrame) {
+		bool hideFront = false;
+		if (car) {
+			unsigned int frontBumpStatus = car->m_damageManager.GetPanelStatus(BUMP_FRONT);
+			// Status 3 is PANEL_STATUS_MISSING (bumper detached / popped off)
+			if (frontBumpStatus == 3) {
+				hideFront = true;
+			} else if (car->m_aCarNodes[CAR_BUMP_FRONT]) {
+				size_t totalAtomics = countFrameAtomics(car->m_aCarNodes[CAR_BUMP_FRONT]);
+				if (totalAtomics > 0 && !frameHasVisibleAtomics(car->m_aCarNodes[CAR_BUMP_FRONT])) {
+					hideFront = true;
+				}
+			} else {
+				RwFrame* parent = RwFrameGetParent(frontFrame);
+				if (parent) {
+					const char* pName = GetFrameNodeName(parent);
+					if (pName && !strstr(pName, "chassis") && !strstr(pName, "root")) {
+						size_t totalAtomics = countFrameAtomics(parent);
+						if (totalAtomics > 0 && !frameHasVisibleAtomics(parent)) {
+							hideFront = true;
+						}
+					}
+				}
+			}
+		}
+
+		RwFrameForAllObjects(frontFrame, [](RwObject* obj, void* data) -> RwObject* {
+			if (obj && RwObjectGetType(obj) == rpATOMIC) {
+				RpAtomic* a = reinterpret_cast<RpAtomic*>(obj);
+				bool hide = *reinterpret_cast<bool*>(data);
+				if (hide) {
+					RpAtomicSetFlags(a, RpAtomicGetFlags(a) & ~rpATOMICRENDER);
+				} else {
+					RpAtomicSetFlags(a, RpAtomicGetFlags(a) | rpATOMICRENDER);
+				}
+			}
+			return obj;
+		}, &hideFront);
+	}
+
+	// 2. Rear plate visibility
+	RwFrame* rearFrame = CClumpModelInfo::GetFrameFromName(clump, "bt_platerear");
+	if (rearFrame) {
+		bool hideRear = false;
+		if (car) {
+			unsigned int rearBumpStatus = car->m_damageManager.GetPanelStatus(BUMP_REAR);
+			RwFrame* parent = RwFrameGetParent(rearFrame);
+			const char* parentName = parent ? GetFrameNodeName(parent) : nullptr;
+			bool attachedToBoot = parentName && (strstr(parentName, "boot") != nullptr);
+
+			if (attachedToBoot) {
+				if (car->m_damageManager.GetDoorStatus(BOOT) == DAMSTATE_NOTPRESENT) {
+					hideRear = true;
+				} else if (car->m_aCarNodes[CAR_BOOT]) {
+					size_t totalAtomics = countFrameAtomics(car->m_aCarNodes[CAR_BOOT]);
+					if (totalAtomics > 0 && !frameHasVisibleAtomics(car->m_aCarNodes[CAR_BOOT])) {
+						hideRear = true;
+					}
+				}
+			} else {
+				if (rearBumpStatus == 3) {
+					hideRear = true;
+				} else if (car->m_aCarNodes[CAR_BUMP_REAR]) {
+					size_t totalAtomics = countFrameAtomics(car->m_aCarNodes[CAR_BUMP_REAR]);
+					if (totalAtomics > 0 && !frameHasVisibleAtomics(car->m_aCarNodes[CAR_BUMP_REAR])) {
+						hideRear = true;
+					}
+				} else if (parent && parentName && !strstr(parentName, "chassis") && !strstr(parentName, "root")) {
+					size_t totalAtomics = countFrameAtomics(parent);
+					if (totalAtomics > 0 && !frameHasVisibleAtomics(parent)) {
+						hideRear = true;
+					}
+				}
+			}
+		}
+
+		RwFrameForAllObjects(rearFrame, [](RwObject* obj, void* data) -> RwObject* {
+			if (obj && RwObjectGetType(obj) == rpATOMIC) {
+				RpAtomic* a = reinterpret_cast<RpAtomic*>(obj);
+				bool hide = *reinterpret_cast<bool*>(data);
+				if (hide) {
+					RpAtomicSetFlags(a, RpAtomicGetFlags(a) & ~rpATOMICRENDER);
+				} else {
+					RpAtomicSetFlags(a, RpAtomicGetFlags(a) | rpATOMICRENDER);
+				}
+			}
+			return obj;
+		}, &hideRear);
+	}
+}
+
+void CustomVehicleBindingManager::ApplyVehicleColors(CVehicle* vehicle, uint8_t prim, uint8_t sec, uint8_t tert, uint8_t quat)
+{
+	if (!vehicle || !IsVehiclePointerValid(vehicle) || !vehicle->m_pRwObject)
+		return;
+
+	RpClump* clump = reinterpret_cast<RpClump*>(vehicle->m_pRwObject);
+	if (!clump)
+		return;
+
+	// GTA SA 128-color palette (carcols.dat)
+	CRGBA* colorTable = CVehicleModelInfo::ms_vehicleColourTable;
+	if (!colorTable)
+		return;
+
+	CRGBA primCol = colorTable[prim & 127];
+	CRGBA secCol = colorTable[sec & 127];
+
+	struct ColorContext {
+		RwRGBA prim;
+		RwRGBA sec;
+	} ctx {
+		{ primCol.r, primCol.g, primCol.b, 255 },
+		{ secCol.r, secCol.g, secCol.b, 255 }
+	};
+
+	RpClumpForAllAtomics(clump, [](RpAtomic* atomic, void* data) -> RpAtomic* {
+		auto* c = reinterpret_cast<ColorContext*>(data);
+		RpGeometry* geom = RpAtomicGetGeometry(atomic);
+		if (!geom)
+			return atomic;
+
+		RwFrame* frame = RpAtomicGetFrame(atomic);
+		const char* frameName = frame ? GetFrameNodeName(frame) : nullptr;
+		std::string fNameLower = frameName ? frameName : "";
+		std::transform(fNameLower.begin(), fNameLower.end(), fNameLower.begin(), ::tolower);
+
+		// Skip dynamic license plates and wheels (wheels have their own coloring)
+		if (fNameLower.find("bt_plate") != std::string::npos || fNameLower.find("wheel") != std::string::npos)
+			return atomic;
+
+		RpGeometryForAllMaterials(geom, [](RpMaterial* mat, void* data) -> RpMaterial* {
+			auto* c = reinterpret_cast<ColorContext*>(data);
+			RwTexture* tex = RpMaterialGetTexture(mat);
+			std::string texLower;
+			if (tex) {
+				const char* tn = RwTextureGetName(tex);
+				if (tn) {
+					texLower = tn;
+					std::transform(texLower.begin(), texLower.end(), texLower.begin(), ::tolower);
+				}
+			}
+
+			// Exclude non-body components (glass, lights, tires, brakes, interior, engine, badges)
+			if (texLower.find("glass") != std::string::npos || texLower.find("window") != std::string::npos || texLower.find("windscreen") != std::string::npos ||
+				texLower.find("light") != std::string::npos || texLower.find("lamp") != std::string::npos || texLower.find("vehiclelights") != std::string::npos ||
+				texLower.find("wheel") != std::string::npos || texLower.find("tyre") != std::string::npos || texLower.find("tire") != std::string::npos ||
+				texLower.find("brake") != std::string::npos || texLower.find("disc") != std::string::npos || texLower.find("caliper") != std::string::npos ||
+				texLower.find("plate") != std::string::npos || texLower.find("nomer") != std::string::npos ||
+				texLower.find("interior") != std::string::npos || texLower.find("seat") != std::string::npos || texLower.find("steer") != std::string::npos ||
+				texLower.find("engine") != std::string::npos || texLower.find("exhaust") != std::string::npos || texLower.find("handle") != std::string::npos ||
+				texLower.find("badge") != std::string::npos || texLower.find("logo") != std::string::npos || texLower.find("shad") != std::string::npos) {
+				return mat;
+			}
+
+			bool isBody = false;
+			bool isSecondary = false;
+
+			if (!texLower.empty()) {
+				if (texLower.find("col2") != std::string::npos || texLower.find("secondary") != std::string::npos || texLower.find("stripe") != std::string::npos) {
+					isBody = true;
+					isSecondary = true;
+				} else if (texLower.find("remap") != std::string::npos || texLower.find("body") != std::string::npos || texLower.find("carbody") != std::string::npos || texLower.find("carpaint") != std::string::npos || texLower.find("paint") != std::string::npos || texLower.find("chassis") != std::string::npos || texLower.find("col1") != std::string::npos || texLower.find("primary") != std::string::npos) {
+					isBody = true;
+				}
+			} else {
+				// Material without texture: check alpha (ignore transparent parts)
+				const RwRGBA* curCol = RpMaterialGetColor(mat);
+				if (curCol && curCol->alpha >= 240) {
+					isBody = true;
+				}
+			}
+
+			if (isBody) {
+				RpMaterialSetColor(mat, isSecondary ? &c->sec : &c->prim);
+			}
+
+			return mat;
+		}, c);
+
+		return atomic;
+	}, &ctx);
 }
 
 void CustomVehicleBindingManager::ApplyPaintjobToVehicle(CVehicle* vehicle, int paintjobIndex)
@@ -1954,9 +2406,67 @@ void CustomVehicleBindingManager::ApplyPaintjobToVehicle(CVehicle* vehicle, int 
 
 	if (paintjobIndex < 0) {
 		CVehicleModelInfo::ms_pRemapTexture = nullptr;
-		customModel->SetEditableMaterials(clump); // non-static: call on model instance
+
+		// Restore base body texture in customModel TXD (e.g. "body" or "remapflash92body256")
+		RwTexture* baseBodyTex = nullptr;
+		if (customModel->m_nTxdIndex != -1) {
+			CTxdStore::PushCurrentTxd();
+			CTxdStore::SetCurrentTxd(customModel->m_nTxdIndex);
+			RwTexDictionary* pDict = RwTexDictionaryGetCurrent();
+			if (pDict) {
+				baseBodyTex = RwTexDictionaryFindNamedTexture(pDict, "body");
+				if (!baseBodyTex) {
+					baseBodyTex = RwTexDictionaryFindNamedTexture(pDict, "remapflash92body256");
+				}
+				if (!baseBodyTex) {
+					RwTexDictionaryForAllTextures(pDict, [](RwTexture* tex, void* data) -> RwTexture* {
+						const char* tn = RwTextureGetName(tex);
+						if (tn) {
+							std::string tLower = tn;
+							std::transform(tLower.begin(), tLower.end(), tLower.begin(), ::tolower);
+							if (tLower == "body" || tLower.find("remap") != std::string::npos) {
+								*reinterpret_cast<RwTexture**>(data) = tex;
+								return nullptr;
+							}
+						}
+						return tex;
+					}, &baseBodyTex);
+				}
+			}
+			CTxdStore::PopCurrentTxd();
+		}
+
+		if (baseBodyTex) {
+			struct RestoreTexContext {
+				RwTexture* tex;
+			} rctx { baseBodyTex };
+			RpClumpForAllAtomics(clump, [](RpAtomic* atomic, void* data) -> RpAtomic* {
+				auto* c = reinterpret_cast<RestoreTexContext*>(data);
+				RpGeometry* geom = RpAtomicGetGeometry(atomic);
+				if (geom) {
+					RpGeometryForAllMaterials(geom, [](RpMaterial* mat, void* data) -> RpMaterial* {
+						auto* c = reinterpret_cast<RestoreTexContext*>(data);
+						RwTexture* curTex = RpMaterialGetTexture(mat);
+						if (curTex) {
+							const char* texName = RwTextureGetName(curTex);
+							if (texName) {
+								std::string nameLower = texName;
+								std::transform(nameLower.begin(), nameLower.end(), nameLower.begin(), ::tolower);
+								if (nameLower.find("remap") != std::string::npos || nameLower.find("paintjob") != std::string::npos || nameLower.find("livery") != std::string::npos || nameLower.rfind("body", 0) == 0 || nameLower.find("skin") != std::string::npos) {
+									RpMaterialSetTexture(mat, c->tex);
+								}
+							}
+						}
+						return mat;
+					}, c);
+				}
+				return atomic;
+			}, &rctx);
+		}
+
 		customModel->SetVehicleColour(vehicle->m_nPrimaryColor, vehicle->m_nSecondaryColor, vehicle->m_nTertiaryColor, vehicle->m_nQuaternaryColor);
-		customModel->SetEditableMaterials(clump);
+		customModel->SetEditableMaterials(clump); // non-static: call on model instance
+		ApplyVehicleColors(vehicle, vehicle->m_nPrimaryColor, vehicle->m_nSecondaryColor, vehicle->m_nTertiaryColor, vehicle->m_nQuaternaryColor);
 		return;
 	}
 
@@ -1970,8 +2480,18 @@ void CustomVehicleBindingManager::ApplyPaintjobToVehicle(CVehicle* vehicle, int 
 		if (pDict) {
 			int idx1 = paintjobIndex + 1;
 			int idx0 = paintjobIndex;
+			char letterUpper = static_cast<char>('A' + paintjobIndex);
+			char letterLower = static_cast<char>('a' + paintjobIndex);
 
 			std::vector<std::string> searchNames = {
+				std::format("body_{}", letterUpper),
+				std::format("body_{}", letterLower),
+				std::format("body{}", letterUpper),
+				std::format("body{}", letterLower),
+				std::format("body{}", idx1),
+				std::format("body_{}", idx1),
+				std::format("body{}", idx0),
+				std::format("body_{}", idx0),
 				std::format("remap{}", idx1),
 				std::format("remap_{}", idx1),
 				std::format("remap{}", idx0),
@@ -1980,10 +2500,20 @@ void CustomVehicleBindingManager::ApplyPaintjobToVehicle(CVehicle* vehicle, int 
 				std::format("paintjob_{}", idx1),
 				std::format("paintjob{}", idx0),
 				std::format("paintjob_{}", idx0),
+				std::format("paintjob_{}", letterUpper),
+				std::format("paintjob_{}", letterLower),
 				std::format("livery{}", idx1),
 				std::format("livery_{}", idx1),
 				std::format("livery{}", idx0),
 				std::format("livery_{}", idx0),
+				std::format("livery_{}", letterUpper),
+				std::format("livery_{}", letterLower),
+				std::format("skin{}", idx1),
+				std::format("skin_{}", idx1),
+				std::format("skin{}", idx0),
+				std::format("skin_{}", idx0),
+				std::format("skin_{}", letterUpper),
+				std::format("skin_{}", letterLower),
 				std::format("pj{}", idx1),
 				std::format("pj_{}", idx1),
 				std::format("pj{}", idx0),
@@ -1993,6 +2523,7 @@ void CustomVehicleBindingManager::ApplyPaintjobToVehicle(CVehicle* vehicle, int 
 				searchNames.push_back("remap");
 				searchNames.push_back("paintjob");
 				searchNames.push_back("livery");
+				searchNames.push_back("skin");
 			}
 
 			for (const auto& name : searchNames) {
@@ -2045,8 +2576,10 @@ void CustomVehicleBindingManager::ApplyPaintjobToVehicle(CVehicle* vehicle, int 
 						if (texName) {
 							std::string nameLower = texName;
 							std::transform(nameLower.begin(), nameLower.end(), nameLower.begin(), ::tolower);
-							if (nameLower.find("remap") != std::string::npos || nameLower.find("paintjob") != std::string::npos || nameLower.find("livery") != std::string::npos) {
+							if (nameLower.find("remap") != std::string::npos || nameLower.find("paintjob") != std::string::npos || nameLower.find("livery") != std::string::npos || nameLower == "body" || nameLower.rfind("body_", 0) == 0 || nameLower.find("skin") != std::string::npos) {
 								RpMaterialSetTexture(mat, c->tex);
+								RwRGBA whiteCol { 255, 255, 255, 255 };
+								RpMaterialSetColor(mat, &whiteCol);
 							}
 						}
 					}

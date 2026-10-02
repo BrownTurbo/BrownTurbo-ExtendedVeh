@@ -643,7 +643,21 @@ void HandlingManager::RecalculateDerivedHandling(tHandlingData* handling, CVehic
 		pVehicle->m_pHandlingData = handling;
 		pVehicle->m_fTurnMass = handling->m_fTurnMass;
 		pVehicle->m_fMass = handling->m_fMass;
-		pVehicle->m_nHandlingFlagsIntValue = handling->m_nHandlingFlags;
+
+		// Preserve runtime flags (nitro active 0x80000, hydraulics 0x20000, double exhaust 0x100000)
+		uint32_t runtimeFlags = static_cast<uint32_t>(pVehicle->m_nHandlingFlagsIntValue) & (0x80000 | 0x20000 | 0x100000);
+		for (int i = 0; i < 15; ++i) {
+			short upg = pVehicle->m_anUpgrades[i];
+			if (upg == 1008 || upg == 1009 || upg == 1010) {
+				runtimeFlags |= 0x80000;
+				if (pVehicle->m_nNitroBoosts == 0) {
+					pVehicle->m_nNitroBoosts = (upg == 1010) ? 10 : ((upg == 1009) ? 2 : 5);
+				}
+			} else if (upg == 1087) {
+				runtimeFlags |= 0x20000;
+			}
+		}
+		pVehicle->m_nHandlingFlagsIntValue = static_cast<eVehicleHandlingFlags>(handling->m_nHandlingFlags | runtimeFlags);
 		pVehicle->m_vecCentreOfMass = handling->m_vecCentreOfMass;
 		pVehicle->m_fBuoyancyConstant = handling->m_fBuoyancyConstant;
 

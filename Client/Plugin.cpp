@@ -1019,6 +1019,10 @@ static void __fastcall Hooked_CAutomobile_VehicleDamage(CAutomobile* thisCar, vo
 	}
 	if (g_origCAutomobile_VehicleDamage)
 		g_origCAutomobile_VehicleDamage(thisCar, edx, damageIntensity, collisionComponent, damager, vecCollisionCoors, vecCollisionDirection, weapon);
+
+	if (thisCar && IsVehiclePointerValid(thisCar)) {
+		CustomVehicleBindingManager::Instance().UpdateVehiclePlateVisibility(thisCar);
+	}
 }
 
 static void __fastcall Hooked_CAutomobile_PopDoor(CAutomobile* thisCar, void* edx, int nodeIndex, eDoors door, bool showVisualEffect)
@@ -1030,6 +1034,10 @@ static void __fastcall Hooked_CAutomobile_PopDoor(CAutomobile* thisCar, void* ed
 	}
 	if (g_origCAutomobile_PopDoor)
 		g_origCAutomobile_PopDoor(thisCar, edx, nodeIndex, door, showVisualEffect);
+
+	if (thisCar && IsVehiclePointerValid(thisCar)) {
+		CustomVehicleBindingManager::Instance().UpdateVehiclePlateVisibility(thisCar);
+	}
 }
 
 static void __fastcall Hooked_CAutomobile_PopPanel(CAutomobile* thisCar, void* edx, int nodeIndex, ePanels panel, bool showVisualEffect)
@@ -1041,6 +1049,10 @@ static void __fastcall Hooked_CAutomobile_PopPanel(CAutomobile* thisCar, void* e
 	}
 	if (g_origCAutomobile_PopPanel)
 		g_origCAutomobile_PopPanel(thisCar, edx, nodeIndex, panel, showVisualEffect);
+
+	if (thisCar && IsVehiclePointerValid(thisCar)) {
+		CustomVehicleBindingManager::Instance().UpdateVehiclePlateVisibility(thisCar);
+	}
 }
 
 static void __fastcall Hooked_CAutomobile_BlowUpCar(CAutomobile* thisCar, void* edx, CEntity* damager, bool bHideExplosion)
@@ -1372,9 +1384,30 @@ static RwFrame* __cdecl Hooked_GetFrameFromId(RpClump* clump, int id)
 		return nullptr;
 	}
 
+	if (id == CAR_CHASSIS) {
+		RwFrame* chassis = CClumpModelInfo::GetFrameFromName(clump, "chassis_dummy");
+		if (!chassis) chassis = CClumpModelInfo::GetFrameFromName(clump, "chassis");
+		if (!chassis) chassis = CClumpModelInfo::GetFrameFromName(clump, "body");
+		if (!chassis) chassis = CClumpModelInfo::GetFrameFromName(clump, "carbody");
+		if (chassis) return chassis;
+	}
+
 	// For custom models with missing dummy/component frames during upgrade installation
 	// (0x6DFA61 CVehicle::AddUpgrade, 0x6D3847 CVehicle::AddReplacementUpgrade, etc.):
-	// Search for nearest valid frame ID to prevent immediate NULL-pointer crash in RwFrameAddChild
+	// Logical hierarchy fallback: spoilers/bonnet/bumpers fall back to chassis frame first
+	if (id == CAR_BOOT || id == CAR_BONNET || id == CAR_BUMP_FRONT || id == CAR_BUMP_REAR) {
+		if (g_origGetFrameFromId) {
+			RwFrame* chassis = g_origGetFrameFromId(clump, CAR_CHASSIS);
+			if (chassis)
+				return chassis;
+		}
+		RwFrame* fallbackChassis = CClumpModelInfo::GetFrameFromName(clump, "chassis_dummy");
+		if (!fallbackChassis) fallbackChassis = CClumpModelInfo::GetFrameFromName(clump, "chassis");
+		if (!fallbackChassis) fallbackChassis = CClumpModelInfo::GetFrameFromName(clump, "body");
+		if (fallbackChassis)
+			return fallbackChassis;
+	}
+
 	for (int i = 2; i < 40; ++i) {
 		int newId = id + (i / 2) * ((i & 1) ? -1 : 1);
 		if (newId >= 0 && g_origGetFrameFromId) {
@@ -1405,17 +1438,63 @@ static void __fastcall Hooked_AddUpgrade(CVehicle* thisVehicle, void* edx, int m
 	if (binding) {
 		auto* customModel = StreamingExtender::GetCustomModel(binding->customModelId);
 		auto* baseModel = reinterpret_cast<CVehicleModelInfo*>(CModelInfo::GetModelInfo(thisVehicle->m_nModelIndex));
+
+		// Safety check: ensure customModel's m_aUpgrades has valid parentComponentId from baseModel
+		if (customModel && customModel->m_pVehicleStruct && baseModel && baseModel->m_pVehicleStruct) {
+			for (int u = 0; u < 18; ++u) {
+				if (customModel->m_pVehicleStruct->m_aUpgrades[u].m_nParentComponentId == 0 &&
+					baseModel->m_pVehicleStruct->m_aUpgrades[u].m_nParentComponentId != 0) {
+					customModel->m_pVehicleStruct->m_aUpgrades[u] = baseModel->m_pVehicleStruct->m_aUpgrades[u];
+				}
+			}
+		}
+
 		DummySwapGuard guard(baseModel, customModel);
 		if (g_origAddUpgrade)
 			g_origAddUpgrade(thisVehicle, edx, modelIndex, upgradeIndex);
 		if (binding->hasWheelColor && modelIndex >= 1025 && modelIndex <= 1098) {
 			CustomVehicleBindingManager::Instance().ApplyWheelColorToVehicle(thisVehicle, binding->wheelColorR, binding->wheelColorG, binding->wheelColorB);
 		}
+		if (modelIndex == 1008 || modelIndex == 1009 || modelIndex == 1010) {
+			thisVehicle->m_nHandlingFlagsIntValue = static_cast<eVehicleHandlingFlags>(thisVehicle->m_nHandlingFlagsIntValue | 0x80000);
+			if (thisVehicle->m_nNitroBoosts == 0) {
+				thisVehicle->m_nNitroBoosts = (modelIndex == 1010) ? 10 : ((modelIndex == 1009) ? 2 : 5);
+			}
+		} else if (modelIndex == 1087) {
+			thisVehicle->m_nHandlingFlagsIntValue = static_cast<eVehicleHandlingFlags>(thisVehicle->m_nHandlingFlagsIntValue | 0x20000);
+		}
 		return;
 	}
 
 	if (g_origAddUpgrade)
 		g_origAddUpgrade(thisVehicle, edx, modelIndex, upgradeIndex);
+}
+
+// Hooked_AddReplacementUpgrade: Intercepts CVehicle::AddReplacementUpgrade (0x6D3830) for wheels
+static void(__fastcall* g_origAddReplacementUpgrade)(CVehicle* thisVehicle, void* edx, int modelIndex, int nodeId) = nullptr;
+
+static void __fastcall Hooked_AddReplacementUpgrade(CVehicle* thisVehicle, void* edx, int modelIndex, int nodeId)
+{
+	if (!thisVehicle || !IsVehiclePointerValid(thisVehicle) || !thisVehicle->m_pRwClump) {
+		return;
+	}
+
+	auto* binding = CustomVehicleBindingManager::Instance().FindByVehicle(thisVehicle);
+	if (binding) {
+		auto* customModel = StreamingExtender::GetCustomModel(binding->customModelId);
+		auto* baseModel = reinterpret_cast<CVehicleModelInfo*>(CModelInfo::GetModelInfo(thisVehicle->m_nModelIndex));
+		DummySwapGuard guard(baseModel, customModel);
+		if (g_origAddReplacementUpgrade)
+			g_origAddReplacementUpgrade(thisVehicle, edx, modelIndex, nodeId);
+
+		if (binding->hasWheelColor) {
+			CustomVehicleBindingManager::Instance().ApplyWheelColorToVehicle(thisVehicle, binding->wheelColorR, binding->wheelColorG, binding->wheelColorB);
+		}
+		return;
+	}
+
+	if (g_origAddReplacementUpgrade)
+		g_origAddReplacementUpgrade(thisVehicle, edx, modelIndex, nodeId);
 }
 
 // Hooked_RemoveUpgrade: Intercepts CVehicle::RemoveUpgrade (0x6D3630) to support SA-MP RemoveVehicleComponent
@@ -1431,6 +1510,16 @@ static void __fastcall Hooked_RemoveUpgrade(CVehicle* thisVehicle, void* edx, in
 	if (binding) {
 		auto* customModel = StreamingExtender::GetCustomModel(binding->customModelId);
 		auto* baseModel = reinterpret_cast<CVehicleModelInfo*>(CModelInfo::GetModelInfo(thisVehicle->m_nModelIndex));
+
+		if (customModel && customModel->m_pVehicleStruct && baseModel && baseModel->m_pVehicleStruct) {
+			for (int u = 0; u < 18; ++u) {
+				if (customModel->m_pVehicleStruct->m_aUpgrades[u].m_nParentComponentId == 0 &&
+					baseModel->m_pVehicleStruct->m_aUpgrades[u].m_nParentComponentId != 0) {
+					customModel->m_pVehicleStruct->m_aUpgrades[u] = baseModel->m_pVehicleStruct->m_aUpgrades[u];
+				}
+			}
+		}
+
 		DummySwapGuard guard(baseModel, customModel);
 		if (g_origRemoveUpgrade)
 			g_origRemoveUpgrade(thisVehicle, edx, upgradeIndex);
@@ -2506,45 +2595,67 @@ private:
 							}
 						}
 					}
-					// Fallback & Adaptation: Ensure the vehicle model info has a valid collision model with suspension lines
+					// Fallback & Adaptation: Ensure the vehicle model info has a dedicated collision model with custom suspension lines
 					CBaseModelInfo* visualBase = GetEngineModelInfo(static_cast<int>(pending->def.visualBaseModel));
 					if (!newModel->m_pColModel) {
 						if (visualBase && visualBase->m_pColModel) {
-							newModel->m_pColModel = visualBase->m_pColModel;
-							newModel->bDoWeOwnTheColModel = 0;
+							CColModel* clonedCol = new CColModel();
+							*clonedCol = *visualBase->m_pColModel;
+							newModel->m_pColModel = clonedCol;
+							newModel->bDoWeOwnTheColModel = 1;
 							*reinterpret_cast<uint8_t*>(reinterpret_cast<uintptr_t>(newModel) + 0x12) &= ~0x80;
 							*reinterpret_cast<uint8_t*>(reinterpret_cast<uintptr_t>(newModel) + 0x13) &= ~0x08;
-							ClientLog(LogLevel::Info, std::format("Model {} using base collision model from base {}", pending->def.customModelId, pending->def.visualBaseModel));
+							ClientLog(LogLevel::Info, std::format("Model {} using cloned collision model from base {}", pending->def.customModelId, pending->def.visualBaseModel));
 						}
-					} else {
-						// If custom collision exists (external COL) but lacks wheel suspension lines,
-						// inject the base model's 4 suspension lines into the collision data.
-						bool hasValidLines = (newModel->m_pColModel->m_pColData && newModel->m_pColModel->m_pColData->m_pLines && newModel->m_pColModel->m_pColData->m_nNumLines >= 4);
-						if (!hasValidLines && newModel->m_pColModel->m_pColData && visualBase && visualBase->m_pColModel && visualBase->m_pColModel->m_pColData && visualBase->m_pColModel->m_pColData->m_pLines && visualBase->m_pColModel->m_pColData->m_nNumLines >= 4) {
+					}
+
+					if (newModel->m_pColModel && newModel->m_pColModel->m_pColData) {
+						auto* colData = newModel->m_pColModel->m_pColData;
+						if (!colData->m_pLines || colData->m_nNumLines < 4) {
 							auto pMalloc = reinterpret_cast<void*(__cdecl*)(size_t)>(0x72F420);
 							void* lineMem = pMalloc(sizeof(CColLine) * 4);
 							if (lineMem) {
-								memcpy(lineMem, visualBase->m_pColModel->m_pColData->m_pLines, sizeof(CColLine) * 4);
-								newModel->m_pColModel->m_pColData->m_pLines = reinterpret_cast<CColLine*>(lineMem);
-								newModel->m_pColModel->m_pColData->m_nNumLines = 4;
-								hasValidLines = true;
-								ClientLog(LogLevel::Info, std::format("Model {}: Injected 4 suspension lines from base model {}", pending->def.customModelId, pending->def.visualBaseModel));
+								colData->m_pLines = reinterpret_cast<CColLine*>(lineMem);
+								colData->m_nNumLines = 4;
 							}
 						}
-						if (!hasValidLines) {
-							// If custom collision cannot provide valid suspension lines, safely delete it and revert to base vehicle's collision
-							if (newModel->m_pColModel && newModel->bDoWeOwnTheColModel) {
-								StreamingExtender::SafeFreeCustomColModel(newModel->m_pColModel);
-								newModel->m_pColModel = nullptr;
-								newModel->bDoWeOwnTheColModel = 0;
+
+						if (colData->m_pLines && colData->m_nNumLines >= 4) {
+							tHandlingData* handling = nullptr;
+							auto modelIt = HandlingManager::m_modelHandlings.find(pending->def.customModelId);
+							if (modelIt != HandlingManager::m_modelHandlings.end()) {
+								handling = modelIt->second.get();
+							} else if (visualBase) {
+								auto* vBase = reinterpret_cast<CVehicleModelInfo*>(visualBase);
+								if (vBase->m_nHandlingId < 210) {
+									handling = static_cast<tHandlingData*>(&gHandlingDataMgr.m_aVehicleHandling[vBase->m_nHandlingId]);
+								}
 							}
-							if (visualBase && visualBase->m_pColModel) {
-								newModel->m_pColModel = visualBase->m_pColModel;
-								newModel->bDoWeOwnTheColModel = 0;
-								*reinterpret_cast<uint8_t*>(reinterpret_cast<uintptr_t>(newModel) + 0x12) &= ~0x80;
-								*reinterpret_cast<uint8_t*>(reinterpret_cast<uintptr_t>(newModel) + 0x13) &= ~0x08;
-								ClientLog(LogLevel::Warning, std::format("Model {} reverted to base collision model {} due to missing suspension lines", pending->def.customModelId, pending->def.visualBaseModel));
+							float upper = handling ? handling->m_fSuspensionUpperLimit : 0.28f;
+							float lower = handling ? handling->m_fSuspensionLowerLimit : -0.16f;
+
+							for (int w = 0; w < 4; ++w) {
+								CVector wheelPos(0.0f, 0.0f, 0.0f);
+								newModel->GetWheelPosn(w, wheelPos, false);
+								if (wheelPos.Magnitude() < 0.01f && visualBase) {
+									reinterpret_cast<CVehicleModelInfo*>(visualBase)->GetWheelPosn(w, wheelPos, false);
+								}
+
+								float wheelRadius = (w == CAR_WHEEL_LF || w == CAR_WHEEL_RF) ? (newModel->m_fWheelSizeFront * 0.5f) : (newModel->m_fWheelSizeRear * 0.5f);
+								if (wheelRadius < 0.1f) wheelRadius = 0.35f;
+
+								CColLine& line = colData->m_pLines[w];
+								line.m_vecStart = CVector(wheelPos.x, wheelPos.y, wheelPos.z + upper);
+								line.m_vecEnd = CVector(wheelPos.x, wheelPos.y, wheelPos.z + lower - wheelRadius);
+
+								// Ensure bounding box encloses wheels
+								newModel->m_pColModel->m_boundBox.m_vecMin.x = std::min(newModel->m_pColModel->m_boundBox.m_vecMin.x, wheelPos.x - wheelRadius);
+								newModel->m_pColModel->m_boundBox.m_vecMax.x = std::max(newModel->m_pColModel->m_boundBox.m_vecMax.x, wheelPos.x + wheelRadius);
+								newModel->m_pColModel->m_boundBox.m_vecMin.y = std::min(newModel->m_pColModel->m_boundBox.m_vecMin.y, wheelPos.y - wheelRadius);
+								newModel->m_pColModel->m_boundBox.m_vecMax.y = std::max(newModel->m_pColModel->m_boundBox.m_vecMax.y, wheelPos.y + wheelRadius);
+								newModel->m_pColModel->m_boundBox.m_vecMin.z = std::min(newModel->m_pColModel->m_boundBox.m_vecMin.z, wheelPos.z - wheelRadius);
 							}
+							ClientLog(LogLevel::Info, std::format("Model {}: Calculated 4 suspension lines from actual wheel dummies", pending->def.customModelId));
 						}
 					}
 				} else {
@@ -3997,6 +4108,18 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD dwReason, LPVOID lpReserved)
 			ClientLog(LogLevel::Error, std::format("Failed to hook CVehicle::RemoveUpgrade (0x6D3630): {}", MH_StatusToString(remUpgStatus)));
 		}
 
+		MH_STATUS addReplUpgStatus = MH_CreateHook(reinterpret_cast<void*>(0x6D3830), reinterpret_cast<void*>(&Hooked_AddReplacementUpgrade), reinterpret_cast<void**>(&g_origAddReplacementUpgrade));
+		if (addReplUpgStatus == MH_OK) {
+			MH_STATUS enableStatus = MH_EnableHook(reinterpret_cast<void*>(0x6D3830));
+			if (enableStatus == MH_OK) {
+				ClientLog(LogLevel::Info, "CVehicle::AddReplacementUpgrade (0x6D3830) hooked successfully via MinHook");
+			} else {
+				ClientLog(LogLevel::Error, std::format("Failed to enable CVehicle::AddReplacementUpgrade hook: {}", MH_StatusToString(enableStatus)));
+			}
+		} else {
+			ClientLog(LogLevel::Error, std::format("Failed to hook CVehicle::AddReplacementUpgrade (0x6D3830): {}", MH_StatusToString(addReplUpgStatus)));
+		}
+
 		MH_STATUS sirenStatus = MH_CreateHook(reinterpret_cast<void*>(0x6D8470), reinterpret_cast<void*>(&Hooked_DoesVehicleUseSiren), reinterpret_cast<void**>(&g_origDoesVehicleUseSiren));
 		if (sirenStatus == MH_OK) {
 			MH_STATUS enableStatus = MH_EnableHook(reinterpret_cast<void*>(0x6D8470));
@@ -4191,6 +4314,12 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD dwReason, LPVOID lpReserved)
 			MH_DisableHook(reinterpret_cast<void*>(0x6D3630));
 			MH_RemoveHook(reinterpret_cast<void*>(0x6D3630));
 			g_origRemoveUpgrade = nullptr;
+		}
+
+		if (g_origAddReplacementUpgrade) {
+			MH_DisableHook(reinterpret_cast<void*>(0x6D3830));
+			MH_RemoveHook(reinterpret_cast<void*>(0x6D3830));
+			g_origAddReplacementUpgrade = nullptr;
 		}
 
 		if (g_origDoesVehicleUseSiren) {
