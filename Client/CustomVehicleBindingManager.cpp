@@ -734,7 +734,35 @@ void CustomVehicleBindingManager::OnVehicleFixed(CVehicle* vehicle)
 			}
 			UpdateVehiclePlateVisibility(vehicle);
 
-			// 10. Synchronize popup headlights
+			// 10. Re-apply installed upgrades so stock _ok meshes replaced by tuning parts
+			// (bumpers, spoilers, etc.) stay hidden after the visibility restore above.
+			// AddVehicleUpgrade is hooked and applies DummySwapGuard for custom models.
+			{
+				short savedUpgrades[15];
+				for (int i = 0; i < 15; ++i) {
+					savedUpgrades[i] = vehicle->m_anUpgrades[i];
+				}
+				unsigned char savedNitroBoosts = vehicle->m_nNitroBoosts;
+
+				for (int i = 0; i < 15; ++i) {
+					int upg = savedUpgrades[i];
+					if (upg < 1000 || upg > 1193)
+						continue;
+					if (!CStreaming::HasModelLoaded(upg)) {
+						CStreaming::RequestModel(upg, 0x16);
+						CStreaming::LoadAllRequestedModels(false);
+					}
+					if (!CStreaming::HasModelLoaded(upg))
+						continue;
+					vehicle->RemoveVehicleUpgrade(upg);
+					vehicle->AddVehicleUpgrade(upg);
+				}
+
+				if (savedNitroBoosts > 0)
+					vehicle->m_nNitroBoosts = savedNitroBoosts;
+			}
+
+			// 11. Synchronize popup headlights
 			if (b.hasPopupHeadlights && !b.popupFrames.empty()) {
 				bool isNight = (CClock::ms_nGameClockHours >= 20 || CClock::ms_nGameClockHours < 7);
 				bool lightsOn = (vehicle->bLightsOn != 0) || (vehicle->bEngineOn != 0 && isNight);
@@ -2535,24 +2563,55 @@ void CustomVehicleBindingManager::ApplyPaintjobToVehicle(CVehicle* vehicle, int 
 		CTxdStore::PopCurrentTxd();
 	}
 
-	// 2) If not found in custom model TXD, check customModel->m_anRemapTxds[paintjobIndex]
+	// 2) Fall back to engine remap TXDs (ChangeVehiclePaintjob / SetRemap path).
+	// Prefer the BASE model remaps (vehicle->m_nModelIndex) — those are the TXDs SA-MP paintjobs use.
+	// Stream-load them so SetupRender/SetEditableMaterials can apply vehiclegrunge256 remaps.
 	if (!liveryTex && paintjobIndex >= 0 && paintjobIndex < 4) {
-		short remapTxd = customModel->m_anRemapTxds[paintjobIndex];
+		short remapTxd = -1;
+		auto* baseModel = reinterpret_cast<CVehicleModelInfo*>(CModelInfo::GetModelInfo(vehicle->m_nModelIndex));
+		if (baseModel)
+			remapTxd = baseModel->m_anRemapTxds[paintjobIndex];
+		if (remapTxd == -1)
+			remapTxd = customModel->m_anRemapTxds[paintjobIndex];
+
 		if (remapTxd != -1) {
-			CTxdStore::PushCurrentTxd();
-			CTxdStore::SetCurrentTxd(remapTxd);
-			RwTexDictionary* pDict = RwTexDictionaryGetCurrent();
-			if (pDict) {
-				liveryTex = RwTexDictionaryFindNamedTexture(pDict, "vehiclegrunge256");
-				if (!liveryTex) {
-					RwTexDictionaryForAllTextures(pDict, [](RwTexture* tex, void* data) -> RwTexture* {
-						*reinterpret_cast<RwTexture**>(data) = tex;
-						return nullptr;
-					},
-						&liveryTex);
-				}
+			const int txdModelId = remapTxd + 20000; // TXDToModelId
+			if (!CStreaming::HasModelLoaded(txdModelId)) {
+				CStreaming::RequestModel(txdModelId, 0x16);
+				CStreaming::LoadAllRequestedModels(false);
 			}
-			CTxdStore::PopCurrentTxd();
+
+			if (CStreaming::HasModelLoaded(txdModelId)) {
+				if (vehicle->m_pRemapTexture && vehicle->m_nPreviousRemapTxd != -1) {
+					vehicle->m_pRemapTexture = nullptr;
+					CTxdStore::RemoveRef(vehicle->m_nPreviousRemapTxd);
+				}
+				CTxdStore::AddRef(remapTxd);
+				vehicle->m_nPreviousRemapTxd = remapTxd;
+				vehicle->m_nRemapTxd = -1;
+
+				CTxdStore::PushCurrentTxd();
+				CTxdStore::SetCurrentTxd(remapTxd);
+				RwTexDictionary* pDict = RwTexDictionaryGetCurrent();
+				if (pDict) {
+					liveryTex = RwTexDictionaryFindNamedTexture(pDict, "vehiclegrunge256");
+					if (!liveryTex) {
+						RwTexDictionaryForAllTextures(pDict, [](RwTexture* tex, void* data) -> RwTexture* {
+							*reinterpret_cast<RwTexture**>(data) = tex;
+							return nullptr;
+						},
+							&liveryTex);
+					}
+				}
+				CTxdStore::PopCurrentTxd();
+
+				if (liveryTex) {
+					vehicle->m_pRemapTexture = liveryTex;
+				}
+			} else {
+				// Defer to SetupRender — it will stream the TXD next frames
+				vehicle->m_nRemapTxd = remapTxd;
+			}
 		}
 	}
 
@@ -2576,7 +2635,7 @@ void CustomVehicleBindingManager::ApplyPaintjobToVehicle(CVehicle* vehicle, int 
 						if (texName) {
 							std::string nameLower = texName;
 							std::transform(nameLower.begin(), nameLower.end(), nameLower.begin(), ::tolower);
-							if (nameLower.find("remap") != std::string::npos || nameLower.find("paintjob") != std::string::npos || nameLower.find("livery") != std::string::npos || nameLower == "body" || nameLower.rfind("body_", 0) == 0 || nameLower.find("skin") != std::string::npos) {
+							if (nameLower.find("remap") != std::string::npos || nameLower.find("paintjob") != std::string::npos || nameLower.find("livery") != std::string::npos || nameLower == "body" || nameLower.rfind("body_", 0) == 0 || nameLower.find("skin") != std::string::npos || nameLower.find("vehiclegrunge") != std::string::npos) {
 								RpMaterialSetTexture(mat, c->tex);
 								RwRGBA whiteCol { 255, 255, 255, 255 };
 								RpMaterialSetColor(mat, &whiteCol);

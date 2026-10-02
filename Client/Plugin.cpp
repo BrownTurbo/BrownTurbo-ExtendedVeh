@@ -1353,12 +1353,59 @@ static void __fastcall Hooked_SetRemap(CVehicle* thisVehicle, void* edx, int rem
 
 	auto* binding = CustomVehicleBindingManager::Instance().FindByVehicle(thisVehicle);
 	if (binding) {
+		// Persist paintjob across rebinds/repairs, and still run the engine remap path so
+		// base-model remap TXDs are requested (m_nRemapTxd) and applied in SetupRender.
 		CustomVehicleBindingManager::Instance().SetVehiclePaintjob(binding->sampVehicleId, remapIndex);
+		if (g_origSetRemap)
+			g_origSetRemap(thisVehicle, edx, remapIndex);
 		return;
 	}
 
 	if (g_origSetRemap)
 		g_origSetRemap(thisVehicle, edx, remapIndex);
+}
+
+// Hooked_DoNitroEffect: Intercepts CAutomobile::DoNitroEffect (0x6A3BD0) so nitro flames
+// use the custom model's exhaust dummy positions (via DummySwapGuard) instead of the base model.
+static void(__fastcall* g_origDoNitroEffect)(CAutomobile* thisCar, void* edx, float state) = nullptr;
+
+static void __fastcall Hooked_DoNitroEffect(CAutomobile* thisCar, void* edx, float state)
+{
+	if (!thisCar || !IsVehiclePointerValid(thisCar)) {
+		if (g_origDoNitroEffect)
+			g_origDoNitroEffect(thisCar, edx, state);
+		return;
+	}
+
+	auto* binding = CustomVehicleBindingManager::Instance().FindByVehicle(thisCar);
+	if (binding) {
+		auto* customModel = StreamingExtender::GetCustomModel(binding->customModelId);
+		auto* baseModel = reinterpret_cast<CVehicleModelInfo*>(CModelInfo::GetModelInfo(thisCar->m_nModelIndex));
+		DummySwapGuard guard(baseModel, customModel);
+
+		bool savedDouble = false;
+		bool modifiedHandling = false;
+		if (thisCar->m_pHandlingData) {
+			savedDouble = thisCar->m_pHandlingData->m_bDoubleExhaust;
+			bool hasDoubleFlag = (thisCar->m_pHandlingData->m_nModelFlags & 0x2000) != 0;
+			bool hasSecDummy = (customModel && customModel->m_pVehicleStruct && customModel->m_pVehicleStruct->m_avDummyPos[11].Magnitude() > 0.001f);
+			bool hasOffsetExhaust = (customModel && customModel->m_pVehicleStruct && fabsf(customModel->m_pVehicleStruct->m_avDummyPos[6].x) > 0.15f);
+			if (hasDoubleFlag || hasSecDummy || hasOffsetExhaust) {
+				thisCar->m_pHandlingData->m_bDoubleExhaust = 1;
+				modifiedHandling = true;
+			}
+		}
+
+		if (g_origDoNitroEffect)
+			g_origDoNitroEffect(thisCar, edx, state);
+
+		if (modifiedHandling && thisCar->m_pHandlingData)
+			thisCar->m_pHandlingData->m_bDoubleExhaust = savedDouble;
+		return;
+	}
+
+	if (g_origDoNitroEffect)
+		g_origDoNitroEffect(thisCar, edx, state);
 }
 
 // Hooked_GetFrameFromId: Intercepts CClumpModelInfo::GetFrameFromId (0x4C53C0)
@@ -4048,6 +4095,18 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD dwReason, LPVOID lpReserved)
 			ClientLog(LogLevel::Error, std::format("Failed to hook CVehicle::AddExhaustParticles (0x6DE240): {}", MH_StatusToString(exhStatus)));
 		}
 
+		MH_STATUS nitroStatus = MH_CreateHook(reinterpret_cast<void*>(0x6A3BD0), reinterpret_cast<void*>(&Hooked_DoNitroEffect), reinterpret_cast<void**>(&g_origDoNitroEffect));
+		if (nitroStatus == MH_OK) {
+			MH_STATUS enableStatus = MH_EnableHook(reinterpret_cast<void*>(0x6A3BD0));
+			if (enableStatus == MH_OK) {
+				ClientLog(LogLevel::Info, "CAutomobile::DoNitroEffect (0x6A3BD0) hooked successfully via MinHook");
+			} else {
+				ClientLog(LogLevel::Error, std::format("Failed to enable CAutomobile::DoNitroEffect hook: {}", MH_StatusToString(enableStatus)));
+			}
+		} else {
+			ClientLog(LogLevel::Error, std::format("Failed to hook CAutomobile::DoNitroEffect (0x6A3BD0): {}", MH_StatusToString(nitroStatus)));
+		}
+
 		MH_STATUS rcTexStatus = MH_CreateHook(reinterpret_cast<void*>(0x6FC180), reinterpret_cast<void*>(&Hooked_RegisterCoronaTexture), reinterpret_cast<void**>(&g_origRegisterCoronaTexture));
 		if (rcTexStatus == MH_OK) {
 			MH_STATUS enableStatus = MH_EnableHook(reinterpret_cast<void*>(0x6FC180));
@@ -4284,6 +4343,12 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD dwReason, LPVOID lpReserved)
 			MH_DisableHook(reinterpret_cast<void*>(0x6DE240));
 			MH_RemoveHook(reinterpret_cast<void*>(0x6DE240));
 			g_origAddExhaustParticles = nullptr;
+		}
+
+		if (g_origDoNitroEffect) {
+			MH_DisableHook(reinterpret_cast<void*>(0x6A3BD0));
+			MH_RemoveHook(reinterpret_cast<void*>(0x6A3BD0));
+			g_origDoNitroEffect = nullptr;
 		}
 
 		if (g_origRegisterCoronaTexture) {
