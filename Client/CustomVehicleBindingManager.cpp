@@ -2359,6 +2359,8 @@ void CustomVehicleBindingManager::ApplyVehicleColors(CVehicle* vehicle, uint8_t 
 	struct ColorContext {
 		RwRGBA prim;
 		RwRGBA sec;
+		bool hasTexturedBody {};
+		std::vector<RpMaterial*> untexturedOpaqueMaterials;
 	} ctx {
 		{ primCol.r, primCol.g, primCol.b, 255 },
 		{ secCol.r, secCol.g, secCol.b, 255 }
@@ -2410,19 +2412,19 @@ void CustomVehicleBindingManager::ApplyVehicleColors(CVehicle* vehicle, uint8_t 
 				if (texLower.find("col2") != std::string::npos || texLower.find("secondary") != std::string::npos || texLower.find("stripe") != std::string::npos) {
 					isBody = true;
 					isSecondary = true;
-				} else if (texLower.find("remap") != std::string::npos || texLower.find("body") != std::string::npos || texLower.find("carbody") != std::string::npos || texLower.find("carpaint") != std::string::npos || texLower.find("paint") != std::string::npos || texLower.find("chassis") != std::string::npos || texLower.find("col1") != std::string::npos || texLower.find("primary") != std::string::npos) {
-					isBody = true;
-				}
-			} else {
-				// Material without texture: check alpha (ignore transparent parts)
-				const RwRGBA* curCol = RpMaterialGetColor(mat);
-				if (curCol && curCol->alpha >= 240) {
+				} else if (texLower.find("remap") != std::string::npos || texLower.find("body") != std::string::npos || texLower.find("carbody") != std::string::npos || texLower.find("carpaint") != std::string::npos || texLower.find("paint") != std::string::npos || texLower.find("chassis") != std::string::npos || texLower.find("col1") != std::string::npos || texLower.find("primary") != std::string::npos || texLower.find("exterior") != std::string::npos) {
 					isBody = true;
 				}
 			}
 
 			if (isBody) {
+				c->hasTexturedBody = true;
 				RpMaterialSetColor(mat, isSecondary ? &c->sec : &c->prim);
+			} else if (texLower.empty()) {
+				const RwRGBA* curCol = RpMaterialGetColor(mat);
+				if (curCol && curCol->alpha >= 240) {
+					c->untexturedOpaqueMaterials.push_back(mat);
+				}
 			}
 
 			return mat;
@@ -2430,6 +2432,12 @@ void CustomVehicleBindingManager::ApplyVehicleColors(CVehicle* vehicle, uint8_t 
 
 		return atomic;
 	}, &ctx);
+
+	if (!ctx.hasTexturedBody) {
+		for (RpMaterial* mat : ctx.untexturedOpaqueMaterials) {
+			RpMaterialSetColor(mat, &ctx.prim);
+		}
+	}
 }
 
 void CustomVehicleBindingManager::ApplyPaintjobToVehicle(CVehicle* vehicle, int paintjobIndex)
