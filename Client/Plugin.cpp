@@ -1089,9 +1089,27 @@ static void __fastcall Hooked_CAutomobile_Fix(CAutomobile* thisCar, void* edx)
 
 	auto* binding = CustomVehicleBindingManager::Instance().FindByVehicle(thisCar);
 	if (binding && binding->modelApplied && thisCar->m_pRwObject) {
-		// Custom vehicle: DO NOT invoke native CAutomobile::Fix (0x6A3440)!
-		// Native 0x6A3440 force-resets frame rotations to axis-aligned identity [1,0,0],[0,1,0],[0,0,1],
-		// which tilts custom modelled doors outwards and breaks custom glass/sunroof/panel orientations.
+		RwMatrix savedMatrices[CAR_NUM_NODES] {};
+		bool hasSavedMatrix[CAR_NUM_NODES] {};
+		for (int i = 0; i < CAR_NUM_NODES; ++i) {
+			RwFrame* frame = thisCar->m_aCarNodes[i];
+			if (frame) {
+				savedMatrices[i] = frame->modelling;
+				hasSavedMatrix[i] = true;
+			}
+		}
+
+		if (g_origCAutomobile_Fix)
+			g_origCAutomobile_Fix(thisCar, edx);
+
+		for (int i = 0; i < CAR_NUM_NODES; ++i) {
+			RwFrame* frame = thisCar->m_aCarNodes[i];
+			if (frame && hasSavedMatrix[i]) {
+				frame->modelling = savedMatrices[i];
+				RwFrameUpdateObjects(frame);
+			}
+		}
+
 		CustomVehicleBindingManager::Instance().OnVehicleFixed(thisCar);
 
 		// Preserve God-mode health if health was > 1000.0f before Fix(), otherwise restore to 1000.0f

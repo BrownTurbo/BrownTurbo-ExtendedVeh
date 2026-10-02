@@ -640,20 +640,20 @@ void CustomVehicleBindingManager::OnVehicleFixed(CVehicle* vehicle)
 			// Name-based matching prevents atomic sequence desync from dynamic plates, custom wheels, or tuning parts.
 			// Hides _dam meshes, restores _ok meshes, preserves baseline tuning parts (e.g. bumper_f0),
 			// and restores undeformed morph target vertex coordinates to eliminate collision crumpling.
-			std::unordered_map<std::string, RpAtomic*> tmplAtomicMap;
+			std::unordered_map<std::string, std::vector<RpAtomic*>> tmplAtomicMap;
 			RpClumpForAllAtomics(customModel->m_pRwClump, [](RpAtomic* atomic, void* data) -> RpAtomic* {
-				auto* map = reinterpret_cast<std::unordered_map<std::string, RpAtomic*>*>(data);
+				auto* map = reinterpret_cast<std::unordered_map<std::string, std::vector<RpAtomic*>>*>(data);
 				RwFrame* frame = RpAtomicGetFrame(atomic);
 				const char* name = frame ? GetFrameNodeName(frame) : nullptr;
 				if (name && *name) {
-					(*map)[name] = atomic;
+					(*map)[name].push_back(atomic);
 				}
 				return atomic;
 			},
 				&tmplAtomicMap);
 
 			RpClumpForAllAtomics(clump, [](RpAtomic* atomic, void* data) -> RpAtomic* {
-				auto* map = reinterpret_cast<std::unordered_map<std::string, RpAtomic*>*>(data);
+				auto* map = reinterpret_cast<std::unordered_map<std::string, std::vector<RpAtomic*>>*>(data);
 				RwFrame* frame = RpAtomicGetFrame(atomic);
 				const char* name = frame ? GetFrameNodeName(frame) : nullptr;
 				if (!name || !*name)
@@ -683,23 +683,40 @@ void CustomVehicleBindingManager::OnVehicleFixed(CVehicle* vehicle)
 				// Match by name in pristine template clump
 				auto it = map->find(name);
 				if (it != map->end()) {
-					RpAtomic* tmplAtomic = it->second;
-					uint32_t tmplFlags = RpAtomicGetFlags(tmplAtomic);
-					if (nameLower.find("_dam") != std::string::npos) {
-						tmplFlags = 0;
-					} else if (nameLower.find("_ok") != std::string::npos) {
-						tmplFlags |= rpATOMICRENDER;
-					}
-					RpAtomicSetFlags(atomic, tmplFlags);
-
-					// Restore pristine morph target vertices (removes collision denting/crumpling)
 					RpGeometry* vehGeom = RpAtomicGetGeometry(atomic);
-					RpGeometry* tmplGeom = RpAtomicGetGeometry(tmplAtomic);
-					if (vehGeom && tmplGeom && vehGeom->numVertices == tmplGeom->numVertices && vehGeom->numMorphTargets > 0 && tmplGeom->numMorphTargets > 0) {
-						if (vehGeom->morphTarget[0].verts && tmplGeom->morphTarget[0].verts) {
-							memcpy(vehGeom->morphTarget[0].verts, tmplGeom->morphTarget[0].verts, sizeof(RwV3d) * vehGeom->numVertices);
-							vehGeom->morphTarget[0].boundingSphere = tmplGeom->morphTarget[0].boundingSphere;
-							RpGeometryUnlock(vehGeom);
+					RpAtomic* tmplAtomic = nullptr;
+					for (RpAtomic* candidate : it->second) {
+						RpGeometry* candidateGeom = RpAtomicGetGeometry(candidate);
+						if (!vehGeom || !candidateGeom || vehGeom->numMorphTargets == 0 || candidateGeom->numMorphTargets == 0 ||
+							vehGeom->numVertices != candidateGeom->numVertices ||
+							vehGeom->numTriangles != candidateGeom->numTriangles ||
+							vehGeom->numMorphTargets != candidateGeom->numMorphTargets) {
+							continue;
+						}
+						if (tmplAtomic) {
+							tmplAtomic = nullptr;
+							break;
+						}
+						tmplAtomic = candidate;
+					}
+
+					if (tmplAtomic) {
+						uint32_t tmplFlags = RpAtomicGetFlags(tmplAtomic);
+						if (nameLower.find("_dam") != std::string::npos) {
+							tmplFlags = 0;
+						} else if (nameLower.find("_ok") != std::string::npos) {
+							tmplFlags |= rpATOMICRENDER;
+						}
+						RpAtomicSetFlags(atomic, tmplFlags);
+
+						RpGeometry* tmplGeom = RpAtomicGetGeometry(tmplAtomic);
+						RpGeometry* lockedGeom = RpGeometryLock(vehGeom, rpGEOMETRYLOCKVERTICES);
+						if (lockedGeom) {
+							if (lockedGeom->morphTarget[0].verts && tmplGeom->morphTarget[0].verts) {
+								memcpy(lockedGeom->morphTarget[0].verts, tmplGeom->morphTarget[0].verts, sizeof(RwV3d) * lockedGeom->numVertices);
+								lockedGeom->morphTarget[0].boundingSphere = tmplGeom->morphTarget[0].boundingSphere;
+							}
+							RpGeometryUnlock(lockedGeom);
 						}
 					}
 				}
@@ -748,6 +765,8 @@ void CustomVehicleBindingManager::OnVehicleFixed(CVehicle* vehicle)
 					int upg = savedUpgrades[i];
 					if (upg < 1000 || upg > 1193)
 						continue;
+					//if (upg == 1008 || upg == 1009 || upg == 1010)
+					//	continue;
 					if (!CStreaming::HasModelLoaded(upg)) {
 						CStreaming::RequestModel(upg, 0x16);
 						CStreaming::LoadAllRequestedModels(false);
