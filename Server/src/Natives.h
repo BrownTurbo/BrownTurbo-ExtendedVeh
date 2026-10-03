@@ -2716,6 +2716,24 @@ SCRIPT_API(GetCustomVehicleModelPlateTexture, bool(int customModelId, std::strin
 	return HandlingMgr::GetCustomVehicleModelPlateTexture(static_cast<uint32_t>(customModelId), textureName);
 }
 
+// native bool:SetCustomVehicleModelPlateTextSize(customModelId, pixelSize);
+SCRIPT_API(SetCustomVehicleModelPlateTextSize, bool(int customModelId, int pixelSize))
+{
+	if (pixelSize < 1 || pixelSize > 16)
+		return false;
+	return HandlingMgr::SetCustomVehicleModelPlateTextSize(static_cast<uint32_t>(customModelId), static_cast<uint8_t>(pixelSize));
+}
+
+// native bool:GetCustomVehicleModelPlateTextSize(customModelId, &pixelSize);
+SCRIPT_API(GetCustomVehicleModelPlateTextSize, bool(int customModelId, int& pixelSize))
+{
+	uint8_t size = 16;
+	if (!HandlingMgr::GetCustomVehicleModelPlateTextSize(static_cast<uint32_t>(customModelId), size))
+		return false;
+	pixelSize = size;
+	return true;
+}
+
 // Aliases
 SCRIPT_API(SetVehiclePlateMesh, bool(IVehicle& vehicle, bool isRear, bool enabled, float x, float y, float z, float rx, float ry, float rz, float scale))
 {

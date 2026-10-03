@@ -39,6 +39,7 @@ public:
 	struct ModelPlateConfig {
 		bool hasConfig { false };
 		std::string targetTexture;
+		uint8_t plateTextSize { 16 };
 		CustomVeh::Protocol::PlateMeshConfig frontPlate {};
 		CustomVeh::Protocol::PlateMeshConfig rearPlate {};
 	};
@@ -243,7 +244,8 @@ public:
 		RpClump* clump,
 		const CustomVeh::Protocol::PlateMeshConfig& cfg,
 		const char* plateText,
-		bool isRear);
+		bool isRear,
+		uint8_t textSize);
 
 	static bool GetModelOffsets(uint32_t customModelId, ModelOffsetConfig& outCfg);
 	static void SetModelOffsets(uint32_t customModelId, const ModelOffsetConfig& cfg);

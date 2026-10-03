@@ -151,6 +151,8 @@ bool GetCustomVehicleModelPlateText(uint32_t customModelId, std::string& plateTe
 
 bool SetCustomVehicleModelPlateTexture(uint32_t customModelId, const std::string& textureName);
 bool GetCustomVehicleModelPlateTexture(uint32_t customModelId, std::string& textureName);
+bool SetCustomVehicleModelPlateTextSize(uint32_t customModelId, uint8_t pixelSize);
+bool GetCustomVehicleModelPlateTextSize(uint32_t customModelId, uint8_t& pixelSize);
 
 bool SetCustomVehicleModelPlateMesh(uint32_t customModelId, bool isRear, const CustomVeh::Protocol::PlateMeshConfig& cfg);
 bool GetCustomVehicleModelPlateMesh(uint32_t customModelId, bool isRear, CustomVeh::Protocol::PlateMeshConfig& cfg);

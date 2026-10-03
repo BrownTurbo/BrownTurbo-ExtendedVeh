@@ -1101,6 +1101,7 @@ static void __fastcall Hooked_CAutomobile_Fix(CAutomobile* thisCar, void* edx)
 
 		if (g_origCAutomobile_Fix)
 			g_origCAutomobile_Fix(thisCar, edx);
+		thisCar->ExtinguishCarFire();
 
 		for (int i = 0; i < CAR_NUM_NODES; ++i) {
 			RwFrame* frame = thisCar->m_aCarNodes[i];
@@ -1126,6 +1127,7 @@ static void __fastcall Hooked_CAutomobile_Fix(CAutomobile* thisCar, void* edx)
 	// Regular / vanilla GTA SA vehicle: call native fix
 	if (g_origCAutomobile_Fix)
 		g_origCAutomobile_Fix(thisCar, edx);
+	thisCar->ExtinguishCarFire();
 
 	// Native CAutomobile::Fix (0x6A3440) does NOT repair door angles, rotations, or states.
 	// Restore all doors cleanly for vanilla models:
@@ -2291,6 +2293,12 @@ public:
 			}
 		}
 
+		if (bs.GetNumberOfUnreadBits() >= sizeof(def.plateTextSize) * 8) {
+			bs.Read(def.plateTextSize);
+		}
+		if (def.plateTextSize < 1 || def.plateTextSize > 16)
+			def.plateTextSize = 16;
+
 		return true;
 	}
 
@@ -2841,6 +2849,7 @@ public:
 			}
 			plateCfg.frontPlate = def.frontPlate;
 			plateCfg.rearPlate = def.rearPlate;
+			plateCfg.plateTextSize = def.plateTextSize;
 			CustomVehicleBindingManager::SetModelPlateConfig(def.customModelId, plateCfg);
 		}
 

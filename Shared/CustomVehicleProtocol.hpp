@@ -222,6 +222,7 @@ namespace CustomVeh::Protocol {
 		char targetPlateTexture[32] = {};
 		PlateMeshConfig frontPlate = {};
 		PlateMeshConfig rearPlate = {};
+		uint8_t plateTextSize = 16;
 	};
 
 	struct VehicleBinding {
@@ -275,6 +276,7 @@ namespace CustomVeh::Protocol {
 		char targetTexture[32] = {};
 		PlateMeshConfig frontPlate = {};
 		PlateMeshConfig rearPlate = {};
+		uint8_t plateTextSize = 16;
 	};
 
 	struct VehiclePlateTexturePacket {

@@ -37,6 +37,42 @@ static bool IsFrameOrChildOf(RwFrame* frame, RwFrame* targetParent)
 	return false;
 }
 
+static void ApplyPlateTextPixelSize(RpMaterial* material, uint8_t pixelSize)
+{
+	constexpr int baseWidth = 64;
+	constexpr int baseHeight = 16;
+	if (!material || pixelSize == 0 || pixelSize >= baseHeight)
+		return;
+
+	RwTexture* texture = RpMaterialGetTexture(material);
+	RwRaster* raster = texture ? RwTextureGetRaster(texture) : nullptr;
+	if (!raster || raster->width != baseWidth || raster->height != baseHeight || raster->depth != 32 || raster->stride < baseWidth * 4)
+		return;
+
+	RwUInt8* pixels = RwRasterLock(raster, 0, rwRASTERLOCKREADWRITE);
+	if (!pixels)
+		return;
+
+	const size_t bufferSize = static_cast<size_t>(raster->stride) * baseHeight;
+	std::vector<RwUInt8> original(pixels, pixels + bufferSize);
+	std::memset(pixels, 0, bufferSize);
+
+	const int outputHeight = pixelSize;
+	const int outputWidth = std::max(1, (baseWidth * outputHeight + baseHeight / 2) / baseHeight);
+	const int xOffset = (baseWidth - outputWidth) / 2;
+	const int yOffset = (baseHeight - outputHeight) / 2;
+	for (int y = 0; y < outputHeight; ++y) {
+		const int sourceY = y * baseHeight / outputHeight;
+		for (int x = 0; x < outputWidth; ++x) {
+			const int sourceX = x * baseWidth / outputWidth;
+			const size_t sourceOffset = static_cast<size_t>(sourceY) * raster->stride + sourceX * 4;
+			const size_t targetOffset = static_cast<size_t>(y + yOffset) * raster->stride + (x + xOffset) * 4;
+			std::memcpy(pixels + targetOffset, original.data() + sourceOffset, 4);
+		}
+	}
+	RwRasterUnlock(raster);
+}
+
 static RpClump* CloneClumpPreservingOrder(RpClump* srcClump)
 {
 	if (!srcClump)
@@ -1485,7 +1521,11 @@ void CustomVehicleBindingManager::SetVehiclePlateMesh(uint16_t vehicleId, bool i
 			const char* plateText = it->second.hasCustomPlateText && it->second.customPlateText[0] != '\0'
 				? it->second.customPlateText
 				: (it->second.lastPlateText[0] != '\0' ? it->second.lastPlateText : "SAN ANDREAS");
-			CreatePlateQuadAtomic(clump, cfg, plateText, isRear);
+			uint8_t textSize = 16;
+			auto modelCfg = s_modelPlateConfigs.find(it->second.customModelId);
+			if (modelCfg != s_modelPlateConfigs.end())
+				textSize = modelCfg->second.plateTextSize;
+			CreatePlateQuadAtomic(clump, cfg, plateText, isRear, textSize);
 		}
 	}
 }
@@ -1631,7 +1671,8 @@ RpAtomic* CustomVehicleBindingManager::CreatePlateQuadAtomic(
 	RpClump* clump,
 	const CustomVeh::Protocol::PlateMeshConfig& cfg,
 	const char* plateText,
-	bool isRear)
+	bool isRear,
+	uint8_t textSize)
 {
 	if (!clump)
 		return nullptr;
@@ -1722,6 +1763,7 @@ RpAtomic* CustomVehicleBindingManager::CreatePlateQuadAtomic(
 					if (geom->matList.materials && geom->matList.numMaterials >= 1) {
 						if (plateText && plateText[0] != '\0') {
 							CCustomCarPlateMgr::SetupMaterialPlateTexture(geom->matList.materials[0], const_cast<char*>(plateText), 0);
+							ApplyPlateTextPixelSize(geom->matList.materials[0], textSize);
 						}
 					}
 					ClientLog(LogLevel::Info, std::format("CreatePlateQuadAtomic: Updated {} 3D plate on clump (pos={:.2f}, {:.2f}, {:.2f}, rot={:.1f}, {:.1f}, {:.1f}, scale={:.2f})", isRear ? "rear" : "front", cfg.offsetX, cfg.offsetY, cfg.offsetZ, cfg.rotX, cfg.rotY, cfg.rotZ, cfg.scale));
@@ -1758,6 +1800,7 @@ RpAtomic* CustomVehicleBindingManager::CreatePlateQuadAtomic(
 
 	if (plateText && plateText[0] != '\0') {
 		CCustomCarPlateMgr::SetupMaterialPlateTexture(mat, const_cast<char*>(plateText), 0);
+		ApplyPlateTextPixelSize(mat, textSize);
 	}
 
 	float s = (cfg.scale > 0.001f) ? cfg.scale : 1.0f;
@@ -2065,13 +2108,16 @@ bool CustomVehicleBindingManager::ApplyPlateToClump(
 	if (!effRearPlate && hasModelCfg && modelCfg.rearPlate.enabled) {
 		effRearPlate = &modelCfg.rearPlate;
 	}
+	const uint8_t plateTextSize = hasModelCfg && modelCfg.plateTextSize >= 1 && modelCfg.plateTextSize <= 16
+		? modelCfg.plateTextSize
+		: 16;
 
 	// 1. Create or update 3D plate quad atomics if configured
 	if (effFrontPlate) {
-		CreatePlateQuadAtomic(clump, *effFrontPlate, plateText, false);
+		CreatePlateQuadAtomic(clump, *effFrontPlate, plateText, false, plateTextSize);
 	}
 	if (effRearPlate) {
-		CreatePlateQuadAtomic(clump, *effRearPlate, plateText, true);
+		CreatePlateQuadAtomic(clump, *effRearPlate, plateText, true, plateTextSize);
 	}
 
 	// 2. Find plate materials (matching standard names, targetTexture, and attached plate quad atomics)
@@ -2086,6 +2132,7 @@ bool CustomVehicleBindingManager::ApplyPlateToClump(
 			bgPlatesApplied++;
 		} else {
 			CCustomCarPlateMgr::SetupMaterialPlateTexture(entry.material, const_cast<char*>(plateText), 0);
+			ApplyPlateTextPixelSize(entry.material, plateTextSize);
 			textPlatesApplied++;
 		}
 	}
@@ -2097,6 +2144,7 @@ bool CustomVehicleBindingManager::ApplyPlateToClump(
 
 	RpMaterial* fallbackMat = CCustomCarPlateMgr::SetupClump(clump, const_cast<char*>(plateText), 0);
 	if (fallbackMat) {
+		ApplyPlateTextPixelSize(fallbackMat, plateTextSize);
 		ClientLog(LogLevel::Info, std::format("ApplyPlateToClump: Fallback SetupClump succeeded for '{}' (mat=0x{:X})", plateText, reinterpret_cast<std::uintptr_t>(fallbackMat)));
 		return true;
 	}
@@ -3305,7 +3353,11 @@ bool CustomVehicleBindingManager::HandleChatCommand(const std::string& fullCmd)
 							const char* plateText = b.hasCustomPlateText && b.customPlateText[0] != '\0'
 								? b.customPlateText
 								: (b.lastPlateText[0] != '\0' ? b.lastPlateText : "SAN ANDREAS");
-							CreatePlateQuadAtomic(clump, cfg, plateText, isRear);
+							uint8_t textSize = 16;
+							auto modelCfg = s_modelPlateConfigs.find(targetModelId);
+							if (modelCfg != s_modelPlateConfigs.end())
+								textSize = modelCfg->second.plateTextSize;
+							CreatePlateQuadAtomic(clump, cfg, plateText, isRear, textSize);
 						}
 					}
 				}

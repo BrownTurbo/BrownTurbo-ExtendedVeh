@@ -561,6 +561,20 @@ bool ModelConfigParser::ParseString(const std::string& content, ModelConfig& out
 				{
 					outConfig.plateText = val;
 				}
+				else if (lowerKey == "platetextsize" || lowerKey == "platesize" || lowerKey == "numberplatesize")
+				{
+					bool ok = false;
+					int size = ParseInt(val, &ok);
+					if (ok && size >= 1 && size <= 16)
+					{
+						outConfig.plateTextSize = static_cast<uint8_t>(size);
+						outConfig.hasPlateConfig = true;
+					}
+					else
+					{
+						logWarn("Invalid plateTextSize '%s' (expected 1..16 pixels)", val.c_str());
+					}
+				}
 				else if (lowerKey == "targettexture" || lowerKey == "targetplatetexture" || lowerKey == "platetexture")
 				{
 					outConfig.targetTexture = val;

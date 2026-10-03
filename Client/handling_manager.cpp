@@ -1639,12 +1639,23 @@ bool HandlingManager::ProcessAction(CustomVehAction action, RakNet::BitStream* b
 	}
 	case static_cast<CustomVehAction>(CustomVeh::Protocol::Action::SetModelPlateConfig): {
 		CustomVeh::Protocol::ModelPlateConfigPacket pkt {};
-		if (bs->Read(reinterpret_cast<char*>(&pkt), sizeof(pkt))) {
+		const size_t legacySize = sizeof(pkt) - sizeof(pkt.plateTextSize);
+		const size_t unreadBytes = bs->GetNumberOfUnreadBits() / 8;
+		bool read = false;
+		if (unreadBytes >= sizeof(pkt)) {
+			read = bs->Read(reinterpret_cast<char*>(&pkt), sizeof(pkt));
+		} else if (unreadBytes >= legacySize) {
+			read = bs->Read(reinterpret_cast<char*>(&pkt), static_cast<int>(legacySize));
+		}
+		if (read) {
 			pkt.targetTexture[sizeof(pkt.targetTexture) - 1] = '\0';
-			ClientLog(LogLevel::Info, std::format("SetModelPlateConfig: modelId={}, targetTexture='{}'", pkt.customModelId, pkt.targetTexture));
+			if (pkt.plateTextSize < 1 || pkt.plateTextSize > 16)
+				pkt.plateTextSize = 16;
+			ClientLog(LogLevel::Info, std::format("SetModelPlateConfig: modelId={}, targetTexture='{}', plateTextSize={}", pkt.customModelId, pkt.targetTexture, pkt.plateTextSize));
 			CustomVehicleBindingManager::ModelPlateConfig cfg;
 			cfg.hasConfig = true;
 			cfg.targetTexture = pkt.targetTexture;
+			cfg.plateTextSize = pkt.plateTextSize;
 			cfg.frontPlate = pkt.frontPlate;
 			cfg.rearPlate = pkt.rearPlate;
 			CustomVehicleBindingManager::SetModelPlateConfig(pkt.customModelId, cfg);

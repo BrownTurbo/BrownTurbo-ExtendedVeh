@@ -1466,6 +1466,7 @@ void SendCustomVehicleDefToPlayer(IPlayer& player, uint32_t modelId)
 		if (def.flags & CustomVeh::Protocol::HasAudioCrash)
 			writeAsset(def.audioCrash);
 	}
+	bs.Write(def.plateTextSize);
 
 	player.sendPacket(Span<uint8_t>(pkt.data.GetData(), pkt.data.GetNumberOfBitsUsed()), 0, true);
 }
@@ -1762,6 +1763,7 @@ bool LoadCustomVehicleConfig(uint32_t customModelId, const ModelConfig* preParse
 			{
 				def.rearPlate = config.rearPlateMesh;
 			}
+			def.plateTextSize = config.plateTextSize;
 		};
 
 		if (itStaged != stagedCustomVehicleDefs.end())
@@ -2346,6 +2348,7 @@ void SendModelPlateConfigToPlayer(IPlayer& player, uint32_t customModelId)
 	pkt.targetTexture[sizeof(pkt.targetTexture) - 1] = '\0';
 	pkt.frontPlate = it->second.frontPlate;
 	pkt.rearPlate = it->second.rearPlate;
+	pkt.plateTextSize = it->second.plateTextSize;
 
 	CustomVehicleTransport::SendModelPlateConfig(player, pkt);
 }
@@ -2396,6 +2399,41 @@ bool GetCustomVehicleModelPlateTexture(uint32_t customModelId, std::string& text
 	if (itStaged != stagedCustomVehicleDefs.end())
 	{
 		textureName = itStaged->second.targetPlateTexture;
+		return true;
+	}
+	return false;
+}
+
+bool SetCustomVehicleModelPlateTextSize(uint32_t customModelId, uint8_t pixelSize)
+{
+	if (pixelSize < 1 || pixelSize > 16)
+		return false;
+
+	auto itStaged = stagedCustomVehicleDefs.find(customModelId);
+	if (itStaged != stagedCustomVehicleDefs.end())
+		itStaged->second.plateTextSize = pixelSize;
+
+	auto itComm = customVehicleDefs.find(customModelId);
+	if (itComm != customVehicleDefs.end())
+	{
+		itComm->second.plateTextSize = pixelSize;
+		SendModelPlateConfigToAll(customModelId);
+	}
+	return itStaged != stagedCustomVehicleDefs.end() || itComm != customVehicleDefs.end();
+}
+
+bool GetCustomVehicleModelPlateTextSize(uint32_t customModelId, uint8_t& pixelSize)
+{
+	auto itComm = customVehicleDefs.find(customModelId);
+	if (itComm != customVehicleDefs.end())
+	{
+		pixelSize = itComm->second.plateTextSize;
+		return true;
+	}
+	auto itStaged = stagedCustomVehicleDefs.find(customModelId);
+	if (itStaged != stagedCustomVehicleDefs.end())
+	{
+		pixelSize = itStaged->second.plateTextSize;
 		return true;
 	}
 	return false;

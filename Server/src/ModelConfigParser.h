@@ -28,6 +28,7 @@ struct ModelConfig
 	int16_t accelerateSound = -1;
 	int16_t decelerateSound = -1;
 	std::string plateText;
+	uint8_t plateTextSize = 16;
 	std::string targetTexture;
 	CustomVeh::Protocol::PlateMeshConfig frontPlateMesh = {};
 	CustomVeh::Protocol::PlateMeshConfig rearPlateMesh = {};

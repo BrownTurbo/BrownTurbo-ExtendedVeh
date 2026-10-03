@@ -330,6 +330,9 @@ native bool:GetCustomVehiclePlateMesh(vehicleid, bool:isRear, &bool:enabled, &Fl
 native bool:SetCustomVehiclePlateTexture(vehicleid, const textureName[]);
 native bool:GetCustomVehiclePlateTexture(vehicleid, textureName[], maxlen = sizeof(textureName));
 
+native bool:SetCustomVehicleModelPlateTextSize(customModelId, pixelSize);
+native bool:GetCustomVehicleModelPlateTextSize(customModelId, &pixelSize);
+
 native bool:SetCustomVehicleExtras(vehicleid, extrasMask);
 native bool:GetCustomVehicleExtras(vehicleid, &extrasMask);
 
@@ -453,6 +456,8 @@ native bool:SetCustomVehicleAllDoorsMissing(vehicleid, bool:missing);
 #define GetVehicleModelPlateMesh            GetCustomVehicleModelPlateMesh
 #define SetVehicleModelPlateTexture         SetCustomVehicleModelPlateTexture
 #define GetVehicleModelPlateTexture         GetCustomVehicleModelPlateTexture
+#define SetVehicleModelPlateTextSize        SetCustomVehicleModelPlateTextSize
+#define GetVehicleModelPlateTextSize        GetCustomVehicleModelPlateTextSize
 #define SetVehicleModelHorn                 SetCustomVehicleModelHorn
 #define GetVehicleModelHorn                 GetCustomVehicleModelHorn
 #define SetVehicleModelSiren                SetCustomVehicleModelSiren
