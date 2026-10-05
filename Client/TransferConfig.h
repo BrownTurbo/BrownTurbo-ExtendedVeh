@@ -30,7 +30,7 @@ public:
 	int retryMaxBackoffMs = 60000;
 	int retryResponseTimeoutMs = 8000;
 
-	int RequestChannel = 1;
+	int RequestChannel = 0;
 	int WorkerSleepMs = 250;
 
 	uint32_t clientMaxUncompressedSize = 200u * 1024u * 1024u; // 200 MB
@@ -159,7 +159,7 @@ private:
 			 << "ClientMaxUncompressedSize=209715200\n" // 200 * 1024 * 1024
 			 << "ClientMaxCompressedSize=167772160\n" // 160 * 1024 * 1024
 			 << "WorkerSleepMs=250\n"
-			 << "RequestChannel=1\n";
+			 << "RequestChannel=0\n";
 	}
 
 	static std::string Trim(std::string s)

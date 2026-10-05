@@ -248,8 +248,8 @@ public:
 			{ 1, { "taillights", "taillights_dummy", "taillight" } }, // LIGHT_REAR_MAIN
 			{ 2, { "headlights2", "headlights2_dummy", "headlight2", "headlights_2", "headlight_2" } }, // LIGHT_FRONT_SECONDARY
 			{ 3, { "taillights2", "taillights2_dummy", "taillight2", "taillights_2", "taillight_2" } }, // LIGHT_REAR_SECONDARY
-			{ 4, { "seat_f", "seat_front" } }, // SEAT_FRONT (driver!)
-			{ 5, { "seat_r", "seat_rear" } }, // SEAT_REAR
+			{ 4, { "ped_frontseat", "seat_f", "seat_front" } }, // SEAT_FRONT (driver!)
+			{ 5, { "ped_backseat", "seat_r", "seat_rear" } }, // SEAT_REAR
 			{ 6, { "exhaust", "exhaust_dummy" } }, // EXHAUST
 			{ 7, { "engine", "engine_dummy" } }, // ENGINE
 			{ 8, { "petrolcap", "petrolcap_dummy", "gascap" } }, // GAS_CAP

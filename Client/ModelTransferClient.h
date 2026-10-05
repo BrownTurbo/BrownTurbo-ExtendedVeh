@@ -79,7 +79,7 @@ private:
 
 		// Retry bookkeeping:
 		int attempts = 0; // 1 == initial request just sent
-		std::chrono::steady_clock::time_point nextRetryTime = std::chrono::steady_clock::time_point::min();
+		std::chrono::steady_clock::time_point nextRetryTime = (std::chrono::steady_clock::time_point::min)();
 		uint32_t backoffMs = 0;
 		// When we expect a response, we set startTime; worker checks timeouts relative to it.
 	};
@@ -136,7 +136,4 @@ private:
 	std::thread m_worker;
 	std::atomic<bool> m_stopWorker { false };
 	std::atomic<bool> m_workerStarted { false };
-
-	// Retry/backoff policy (tweakable)
-	static constexpr int kRequestChannel = 0; // must match server kFileTransferChannel
 };
