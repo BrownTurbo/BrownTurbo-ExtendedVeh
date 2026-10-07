@@ -1,5 +1,6 @@
 #include "ModelTransferManager.h"
 #include "extendedveh.h"
+#include "ServerConfig.h"
 #include "utils.h"
 
 #include <algorithm>
@@ -46,8 +47,6 @@ namespace
 
 	std::deque<ActiveTransfer> g_activeTransfers;
 	std::mutex g_activeMutex;
-	constexpr size_t kMaxActiveTransfersPerPlayer = 10;
-	constexpr uint32_t kMaxModelFileSize = 128u * 1024u * 1024u;
 
 	uint64_t CacheKey(uint32_t modelId, ModelFileKind kind)
 	{
@@ -185,6 +184,7 @@ void OnRequestFile(IPlayer& player, uint32_t modelId, ModelFileKind kind)
 		return;
 
 	const int playerId = player.getID();
+	const ServerConfig& config = ServerConfig::Instance();
 	{
 		std::lock_guard<std::mutex> lock(g_activeMutex);
 		if (std::any_of(g_activeTransfers.begin(), g_activeTransfers.end(),
@@ -201,7 +201,7 @@ void OnRequestFile(IPlayer& player, uint32_t modelId, ModelFileKind kind)
 				return transfer.playerId == playerId;
 			}));
 
-		if (playerTransferCount >= kMaxActiveTransfersPerPlayer)
+		if (playerTransferCount >= config.maxActiveTransfersPerPlayer)
 		{
 			ExtendedVehCompo* compo = ExtendedVehCompo::get();
 			ICore* core = compo ? compo->getCore() : nullptr;
@@ -217,7 +217,7 @@ void OnRequestFile(IPlayer& player, uint32_t modelId, ModelFileKind kind)
 		CustomVehActionPacket cancel(ACTION_ASSET_CANCEL);
 		cancel.data.Write(modelId);
 		cancel.data.Write(static_cast<uint8_t>(kind));
-		player.sendPacket(Span<uint8_t>(cancel.data.GetData(), cancel.data.GetNumberOfBitsUsed()), kFileTransferChannel, true);
+		player.sendPacket(Span<uint8_t>(cancel.data.GetData(), cancel.data.GetNumberOfBitsUsed()), config.fileTransferChannel, true);
 		ExtendedVehCompo* compo = ExtendedVehCompo::get();
 		if (compo)
 		{
@@ -231,12 +231,12 @@ void OnRequestFile(IPlayer& player, uint32_t modelId, ModelFileKind kind)
 		return;
 	}
 
-	if (cached->uncompressedSize == 0 || cached->uncompressedSize > kMaxModelFileSize || cached->compressed.empty())
+	if (cached->uncompressedSize == 0 || cached->uncompressedSize > config.maxModelFileSizeBytes || cached->compressed.empty())
 	{
 		CustomVehActionPacket cancel(ACTION_ASSET_CANCEL);
 		cancel.data.Write(modelId);
 		cancel.data.Write(static_cast<uint8_t>(kind));
-		player.sendPacket(Span<uint8_t>(cancel.data.GetData(), cancel.data.GetNumberOfBitsUsed()), kFileTransferChannel, true);
+		player.sendPacket(Span<uint8_t>(cancel.data.GetData(), cancel.data.GetNumberOfBitsUsed()), config.fileTransferChannel, true);
 
 		ExtendedVehCompo* compo = ExtendedVehCompo::get();
 		ICore* core = compo ? compo->getCore() : nullptr;
@@ -245,7 +245,7 @@ void OnRequestFile(IPlayer& player, uint32_t modelId, ModelFileKind kind)
 			core->logLn(LogLevel::Warning,
 				"[ModelTransfer] player %d requested modelId %u kind %u - invalid size: uncompressed=%u, compressed=%zu (max=%u)",
 				player.getID(), modelId, static_cast<unsigned>(kind),
-				cached->uncompressedSize, cached->compressed.size(), kMaxModelFileSize);
+				cached->uncompressedSize, cached->compressed.size(), config.maxModelFileSizeBytes);
 		}
 		return;
 	}
@@ -260,7 +260,7 @@ void OnRequestFile(IPlayer& player, uint32_t modelId, ModelFileKind kind)
 	begin.data.Write(totalChunks);
 	begin.data.Write(cached->sha256Hex.c_str(),
 		static_cast<int>(cached->sha256Hex.size()) + 1); // NUL-terminated
-	player.sendPacket(Span<uint8_t>(begin.data.GetData(), begin.data.GetNumberOfBitsUsed()), kFileTransferChannel, true);
+	player.sendPacket(Span<uint8_t>(begin.data.GetData(), begin.data.GetNumberOfBitsUsed()), config.fileTransferChannel, true);
 
 	ActiveTransfer transfer;
 	transfer.playerId = player.getID();
@@ -316,6 +316,7 @@ void OnPlayerDisconnect(IPlayer& player)
 
 void ProcessTick()
 {
+	const ServerConfig& config = ServerConfig::Instance();
 	std::deque<ActiveTransfer> currentBatch;
 	{
 		std::lock_guard<std::mutex> lock(g_activeMutex);
@@ -341,7 +342,7 @@ void ProcessTick()
 			continue;
 
 		uint32_t sentThisTick = 0;
-		while (sentThisTick < kChunksPerPlayerPerTick && transfer.nextChunkIndex < transfer.totalChunks)
+		while (sentThisTick < config.chunksPerPlayerPerTick && transfer.nextChunkIndex < transfer.totalChunks)
 		{
 			const uint32_t offset = transfer.nextChunkIndex * kFileChunkSize;
 			const uint32_t remaining = static_cast<uint32_t>(cached->compressed.size()) - offset;
@@ -353,7 +354,7 @@ void ProcessTick()
 			chunkPkt.data.Write(transfer.nextChunkIndex);
 			chunkPkt.data.Write(chunkLen);
 			chunkPkt.data.Write(reinterpret_cast<const char*>(cached->compressed.data() + offset), chunkLen);
-			player->sendPacket(Span<uint8_t>(chunkPkt.data.GetData(), chunkPkt.data.GetNumberOfBitsUsed()), kFileTransferChannel, true);
+			player->sendPacket(Span<uint8_t>(chunkPkt.data.GetData(), chunkPkt.data.GetNumberOfBitsUsed()), config.fileTransferChannel, true);
 
 			++transfer.nextChunkIndex;
 			++sentThisTick;
@@ -364,7 +365,7 @@ void ProcessTick()
 			CustomVehActionPacket end(ACTION_ASSET_END);
 			end.data.Write(transfer.modelId);
 			end.data.Write(static_cast<uint8_t>(transfer.kind));
-			player->sendPacket(Span<uint8_t>(end.data.GetData(), end.data.GetNumberOfBitsUsed()), kFileTransferChannel, true);
+			player->sendPacket(Span<uint8_t>(end.data.GetData(), end.data.GetNumberOfBitsUsed()), config.fileTransferChannel, true);
 			// done
 		}
 		else

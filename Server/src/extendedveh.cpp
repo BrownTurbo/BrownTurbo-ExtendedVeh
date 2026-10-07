@@ -10,6 +10,7 @@
 #include "ModelTransferManager.h"
 #include "Natives.h"
 #include "PacketEnum.h"
+#include "ServerConfig.h"
 #include "defs.h"
 
 #include <pawn-natives/NativesMain.hpp>
@@ -37,6 +38,17 @@ void ExtendedVehCompo::onLoad(ICore* c)
 
 	HandlingDefault::Initialize();
 	HandlingMgr::InitializeModelHandlings();
+	std::string configError;
+	if (!ServerConfig::Instance().LoadOrCreate("extendedveh.json", configError))
+	{
+		core_->logLn(LogLevel::Error, "[ExtendedVeh] Failed to load extendedveh.json: %s. Using defaults.", configError.c_str());
+	}
+	const ServerConfig& config = ServerConfig::Instance();
+	g_modelsDir = config.modelsDirectory;
+	core_->logLn(LogLevel::Debug,
+		"[ExtendedVeh] Config: FileTransferChannel=%u, ChunksPerPlayerPerTick=%u, MaxActiveTransfersPerPlayer=%u, MaxModelFileSizeBytes=%u, ModelsDirectory='%s'",
+		static_cast<unsigned>(config.fileTransferChannel), config.chunksPerPlayerPerTick, config.maxActiveTransfersPerPlayer,
+		config.maxModelFileSizeBytes, config.modelsDirectory.c_str());
 
 	core_->logLn(LogLevel::Message, "");
 	core_->logLn(LogLevel::Message, " =======================================================================");
@@ -150,7 +162,7 @@ void ExtendedVehCompo::onInit(IComponentList* components)
 		vehicles_->getEventDispatcher().addEventHandler(this);
 	}
 
-	ModelTransferMgr::Initialize("models");
+	ModelTransferMgr::Initialize(ServerConfig::Instance().modelsDirectory);
 	RegisterNativeHooks();
 }
 

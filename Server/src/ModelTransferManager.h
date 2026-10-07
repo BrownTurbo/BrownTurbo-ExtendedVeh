@@ -21,8 +21,8 @@ void CancelTransfer(IPlayer& player, uint32_t modelId, ModelFileKind kind);
 void CancelTransfersForModel(uint32_t modelId);
 void OnPlayerDisconnect(IPlayer& player);
 
-// Called once per onTick - pumps up to kChunksPerPlayerPerTick chunks for
-// every active transfer.
+// Called once per onTick - pumps up to the configured ChunksPerPlayerPerTick
+// chunks for every active transfer.
 void ProcessTick();
 
 // Invalidates the cached compressed bytes for one file - call this if you
