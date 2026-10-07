@@ -3515,6 +3515,15 @@ static void OnGameProcess()
 			}
 
 			if (IsVehiclePointerValid(cur.gameVeh)) {
+				// Prevent phantom driver control when local ped is marked as driver of cur.gameVeh but actually driving another vehicle
+				if (localPed && cur.gameVeh->m_pDriver == localPed && cur.gameVeh != localPed->m_pVehicle) {
+					cur.gameVeh->m_pDriver = nullptr;
+					cur.gameVeh->m_fGasPedal = 0.0f;
+					cur.gameVeh->m_fBreakPedal = 0.0f;
+					cur.gameVeh->m_fSteerAngle = 0.0f;
+					cur.gameVeh->bIsHandbrakeOn = true;
+				}
+
 				// Detect health restoration (e.g. SetVehicleHealth(veh, 1000.0f) or Pay 'n' Spray)
 				float currentHealth = cur.gameVeh->m_fHealth;
 				auto healthIt = g_lastVehicleHealth.find(cur.gameVeh);

@@ -73,6 +73,61 @@ static void ApplyPlateTextPixelSize(RpMaterial* material, uint8_t pixelSize)
 	RwRasterUnlock(raster);
 }
 
+static void DeepCloneClumpMaterials(RpClump* clump)
+{
+	if (!clump)
+		return;
+
+	// RenderWare's RpClumpClone copies geometries via _rpGeometryClone which shares
+	// RpMaterial instances by incrementing their reference count (RpMaterialAddRef).
+	// Without deep-cloning materials, all vehicle instances spawned with the same custom model
+	// (and the template clump) share identical RpMaterial pointers. Mutating color or texture
+	// on one car instantly alters all other spawned cars. Deep-cloning materials here guarantees
+	// completely isolated per-vehicle-instance materials.
+	std::unordered_map<RpMaterial*, RpMaterial*> clonedMaterials;
+
+	RpClumpForAllAtomics(clump, [](RpAtomic* atomic, void* data) -> RpAtomic* {
+		auto* map = reinterpret_cast<std::unordered_map<RpMaterial*, RpMaterial*>*>(data);
+		RpGeometry* geom = RpAtomicGetGeometry(atomic);
+		if (!geom)
+			return atomic;
+
+		for (int i = 0; i < geom->matList.numMaterials; ++i) {
+			RpMaterial* origMat = geom->matList.materials[i];
+			if (!origMat)
+				continue;
+
+			auto it = map->find(origMat);
+			if (it != map->end()) {
+				RpMaterialAddRef(it->second);
+				RpMaterialDestroy(origMat);
+				geom->matList.materials[i] = it->second;
+			} else {
+				RpMaterial* newMat = RpMaterialClone(origMat);
+				if (newMat) {
+					(*map)[origMat] = newMat;
+					RpMaterialDestroy(origMat);
+					geom->matList.materials[i] = newMat;
+				}
+			}
+		}
+
+		if (geom->mesh) {
+			RpMesh* meshes = reinterpret_cast<RpMesh*>(geom->mesh + 1);
+			for (RwUInt16 m = 0; m < geom->mesh->numMeshes; ++m) {
+				if (meshes[m].material) {
+					auto it = map->find(meshes[m].material);
+					if (it != map->end()) {
+						meshes[m].material = it->second;
+					}
+				}
+			}
+		}
+
+		return atomic;
+	}, &clonedMaterials);
+}
+
 static RpClump* CloneClumpPreservingOrder(RpClump* srcClump)
 {
 	if (!srcClump)
@@ -88,6 +143,10 @@ static RpClump* CloneClumpPreservingOrder(RpClump* srcClump)
 
 	RpClump* clone = RpClumpClone(temp);
 	RpClumpDestroy(temp);
+
+	if (clone) {
+		DeepCloneClumpMaterials(clone);
+	}
 	return clone;
 }
 
@@ -2617,6 +2676,24 @@ void CustomVehicleBindingManager::ApplyPaintjobToVehicle(CVehicle* vehicle, int 
 				std::format("skin_{}", idx0),
 				std::format("skin_{}", letterUpper),
 				std::format("skin_{}", letterLower),
+				std::format("texture{}", idx1),
+				std::format("texture_{}", idx1),
+				std::format("texture{}", idx0),
+				std::format("texture_{}", idx0),
+				std::format("texture_{}", letterUpper),
+				std::format("texture_{}", letterLower),
+				std::format("camou{}", idx1),
+				std::format("camou_{}", idx1),
+				std::format("camou{}", idx0),
+				std::format("camou_{}", idx0),
+				std::format("camouflage{}", idx1),
+				std::format("camouflage_{}", idx1),
+				std::format("camouflage{}", idx0),
+				std::format("camouflage_{}", idx0),
+				std::format("stickers{}", idx1),
+				std::format("stickers_{}", idx1),
+				std::format("stickers{}", idx0),
+				std::format("stickers_{}", idx0),
 				std::format("pj{}", idx1),
 				std::format("pj_{}", idx1),
 				std::format("pj{}", idx0),
@@ -2627,12 +2704,48 @@ void CustomVehicleBindingManager::ApplyPaintjobToVehicle(CVehicle* vehicle, int 
 				searchNames.push_back("paintjob");
 				searchNames.push_back("livery");
 				searchNames.push_back("skin");
+				searchNames.push_back("texture");
+				searchNames.push_back("camou");
+				searchNames.push_back("camouflage");
+				searchNames.push_back("stickers");
 			}
 
 			for (const auto& name : searchNames) {
 				liveryTex = RwTexDictionaryFindNamedTexture(pDict, name.c_str());
 				if (liveryTex)
 					break;
+			}
+
+			if (!liveryTex) {
+				struct FuzzyTexFind {
+					RwTexture* result;
+				} fctx { nullptr };
+
+				RwTexDictionaryForAllTextures(pDict, [](RwTexture* tex, void* data) -> RwTexture* {
+					auto* fc = reinterpret_cast<FuzzyTexFind*>(data);
+					const char* tn = RwTextureGetName(tex);
+					if (tn) {
+						std::string tLower = tn;
+						std::transform(tLower.begin(), tLower.end(), tLower.begin(), ::tolower);
+						if (tLower == "body" || tLower == "remapflash92body256" || tLower.find("wheel") != std::string::npos ||
+							tLower.find("glass") != std::string::npos || tLower.find("interior") != std::string::npos ||
+							tLower.find("plate") != std::string::npos || tLower.find("light") != std::string::npos ||
+							tLower.find("shad") != std::string::npos || tLower.find("tire") != std::string::npos ||
+							tLower.find("brake") != std::string::npos || tLower.find("engine") != std::string::npos) {
+							return tex;
+						}
+						if (tLower.find("texture") != std::string::npos || tLower.find("skin") != std::string::npos ||
+							tLower.find("camou") != std::string::npos || tLower.find("sticker") != std::string::npos ||
+							tLower.find("livery") != std::string::npos || tLower.find("remap") != std::string::npos ||
+							tLower.find("paintjob") != std::string::npos) {
+							fc->result = tex;
+							return nullptr;
+						}
+					}
+					return tex;
+				}, &fctx);
+
+				liveryTex = fctx.result;
 			}
 		}
 		CTxdStore::PopCurrentTxd();
