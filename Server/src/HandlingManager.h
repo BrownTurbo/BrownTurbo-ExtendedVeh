@@ -12,6 +12,7 @@
 #include <Server/Components/Pawn/pawn.hpp>
 #include <Server/Components/Vehicles/vehicles.hpp>
 #include <array>
+#include <mutex>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>

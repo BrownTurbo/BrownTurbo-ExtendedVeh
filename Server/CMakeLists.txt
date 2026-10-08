@@ -102,7 +102,7 @@ add_library(${COMPONENT_NAME_LOWERCASE} SHARED)
 target_sources(${COMPONENT_NAME_LOWERCASE} PUBLIC ${COMPONENT_SRC} ${COMPONENT_HDR})
 
 add_subdirectory(${CMAKE_SOURCE_DIR}/deps/omp-sdk)
-target_include_directories(${COMPONENT_NAME_LOWERCASE} PUBLIC ${CMAKE_SOURCE_DIR}/deps/omp-sdk/include)
+target_include_directories(${COMPONENT_NAME_LOWERCASE} SYSTEM PUBLIC ${CMAKE_SOURCE_DIR}/deps/omp-sdk/include)
 
 file(GLOB PawnNatives_HDR "${CMAKE_SOURCE_DIR}/deps/pawn-natives/*.hpp" "${CMAKE_SOURCE_DIR}/deps/pawn-natives/Internal/*.hpp")
 add_library(PawnNatives OBJECT ${PawnNatives_HDR})
@@ -112,7 +112,7 @@ if(DEFINED UNIX)
     target_link_options(PawnNatives PRIVATE -m32)
 endif()
 target_include_directories(PawnNatives
-    PUBLIC
+    SYSTEM PUBLIC
         ${CMAKE_SOURCE_DIR}/deps/pawn-natives
     INTERFACE
         $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/deps>
@@ -138,7 +138,7 @@ target_compile_definitions(SUBHOOK PUBLIC
   SUBHOOK_IMPLEMENTATION
   SUBHOOK_SEPARATE_SOURCE_FILES
 )
-target_include_directories(SUBHOOK PUBLIC ${CMAKE_SOURCE_DIR}/deps/subhook)
+target_include_directories(SUBHOOK SYSTEM PUBLIC ${CMAKE_SOURCE_DIR}/deps/subhook)
 
 file(GLOB AMX_SRC "${CMAKE_SOURCE_DIR}/deps/amx/*.c")
 if(DEFINED UNIX)
@@ -155,7 +155,7 @@ target_compile_options(AMX PRIVATE -m32)
 target_link_options(AMX PRIVATE -m32)
 endif()
 target_include_directories(AMX
-    PUBLIC
+    SYSTEM PUBLIC
         ${CMAKE_SOURCE_DIR}/deps/amx
     INTERFACE
         $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/deps>
@@ -172,10 +172,10 @@ if(DEFINED UNIX)
 target_compile_options(RakNet PRIVATE -m32)
 target_link_options(RakNet PRIVATE -m32)
 endif()
-target_include_directories(RakNet PUBLIC ${CMAKE_SOURCE_DIR}/deps/RakNet)
+target_include_directories(RakNet SYSTEM PUBLIC ${CMAKE_SOURCE_DIR}/deps/RakNet)
 target_link_libraries(RakNet PRIVATE OMP-SDK)
 target_include_directories(RakNet
-    PUBLIC
+    SYSTEM PUBLIC
         ${CMAKE_SOURCE_DIR}/deps/RakNet
     INTERFACE
         $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/deps/RakNet>
@@ -214,6 +214,11 @@ if(DEFINED UNIX)
         -Wvector-operation-performance
         -Wno-old-style-cast
         -Wno-unused-parameter
+        -Wno-attributes
+        -Wno-ignored-qualifiers
+        -Wno-sign-compare
+        -Wno-volatile
+        -Wno-type-limits
         -fsanitize=address,leak
     )
     target_link_options(${COMPONENT_NAME_LOWERCASE} PRIVATE
