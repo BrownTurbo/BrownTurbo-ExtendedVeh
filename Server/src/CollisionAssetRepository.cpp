@@ -14,8 +14,11 @@
 #undef max
 #endif
 
-#include <windows.h>
-#include <bcrypt.h>
+#if __has_include(<hash-library/sha256.h>)
+#include <hash-library/sha256.h>
+#else
+#include <sha256.h>
+#endif
 #include <cctype>
 #include <cstring>
 #include <fstream>
@@ -23,8 +26,6 @@
 #include <limits>
 #include <sstream>
 #include <vector>
-
-#pragma comment(lib, "bcrypt.lib")
 
 namespace CustomVeh::collision
 {
@@ -439,176 +440,33 @@ bool CollisionAssetRepository::ComputeSha256(
 	Hash256& outHash,
 	std::string& outError) const
 {
-	std::ifstream file(
-		path,
-		std::ios::binary);
-
+	std::ifstream file(path, std::ios::binary);
 	if (!file)
 	{
 		outError = "Unable to open COL for SHA-256.";
-
 		return false;
 	}
 
-	BCRYPT_ALG_HANDLE
-	algorithm = nullptr;
-
-	BCRYPT_HASH_HANDLE
-	hash = nullptr;
-
-	unsigned long objectLength = 0;
-	unsigned long digestLength = 0;
-	unsigned long returned = 0;
-
-	if (BCryptOpenAlgorithmProvider(
-			&algorithm,
-			BCRYPT_SHA256_ALGORITHM,
-			nullptr,
-			0)
-		< 0)
-	{
-		outError = "BCrypt SHA-256 provider failed.";
-
-		return false;
-	}
-
-	if (BCryptGetProperty(
-			algorithm,
-			BCRYPT_OBJECT_LENGTH,
-			reinterpret_cast<unsigned char*>(
-				&objectLength),
-			sizeof(objectLength),
-			&returned,
-			0)
-		< 0)
-	{
-		BCryptCloseAlgorithmProvider(
-			algorithm,
-			0);
-
-		outError = "BCrypt object-size query failed.";
-
-		return false;
-	}
-
-	if (BCryptGetProperty(
-			algorithm,
-			BCRYPT_HASH_LENGTH,
-			reinterpret_cast<unsigned char*>(
-				&digestLength),
-			sizeof(digestLength),
-			&returned,
-			0)
-		< 0)
-	{
-		BCryptCloseAlgorithmProvider(
-			algorithm,
-			0);
-
-		outError = "BCrypt digest-size query failed.";
-
-		return false;
-	}
-
-	if (digestLength != outHash.bytes.size())
-	{
-		BCryptCloseAlgorithmProvider(
-			algorithm,
-			0);
-
-		outError = "Unexpected SHA-256 size.";
-
-		return false;
-	}
-
-	std::vector<std::uint8_t>
-		object(objectLength);
-
-	if (BCryptCreateHash(
-			algorithm,
-			&hash,
-			object.data(),
-			objectLength,
-			nullptr,
-			0,
-			0)
-		< 0)
-	{
-		BCryptCloseAlgorithmProvider(
-			algorithm,
-			0);
-
-		outError = "BCryptCreateHash failed.";
-
-		return false;
-	}
-
-	std::array<
-		std::uint8_t,
-		64 * 1024>
-		buffer {};
+	SHA256 sha256;
+	std::array<std::uint8_t, 64 * 1024> buffer {};
 
 	while (file)
 	{
-		file.read(
-			reinterpret_cast<char*>(
-				buffer.data()),
-			static_cast<
-				std::streamsize>(
-				buffer.size()));
-
+		file.read(reinterpret_cast<char*>(buffer.data()), static_cast<std::streamsize>(buffer.size()));
 		const auto count = file.gcount();
-
 		if (count <= 0)
 			break;
 
-		if (BCryptHashData(
-				hash,
-				buffer.data(),
-				static_cast<unsigned long>(
-					count),
-				0)
-			< 0)
-		{
-			BCryptDestroyHash(
-				hash);
-
-			BCryptCloseAlgorithmProvider(
-				algorithm,
-				0);
-
-			outError = "BCryptHashData failed.";
-
-			return false;
-		}
+		sha256.add(buffer.data(), static_cast<size_t>(count));
 	}
 
-	if (BCryptFinishHash(
-			hash,
-			outHash.bytes.data(),
-			static_cast<unsigned long>(
-				outHash.bytes.size()),
-			0)
-		< 0)
+	if (file.bad())
 	{
-		BCryptDestroyHash(
-			hash);
-
-		BCryptCloseAlgorithmProvider(
-			algorithm,
-			0);
-
-		outError = "BCryptFinishHash failed.";
-
+		outError = "Failed reading COL for SHA-256.";
 		return false;
 	}
 
-	BCryptDestroyHash(hash);
-
-	BCryptCloseAlgorithmProvider(
-		algorithm,
-		0);
-
+	sha256.getHash(reinterpret_cast<unsigned char*>(outHash.bytes.data()));
 	return true;
 }
 

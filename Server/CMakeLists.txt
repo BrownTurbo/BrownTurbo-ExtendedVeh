@@ -178,7 +178,7 @@ target_include_directories(RakNet
     PUBLIC
         ${CMAKE_SOURCE_DIR}/deps/RakNet
     INTERFACE
-        $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/RakNet>
+        $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/deps/RakNet>
         $<INSTALL_INTERFACE:>
 )
 
@@ -187,8 +187,10 @@ find_package(unofficial-hash-library CONFIG REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)
 
 target_link_libraries(${COMPONENT_NAME_LOWERCASE} PRIVATE PawnNatives OMP-SDK SUBHOOK AMX RakNet ZLIB::ZLIB unofficial::hash-library nlohmann_json::nlohmann_json)
-target_link_options(${COMPONENT_NAME_LOWERCASE} PRIVATE $<$<CONFIG:Release>:/DEBUG /OPT:REF /OPT:ICF>)
-target_compile_options(${COMPONENT_NAME_LOWERCASE} PRIVATE /p:VcpkgEnableManifest=true)
+if(MSVC)
+    target_link_options(${COMPONENT_NAME_LOWERCASE} PRIVATE $<$<CONFIG:Release>:/DEBUG /OPT:REF /OPT:ICF>)
+    target_compile_options(${COMPONENT_NAME_LOWERCASE} PRIVATE /p:VcpkgEnableManifest=true)
+endif()
 
 if(DEFINED UNIX)
     add_definitions(-DLINUX -DENABLE_BINRELOC)
@@ -196,49 +198,32 @@ if(DEFINED UNIX)
     if(CMAKE_SYSTEM_PROCESSOR MATCHES "(x86_64)|(x64)|(X64)|(amd64)|(AMD64)" OR CMAKE_SIZEOF_VOID_P EQUAL 8)
         set_property(TARGET ${COMPONENT_NAME_LOWERCASE} PROPERTY FIND_LIBRARY_USE_LIB64_PATHS OFF)
     endif()
-    if(DEFINED CMAKE_CXX_COMPILER_ID)
-        target_compile_options(${COMPONENT_NAME_LOWERCASE} PRIVATE
-            -Wold-style-cast
-            -Wctor-dtor-privacy
-            -Woverloaded-virtual
-            -Wzero-as-null-pointer-constant
-            -Wuseless-cast
-            -Wsized-deallocation
-        )
-    endif()
-	target_compile_options(${COMPONENT_NAME_LOWERCASE} PRIVATE
-		-Wall
-		-Wextra
-		-pedantic
-		-Werror
-
-        -pedantic-errors
-        -Wundef
-        -Wredundant-decls
-        -Wwrite-strings
+    target_compile_options(${COMPONENT_NAME_LOWERCASE} PRIVATE
+        -m32
+        -Wall
+        -Wextra
+        -Werror
+        -Wnull-dereference
         -Wpointer-arith
-        -Wcast-qual
-        -Wformat=2
-        -Wmissing-include-dirs
         -Wcast-align
-        -Wdisabled-optimization
-        -Winvalid-pch
-        -Wconversion
-        #-Wno-ctor-dtor-privacy
-        #-Wno-format-nonliteral
-        #-Wno-dangling-else
-        #-Wno-unused-local-typedefs
+        -Wwrite-strings
+        -Wduplicated-cond
+        -Wshift-overflow=2
+        -Wformat=2
         -Wtrampolines
         -Wvector-operation-performance
-        -Wshadow
-        -Wdouble-promotion
-        -Wshift-overflow=2
-        -Wnull-dereference
-        -Wduplicated-cond
+        -Wno-old-style-cast
+        -Wno-unused-parameter
+        -fsanitize=address,leak
+    )
+    target_link_options(${COMPONENT_NAME_LOWERCASE} PRIVATE
+        -m32
         -fsanitize=address,leak
         -static-libasan
-        -L/usr/deps/i386-linux-gnu
-	)
+    )
+    if(EXISTS "/usr/lib/i386-linux-gnu")
+        target_link_directories(${COMPONENT_NAME_LOWERCASE} PRIVATE /usr/lib/i386-linux-gnu)
+    endif()
 	# link runtime statically
     if(STATIC_BUILD)
         add_link_options(
