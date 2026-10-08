@@ -244,13 +244,15 @@ if(DEFINED UNIX)
         -Wno-volatile
         -Wno-type-limits
         -Wno-format-zero-length
-        -fsanitize=address,leak
     )
     target_link_options(${COMPONENT_NAME_LOWERCASE} PRIVATE
         -m32
-        -fsanitize=address,leak
-        -static-libasan
     )
+    option(ENABLE_ASAN "Enable AddressSanitizer (requires LD_PRELOAD on uninstrumented hosts)" OFF)
+    if(ENABLE_ASAN)
+        target_compile_options(${COMPONENT_NAME_LOWERCASE} PRIVATE -fsanitize=address,leak)
+        target_link_options(${COMPONENT_NAME_LOWERCASE} PRIVATE -fsanitize=address,leak -static-libasan)
+    endif()
     if(EXISTS "/usr/lib/i386-linux-gnu")
         target_link_directories(${COMPONENT_NAME_LOWERCASE} PRIVATE /usr/lib/i386-linux-gnu)
     endif()
