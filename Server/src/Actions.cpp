@@ -41,10 +41,10 @@ bool Actions::Process(CustomVehAction id, NetworkBitStream& bs, IPlayer& player)
 			if (!alreadyAuthorized)
 			{
 				HandlingMgr::OnPlayerAuthorized(player);
-				if (gPlayers.IsDebugMode(playerid))
-				{
-					CustomVehicleTransport::SendDebugMode(player, true);
-				}
+			}
+			if (gPlayers.IsDebugMode(playerid))
+			{
+				CustomVehicleTransport::SendDebugMode(player, true);
 			}
 			return true;
 		}

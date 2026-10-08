@@ -66,7 +66,7 @@ ListFilesInSubmodule("${CMAKE_CURRENT_SOURCE_DIR}/../Shared" "*.h" 1)
 add_library(${PROJECT_NAME} SHARED ${PLUGIN_STRUCTURES})
 
 target_compile_definitions(${PROJECT_NAME} PRIVATE
-	_NDEBUG
+	$<$<NOT:$<CONFIG:Debug>>:_NDEBUG>
 	_CRT_SECURE_NO_WARNINGS
 	_CRT_NON_CONFORMING_SWPRINTFS
 	GTASA
@@ -93,6 +93,7 @@ add_definitions(
 	-D_HAS_STD_BYTE=0
 )
 target_compile_options(${PROJECT_NAME} PRIVATE /FIrpc.h /FIwindows.h /FS)
+set_target_properties(${PROJECT_NAME} PROPERTIES LINK_FLAGS "/DEBUG")
 
 set(PLUGIN_SDK_DIR "${CMAKE_CURRENT_SOURCE_DIR}/deps/plugin-sdk")
 set(SAMPAPI_DIR "${CMAKE_CURRENT_SOURCE_DIR}/deps/samp-api")

@@ -1577,8 +1577,11 @@ bool HandlingManager::ProcessAction(CustomVehAction action, RakNet::BitStream* b
 		CustomVeh::Protocol::VehicleBinding binding {};
 		if (bs->Read(reinterpret_cast<char*>(&binding), sizeof(binding))) {
 			ClientLog(LogLevel::Info, std::format("CustomVehicleBind: vehId={}, customModelId={}", binding.sampVehicleId, binding.customModelId));
-			CustomVehicleBindingManager::Instance().Bind(
-				binding.sampVehicleId, binding.customModelId);
+			uint16_t vehicleId = binding.sampVehicleId;
+			uint32_t customModelId = binding.customModelId;
+			MainThreadQueue::Instance().Push([vehicleId, customModelId]() {
+				CustomVehicleBindingManager::Instance().Bind(vehicleId, customModelId);
+			});
 		} else {
 			ClientLog(LogLevel::Error, "CustomVehicleBind: Failed to read binding");
 			return false;

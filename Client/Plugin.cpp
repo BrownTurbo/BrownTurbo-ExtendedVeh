@@ -129,7 +129,7 @@ static void __fastcall Hooked_UpdateWheelMatrix(CAutomobile* thisCar, void* edx,
 
 	if (nodeIndex >= CAR_WHEEL_RF && nodeIndex <= CAR_WHEEL_LB && thisCar->m_aCarNodes[nodeIndex]) {
 		auto* binding = CustomVehicleBindingManager::Instance().FindByVehicle(thisCar);
-		if (binding && (binding->hasStance || binding->hasOffsets)) {
+		if (binding && binding->modelApplied && thisCar->m_pRwObject && (binding->hasStance || binding->hasOffsets)) {
 			bool isFront = (nodeIndex == CAR_WHEEL_RF || nodeIndex == CAR_WHEEL_LF);
 			bool isRight = (nodeIndex == CAR_WHEEL_RF || nodeIndex == CAR_WHEEL_RM || nodeIndex == CAR_WHEEL_RB);
 			float scale = isFront ? binding->frontWheelScale : binding->rearWheelScale;
@@ -168,10 +168,6 @@ static void __fastcall Hooked_UpdateWheelMatrix(CAutomobile* thisCar, void* edx,
 					RwV3d scaleVec = { scale, scale, scale };
 					RwMatrixScale(&wheelFrame->modelling, &scaleVec, rwCOMBINEPRECONCAT);
 					modified = true;
-				}
-
-				if (modified) {
-					RwFrameUpdateObjects(wheelFrame);
 				}
 			}
 		}
@@ -670,9 +666,9 @@ static bool __fastcall Hooked_DoHeadLightEffect(CVehicle* thisVehicle, void* edx
 	s_pCurrentHeadLightVehicle = thisVehicle;
 	bool res = false;
 
-	if (thisVehicle && IsVehiclePointerValid(thisVehicle)) {
+	if (thisVehicle && IsVehiclePointerValid(thisVehicle) && thisVehicle->m_pRwObject) {
 		auto* binding = CustomVehicleBindingManager::Instance().FindByVehicle(thisVehicle);
-		if (binding) {
+		if (binding && binding->modelApplied) {
 			if (dummyId == 0 && lightState != 0) {
 				binding->lastHeadlightActiveTick = GetTickCount();
 			}
@@ -723,9 +719,9 @@ static bool __fastcall Hooked_DoTailLightEffect(CVehicle* thisVehicle, void* edx
 	s_pCurrentTailLightVehicle = thisVehicle;
 	bool res = false;
 
-	if (thisVehicle && IsVehiclePointerValid(thisVehicle)) {
+	if (thisVehicle && IsVehiclePointerValid(thisVehicle) && thisVehicle->m_pRwObject) {
 		auto* binding = CustomVehicleBindingManager::Instance().FindByVehicle(thisVehicle);
-		if (binding) {
+		if (binding && binding->modelApplied) {
 			// lightId == 1 corresponds to secondary taillights (taillights2 / m_avDummyPos[3])
 			if (lightId == 1) {
 				auto* customModel = StreamingExtender::GetCustomModel(binding->customModelId);
@@ -1107,7 +1103,13 @@ static void __fastcall Hooked_CAutomobile_Fix(CAutomobile* thisCar, void* edx)
 			RwFrame* frame = thisCar->m_aCarNodes[i];
 			if (frame && hasSavedMatrix[i]) {
 				frame->modelling = savedMatrices[i];
-				RwFrameUpdateObjects(frame);
+			}
+		}
+
+		if (thisCar->m_pRwObject) {
+			RwFrame* root = RpClumpGetFrame(reinterpret_cast<RpClump*>(thisCar->m_pRwObject));
+			if (root) {
+				RwFrameUpdateObjects(root);
 			}
 		}
 
@@ -1153,7 +1155,6 @@ static void __fastcall Hooked_CAutomobile_Fix(CAutomobile* thisCar, void* edx)
 		RwFrame* doorFrame = thisCar->m_aCarNodes[d.nodeIdx];
 		if (doorFrame) {
 			thisCar->SetComponentRotation(doorFrame, thisCar->m_doors[d.door].m_nAxis, thisCar->m_doors[d.door].m_fClosedAngle, true);
-			RwFrameUpdateObjects(doorFrame);
 			thisCar->SetComponentVisibility(doorFrame, 1);
 		}
 	}
@@ -1218,8 +1219,8 @@ static void __fastcall Hooked_CAutomobile_PreRender(CAutomobile* thisCar, void* 
 		g_origCAutomobile_PreRender(thisCar, edx);
 
 	auto* binding = CustomVehicleBindingManager::Instance().FindByVehicle(thisCar);
-	if (binding) {
-		if (binding->hasPopupHeadlights && !binding->popupFrames.empty()) {
+	if (binding && binding->modelApplied && thisCar->m_pRwObject) {
+		if (binding->hasPopupHeadlights && binding->numPopupFrames > 0) {
 			bool isNight = (CClock::ms_nGameClockHours >= 20 || CClock::ms_nGameClockHours < 7);
 			bool lightsOn = (thisCar->bLightsOn != 0) || (thisCar->bEngineOn != 0 && isNight);
 
@@ -1237,13 +1238,16 @@ static void __fastcall Hooked_CAutomobile_PreRender(CAutomobile* thisCar, void* 
 				binding->popupHeadlightAngle = (std::max)(targetAngle, binding->popupHeadlightAngle - step);
 			}
 
-			// Synchronize native automobile pop-up headlight angle (offset 0x958)
-			*reinterpret_cast<float*>(reinterpret_cast<uintptr_t>(thisCar) + 0x958) = binding->popupHeadlightAngle;
+			// Synchronize native automobile pop-up headlight angle (offset 0x958) if ZR-350
+			if (thisCar->m_nModelIndex == 477) {
+				*reinterpret_cast<float*>(reinterpret_cast<uintptr_t>(thisCar) + 0x958) = binding->popupHeadlightAngle;
+			}
 
-			for (RwFrame* frame : binding->popupFrames) {
-				if (frame) {
+			RwFrame* vehRoot = RpClumpGetFrame(reinterpret_cast<RpClump*>(thisCar->m_pRwObject));
+			for (uint8_t i = 0; i < binding->numPopupFrames; ++i) {
+				RwFrame* frame = binding->popupFrames[i];
+				if (frame && vehRoot && frame->root == vehRoot) {
 					thisCar->SetComponentRotation(frame, 0, binding->popupHeadlightAngle, true);
-					RwFrameUpdateObjects(frame);
 				}
 			}
 		}
@@ -1254,8 +1258,33 @@ static void __fastcall Hooked_CAutomobile_PreRender(CAutomobile* thisCar, void* 
 				chassisFrame->modelling.pos.x = binding->chassisBasePos.x + binding->chassisOffsetX;
 				chassisFrame->modelling.pos.y = binding->chassisBasePos.y + binding->chassisOffsetY;
 				chassisFrame->modelling.pos.z = binding->chassisBasePos.z + binding->chassisOffsetZ;
-				RwFrameUpdateObjects(chassisFrame);
 			}
+		}
+	}
+}
+
+static void(__fastcall* g_origCVehicle_SetupRender)(CVehicle* thisVeh, void* edx) = nullptr;
+
+static void __fastcall Hooked_CVehicle_SetupRender(CVehicle* thisVeh, void* edx)
+{
+	if (g_origCVehicle_SetupRender)
+		g_origCVehicle_SetupRender(thisVeh, edx);
+
+	if (thisVeh && IsVehiclePointerValid(thisVeh) && thisVeh->m_pRwObject) {
+		auto* binding = CustomVehicleBindingManager::Instance().FindByVehicle(thisVeh);
+		if (binding && binding->modelApplied) {
+			if (binding->hasPaintjob && binding->paintjobIndex >= 0) {
+				CustomVehicleBindingManager::Instance().ApplyPaintjobToVehicle(thisVeh, binding->paintjobIndex);
+			} else {
+				CustomVehicleBindingManager::Instance().RestoreOriginalMaterials(thisVeh);
+			}
+			CustomVehicleBindingManager::Instance().ApplyVehicleColors(
+				thisVeh,
+				thisVeh->m_nPrimaryColor,
+				thisVeh->m_nSecondaryColor,
+				thisVeh->m_nTertiaryColor,
+				thisVeh->m_nQuaternaryColor
+			);
 		}
 	}
 }
@@ -1271,7 +1300,7 @@ static void __fastcall Hooked_AddExhaustParticles(CVehicle* thisVehicle, void* e
 	}
 
 	auto* binding = CustomVehicleBindingManager::Instance().FindByVehicle(thisVehicle);
-	if (binding) {
+	if (binding && binding->modelApplied && thisVehicle->m_pRwObject) {
 		auto* customModel = StreamingExtender::GetCustomModel(binding->customModelId);
 		auto* baseModel = reinterpret_cast<CVehicleModelInfo*>(CModelInfo::GetModelInfo(thisVehicle->m_nModelIndex));
 		DummySwapGuard guard(baseModel, customModel);
@@ -1398,7 +1427,7 @@ static void __fastcall Hooked_DoNitroEffect(CAutomobile* thisCar, void* edx, flo
 	}
 
 	auto* binding = CustomVehicleBindingManager::Instance().FindByVehicle(thisCar);
-	if (binding) {
+	if (binding && binding->modelApplied && thisCar->m_pRwObject) {
 		auto* customModel = StreamingExtender::GetCustomModel(binding->customModelId);
 		auto* baseModel = reinterpret_cast<CVehicleModelInfo*>(CModelInfo::GetModelInfo(thisCar->m_nModelIndex));
 		DummySwapGuard guard(baseModel, customModel);
@@ -1502,7 +1531,7 @@ static void __fastcall Hooked_AddUpgrade(CVehicle* thisVehicle, void* edx, int m
 	}
 
 	auto* binding = CustomVehicleBindingManager::Instance().FindByVehicle(thisVehicle);
-	if (binding) {
+	if (binding && binding->modelApplied) {
 		auto* customModel = StreamingExtender::GetCustomModel(binding->customModelId);
 		auto* baseModel = reinterpret_cast<CVehicleModelInfo*>(CModelInfo::GetModelInfo(thisVehicle->m_nModelIndex));
 
@@ -1547,7 +1576,7 @@ static void __fastcall Hooked_AddReplacementUpgrade(CVehicle* thisVehicle, void*
 	}
 
 	auto* binding = CustomVehicleBindingManager::Instance().FindByVehicle(thisVehicle);
-	if (binding) {
+	if (binding && binding->modelApplied) {
 		auto* customModel = StreamingExtender::GetCustomModel(binding->customModelId);
 		auto* baseModel = reinterpret_cast<CVehicleModelInfo*>(CModelInfo::GetModelInfo(thisVehicle->m_nModelIndex));
 		DummySwapGuard guard(baseModel, customModel);
@@ -1574,7 +1603,7 @@ static void __fastcall Hooked_RemoveUpgrade(CVehicle* thisVehicle, void* edx, in
 	}
 
 	auto* binding = CustomVehicleBindingManager::Instance().FindByVehicle(thisVehicle);
-	if (binding) {
+	if (binding && binding->modelApplied) {
 		auto* customModel = StreamingExtender::GetCustomModel(binding->customModelId);
 		auto* baseModel = reinterpret_cast<CVehicleModelInfo*>(CModelInfo::GetModelInfo(thisVehicle->m_nModelIndex));
 
@@ -1719,11 +1748,14 @@ static void __cdecl Hooked_RegisterCoronaTexture(
 		// In GTA SA CEntity, byte offset 0x36 contains m_nType (lower 3 bits). 2 == ENTITY_TYPE_VEHICLE
 		uint8_t entityType = (*reinterpret_cast<const uint8_t*>(reinterpret_cast<const char*>(attachTo) + 0x36)) & 0x7;
 		if (entityType == 2) {
-			pVeh = reinterpret_cast<CVehicle*>(attachTo);
-			if (red > 100 && green < 80 && blue < 80) {
-				isRear = true;
-			} else {
-				isFront = true;
+			auto* veh = reinterpret_cast<CVehicle*>(attachTo);
+			if (IsVehiclePointerValid(veh)) {
+				pVeh = veh;
+				if (red > 100 && green < 80 && blue < 80) {
+					isRear = true;
+				} else {
+					isFront = true;
+				}
 			}
 		}
 	}
@@ -3912,6 +3944,25 @@ static void OnGameProcess()
 
 static void __cdecl hooked_game_loop()
 {
+	CPed* localPed = FindPlayerPed();
+	if (!localPed)
+		return;
+
+	if (CPools::ms_pVehiclePool) {
+		for (int i = 0; i < CPools::ms_pVehiclePool->m_nSize; ++i) {
+			CVehicle* veh = CPools::ms_pVehiclePool->GetAt(i);
+			if (veh && IsVehiclePointerValid(veh)) {
+				if (veh->m_pDriver == localPed && veh != localPed->m_pVehicle) {
+					veh->m_pDriver = nullptr;
+					veh->m_fGasPedal = 0.0f;
+					veh->m_fBreakPedal = 0.0f;
+					veh->m_fSteerAngle = 0.0f;
+					veh->bIsHandbrakeOn = true;
+				}
+			}
+		}
+	}
+
 	if (orig_game_loop)
 		orig_game_loop();
 
@@ -4009,6 +4060,18 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD dwReason, LPVOID lpReserved)
 			}
 		} else {
 			ClientLog(LogLevel::Error, std::format("Failed to hook CAutomobile::PreRender (0x6AAB50): {}", MH_StatusToString(preRenderStatus)));
+		}
+
+		MH_STATUS setupRenderStatus = MH_CreateHook(reinterpret_cast<void*>(0x6D64F0), reinterpret_cast<void*>(&Hooked_CVehicle_SetupRender), reinterpret_cast<void**>(&g_origCVehicle_SetupRender));
+		if (setupRenderStatus == MH_OK) {
+			MH_STATUS enableStatus = MH_EnableHook(reinterpret_cast<void*>(0x6D64F0));
+			if (enableStatus == MH_OK) {
+				ClientLog(LogLevel::Info, "CVehicle::SetupRender (0x6D64F0) hooked successfully via MinHook");
+			} else {
+				ClientLog(LogLevel::Error, std::format("Failed to enable CVehicle::SetupRender hook: {}", MH_StatusToString(enableStatus)));
+			}
+		} else {
+			ClientLog(LogLevel::Error, std::format("Failed to hook CVehicle::SetupRender (0x6D64F0): {}", MH_StatusToString(setupRenderStatus)));
 		}
 
 		MH_STATUS fixStatus = MH_CreateHook(reinterpret_cast<void*>(0x6A3440), reinterpret_cast<void*>(&Hooked_CAutomobile_Fix), reinterpret_cast<void**>(&g_origCAutomobile_Fix));

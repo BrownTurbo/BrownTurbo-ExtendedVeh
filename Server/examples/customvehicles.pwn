@@ -424,6 +424,8 @@ CMD:spawncustom(playerid, params[])
     new veh = CreateVehicle(baseModel, x + 2.0, y + 2.0, z + 1.0, a, 1, 1, -1);
     
     BindVehicleModel(veh, modelId);
+    if (IsPlayerInAnyVehicle(playerid))
+        RemovePlayerFromVehicle(playerid);
     PutPlayerInVehicle(playerid, veh, 0);
 
     new name[64];

@@ -264,20 +264,17 @@ namespace CustomVehicleNatives
 inline bool SetPlayerExtendedVehDebug(IPlayer& player, bool enabled)
 {
 	int playerid = player.getID();
-	if (!gPlayers.HasExtendedVeh(playerid))
-		return false;
-
 	gPlayers.SetDebugMode(playerid, enabled);
-	CustomVehicleTransport::SendDebugMode(player, enabled);
+	if (gPlayers.HasExtendedVeh(playerid))
+	{
+		CustomVehicleTransport::SendDebugMode(player, enabled);
+	}
 	return true;
 }
 
 inline bool GetPlayerExtendedVehDebug(IPlayer& player, bool& enabled)
 {
 	int playerid = player.getID();
-	if (!gPlayers.HasExtendedVeh(playerid))
-		return false;
-
 	enabled = gPlayers.IsDebugMode(playerid);
 	return true;
 }
@@ -285,12 +282,12 @@ inline bool GetPlayerExtendedVehDebug(IPlayer& player, bool& enabled)
 inline bool TogglePlayerExtendedVehDebug(IPlayer& player)
 {
 	int playerid = player.getID();
-	if (!gPlayers.HasExtendedVeh(playerid))
-		return false;
-
 	bool newState = !gPlayers.IsDebugMode(playerid);
 	gPlayers.SetDebugMode(playerid, newState);
-	CustomVehicleTransport::SendDebugMode(player, newState);
+	if (gPlayers.HasExtendedVeh(playerid))
+	{
+		CustomVehicleTransport::SendDebugMode(player, newState);
+	}
 	return newState;
 }
 }

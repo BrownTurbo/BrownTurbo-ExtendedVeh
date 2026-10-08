@@ -310,7 +310,8 @@ void ExtendedVehCompo::onPlayerConnect(IPlayer& player)
 	{
 		core_->logLn(LogLevel::Debug, "[ExtendedVeh] OnPlayerConnect: playerid=%d", playerid);
 	}
-	gPlayers.Reset(playerid);
+	// Do not wipe debugMode here as Pawn scripts may call SetPlayerExtendedVehDebug in OnPlayerConnect
+	gPlayers.SetExtendedVeh(playerid, false);
 	HandlingMgr::ResetPlayerHandling(playerid);
 }
 

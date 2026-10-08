@@ -75,6 +75,8 @@ public:
 		uint8_t extrasMask { 0xFF };
 
 		int paintjobIndex { -1 };
+		RwTexture* paintjobTexture { nullptr };
+		int resolvedPaintjobIndex { -2 };
 
 		bool neonEnabled { false };
 		uint8_t neonR { 0 }, neonG { 180 }, neonB { 255 };
@@ -106,7 +108,9 @@ public:
 		float popupHeadlightAngle { 0.0f };
 		float popupMaxAngle { 0.6981317f }; // GTA SA native pop-up angle (0.6981317 rad = 40.0 deg)
 		uint32_t lastHeadlightActiveTick { 0 };
-		std::vector<RwFrame*> popupFrames;
+		static constexpr size_t MAX_POPUP_FRAMES = 4;
+		RwFrame* popupFrames[MAX_POPUP_FRAMES] = {};
+		uint8_t numPopupFrames { 0 };
 
 		bool hasCustomHorn { false };
 		int8_t hornSoundId { 0 };
@@ -194,6 +198,7 @@ public:
 	void SetVehicleWheel(uint16_t vehicleId, int16_t wheelModelId);
 
 	void ApplyPaintjobToVehicle(CVehicle* vehicle, int paintjobIndex);
+	void RestoreOriginalMaterials(CVehicle* vehicle);
 
 	void ApplyWindowTintToVehicle(CVehicle* vehicle, uint8_t alpha, uint8_t r, uint8_t g, uint8_t b);
 
