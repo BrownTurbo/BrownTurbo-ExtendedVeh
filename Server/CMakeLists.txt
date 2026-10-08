@@ -197,7 +197,7 @@ target_include_directories(RakNet
 find_package(ZLIB REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)
 
-file(GLOB HASHLIB_SRC "${CMAKE_SOURCE_DIR}/deps/hash-library/Encoding/*.cpp")
+file(GLOB HASHLIB_SRC "${CMAKE_SOURCE_DIR}/deps/hash-library/*.cpp")
 file(GLOB HASHLIB_HDRP "${CMAKE_SOURCE_DIR}/deps/hash-library/*.hpp")
 file(GLOB HASHLIB_HDR "${CMAKE_SOURCE_DIR}/deps/hash-library/*.h")
 add_library(hash-library STATIC ${HASHLIB_SRC} ${HASHLIB_HDRP} ${HASHLIB_HDR})
@@ -207,7 +207,11 @@ if(NOT DEFINED WIN32)
     target_link_options(hash-library PRIVATE -m32)
     target_compile_definitions(hash-library PUBLIC _GLIBCXX_USE_CXX11_ABI=0)
 endif()
-target_include_directories(hash-library PUBLIC ${CMAKE_SOURCE_DIR}/deps/hash-library)
+target_include_directories(hash-library
+    PUBLIC
+        ${CMAKE_SOURCE_DIR}/deps/hash-library
+        ${CMAKE_SOURCE_DIR}/deps
+)
 
 target_link_libraries(${COMPONENT_NAME_LOWERCASE} PRIVATE PawnNatives OMP-SDK SUBHOOK AMX RakNet ZLIB::ZLIB hash-library nlohmann_json::nlohmann_json)
 
