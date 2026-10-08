@@ -111,6 +111,7 @@ endforeach()
 
 add_library(${COMPONENT_NAME_LOWERCASE} SHARED)
 target_sources(${COMPONENT_NAME_LOWERCASE} PUBLIC ${COMPONENT_SRC} ${COMPONENT_HDR})
+set_target_properties(${COMPONENT_NAME_LOWERCASE} PROPERTIES PREFIX "")
 
 add_subdirectory(${CMAKE_SOURCE_DIR}/deps/omp-sdk)
 target_include_directories(${COMPONENT_NAME_LOWERCASE} SYSTEM PUBLIC ${CMAKE_SOURCE_DIR}/deps/omp-sdk/include)
