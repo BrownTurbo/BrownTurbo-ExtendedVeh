@@ -350,6 +350,13 @@ void ModelTransferClient::OnTransferChunk(RakNet::BitStream* bs)
 	}
 
 	auto& entry = it->second;
+	if (entry.compressedBuffer.empty()) {
+		// Buffer is empty (waiting for fresh ACTION_ASSET_BEGIN from server after a retry/reset).
+		// Drop in-flight stale chunks from the previous attempt so they don't trigger false errors or burn retry attempts.
+		bs->IgnoreBits(chunkLen * 8);
+		return;
+	}
+
 	if (chunkIndex >= entry.progress.totalChunks) {
 		ClientLog(LogLevel::Error, std::format("ModelTransferClient::OnTransferChunk: ERROR chunkIndex {} >= totalChunks {}", chunkIndex, entry.progress.totalChunks));
 		ScheduleRetry(it, "chunk index out of bounds");
@@ -415,6 +422,10 @@ void ModelTransferClient::OnTransferEnd(RakNet::BitStream* bs)
 		if (it == m_active.end())
 			return;
 		auto& entry = it->second;
+		if (entry.compressedBuffer.empty()) {
+			// Buffer was cleared on timeout/retry while waiting for restart. Ignore stale end packet.
+			return;
+		}
 
 		bool allChunksReceived = (entry.receivedChunkBitmap.size() == entry.progress.totalChunks);
 		for (uint8_t bit : entry.receivedChunkBitmap) {

@@ -28,7 +28,7 @@ public:
 	int retryMaxAttempts = 5;
 	int retryInitialBackoffMs = 500;
 	int retryMaxBackoffMs = 60000;
-	int retryResponseTimeoutMs = 8000;
+	int retryResponseTimeoutMs = 30000;
 
 	int RequestChannel = 0;
 	int WorkerSleepMs = 250;
@@ -98,7 +98,7 @@ public:
 			retryMaxAttempts = static_cast<int>(GetRangedInt64("RetryMaxAttempts", retryMaxAttempts, 1, 50, filename));
 			retryInitialBackoffMs = static_cast<int>(GetRangedInt64("RetryInitialBackoffMs", retryInitialBackoffMs, 50, 60000, filename));
 			retryMaxBackoffMs = static_cast<int>(GetRangedInt64("RetryMaxBackoffMs", retryMaxBackoffMs, retryInitialBackoffMs, 600000, filename));
-			retryResponseTimeoutMs = static_cast<int>(GetRangedInt64("RetryResponseTimeoutMs", retryResponseTimeoutMs, 500, 120000, filename));
+			retryResponseTimeoutMs = static_cast<int>(GetRangedInt64("RetryResponseTimeoutMs", retryResponseTimeoutMs, 15000, 120000, filename));
 			clientMaxUncompressedSize = static_cast<uint32_t>(GetRangedInt64("ClientMaxUncompressedSize", clientMaxUncompressedSize, 1048576LL, 1073741824LL, filename));
 			clientMaxCompressedSize = static_cast<uint32_t>(GetRangedInt64("ClientMaxCompressedSize", clientMaxCompressedSize, 1048576LL, 1073741824LL, filename));
 			RequestChannel = static_cast<int>(GetRangedInt64("RequestChannel", RequestChannel, 0, 31, filename));
@@ -155,7 +155,7 @@ private:
 			 << "RetryMaxAttempts=5\n"
 			 << "RetryInitialBackoffMs=500\n"
 			 << "RetryMaxBackoffMs=60000\n"
-			 << "RetryResponseTimeoutMs=8000\n"
+			 << "RetryResponseTimeoutMs=30000\n"
 			 << "ClientMaxUncompressedSize=209715200\n" // 200 * 1024 * 1024
 			 << "ClientMaxCompressedSize=167772160\n" // 160 * 1024 * 1024
 			 << "WorkerSleepMs=250\n"

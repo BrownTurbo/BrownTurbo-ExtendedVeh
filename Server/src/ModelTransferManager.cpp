@@ -187,12 +187,17 @@ void OnRequestFile(IPlayer& player, uint32_t modelId, ModelFileKind kind)
 	const ServerConfig& config = ServerConfig::Instance();
 	{
 		std::lock_guard<std::mutex> lock(g_activeMutex);
-		if (std::any_of(g_activeTransfers.begin(), g_activeTransfers.end(),
-				[&](const ActiveTransfer& transfer)
-				{
-					return transfer.playerId == playerId && transfer.modelId == modelId && transfer.kind == kind;
-				}))
-			return;
+		auto existingIt = std::find_if(g_activeTransfers.begin(), g_activeTransfers.end(),
+			[&](const ActiveTransfer& transfer)
+			{
+				return transfer.playerId == playerId && transfer.modelId == modelId && transfer.kind == kind;
+			});
+		if (existingIt != g_activeTransfers.end())
+		{
+			// Player is re-requesting an active file (client timed out or scheduled retry).
+			// Erase old transfer so we can cleanly restart from chunk 0 with fresh ACTION_ASSET_BEGIN.
+			g_activeTransfers.erase(existingIt);
+		}
 
 		const size_t playerTransferCount = static_cast<size_t>(std::count_if(
 			g_activeTransfers.begin(), g_activeTransfers.end(),
