@@ -188,15 +188,6 @@ find_package(nlohmann_json CONFIG REQUIRED)
 
 target_link_libraries(${COMPONENT_NAME_LOWERCASE} PRIVATE PawnNatives OMP-SDK SUBHOOK AMX RakNet ZLIB::ZLIB unofficial::hash-library nlohmann_json::nlohmann_json)
 
-include_directories(SYSTEM
-    ${CMAKE_SOURCE_DIR}/deps
-    ${CMAKE_SOURCE_DIR}/deps/omp-sdk/include
-    ${CMAKE_SOURCE_DIR}/deps/pawn-natives
-    ${CMAKE_SOURCE_DIR}/deps/subhook
-    ${CMAKE_SOURCE_DIR}/deps/amx
-    ${CMAKE_SOURCE_DIR}/deps/RakNet
-)
-
 if(MSVC)
     target_link_options(${COMPONENT_NAME_LOWERCASE} PRIVATE $<$<CONFIG:Release>:/DEBUG /OPT:REF /OPT:ICF>)
     target_compile_options(${COMPONENT_NAME_LOWERCASE} PRIVATE /p:VcpkgEnableManifest=true)
@@ -229,6 +220,7 @@ if(DEFINED UNIX)
         -Wno-sign-compare
         -Wno-volatile
         -Wno-type-limits
+        -Wno-format-zero-length
         -fsanitize=address,leak
     )
     target_link_options(${COMPONENT_NAME_LOWERCASE} PRIVATE

@@ -13,7 +13,7 @@
 #include <subhook/subhook_private.h>
 
 #include <sdk.hpp>
-#include <Server\Components\Pawn\Impl\pawn_impl.hpp>
+#include <Server/Components/Pawn/Impl/pawn_impl.hpp>
 
 #include "extendedveh.h"
 

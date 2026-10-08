@@ -50,14 +50,14 @@ void ExtendedVehCompo::onLoad(ICore* c)
 		static_cast<unsigned>(config.fileTransferChannel), config.chunksPerPlayerPerTick, config.maxActiveTransfersPerPlayer,
 		config.maxModelFileSizeBytes, config.modelsDirectory.c_str());
 
-	core_->logLn(LogLevel::Message, "");
+	core_->logLn(LogLevel::Message, " ");
 	core_->logLn(LogLevel::Message, " =======================================================================");
 	core_->logLn(LogLevel::Message,
 		"  ExtendedVehicles %d.%d.%d%s by Zorono loaded!",
 		EXTVEH_VERSION_MAJOR, EXTVEH_VERSION_MINOR, EXTVEH_VERSION_PATCH,
 		(EXTVEH_PHASE_DEV ? "-dev" : ""));
 	core_->logLn(LogLevel::Message, " =======================================================================");
-	core_->logLn(LogLevel::Message, "");
+	core_->logLn(LogLevel::Message, " ");
 }
 
 IVehicle* ExtendedVehCompo::GetVehicleByID(int vehicleid)
