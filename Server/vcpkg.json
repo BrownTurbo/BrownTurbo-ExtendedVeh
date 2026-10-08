@@ -1,6 +1,5 @@
 {
   "dependencies": [
-    "hash-library",
     "zlib",
     "nlohmann-json"
   ]
