@@ -21,16 +21,18 @@
 
 #define TEST_MODEL_ALPHA    20001
 #define TEST_MODEL_BETA     20002
-#define TEST_MODEL_GAMMA    20003 // BMW M5
-#define TEST_MODEL_DELTA    20004 // Turismo GT
+#define TEST_MODEL_GAMMA    20003
+#define TEST_MODEL_DELTA    20004
+#define TEST_MODEL_EPSILON  20005
+#define TEST_MODEL_ETA  20006
 
 #define BASE_ALPHA_VISUAL   411
 #define BASE_ALPHA_AUDIO    411
 #define BASE_ALPHA_HANDLING 411
 
-#define BASE_BETA_VISUAL    560
-#define BASE_BETA_AUDIO     560
-#define BASE_BETA_HANDLING  560
+#define BASE_BETA_VISUAL    533
+#define BASE_BETA_AUDIO     533
+#define BASE_BETA_HANDLING  533
 
 #define BASE_GAMMA_VISUAL   445
 #define BASE_GAMMA_AUDIO    445
@@ -39,6 +41,14 @@
 #define BASE_DELTA_VISUAL   451
 #define BASE_DELTA_AUDIO    451
 #define BASE_DELTA_HANDLING 451
+
+#define BASE_EPSILON_VISUAL   516
+#define BASE_EPSILON_AUDIO    516
+#define BASE_EPSILON_HANDLING 516
+
+#define BASE_ETA_VISUAL   516
+#define BASE_ETA_AUDIO    516
+#define BASE_ETA_HANDLING 516
 
 // =============================================================================
 
@@ -51,6 +61,8 @@ new bool:g_AlphaDefinitionReady = false;
 new bool:g_BetaDefinitionReady = false;
 new bool:g_GammaDefinitionReady = false;
 new bool:g_DeltaDefinitionReady = false;
+new bool:g_EpsilonDefinitionReady = false;
+new bool:g_EtaDefinitionReady = false;
 
 enum ModelFileKind
 {
@@ -79,9 +91,16 @@ public OnFilterScriptExit()
     DestroyCustomVehicle(TEST_MODEL_BETA);
     DestroyCustomVehicle(TEST_MODEL_GAMMA);
     DestroyCustomVehicle(TEST_MODEL_DELTA);
+    DestroyCustomVehicle(TEST_MODEL_EPSILON);
+    DestroyCustomVehicle(TEST_MODEL_ETA);
 
     print(" BrownTurbo-ExtendedVeh test suite unloaded.\n");
     return 1;
+}
+
+public OnPlayerConnect(playerid) {
+	SetPlayerExtendedVehDebug(playerid, true);
+	return 1;
 }
 
 // =============================================================================
@@ -425,7 +444,9 @@ CMD:spawncustom(playerid, params[])
     
     BindVehicleModel(veh, modelId);
     if (IsPlayerInAnyVehicle(playerid))
+    {
         RemovePlayerFromVehicle(playerid);
+    }
     PutPlayerInVehicle(playerid, veh, 0);
 
     new name[64];
@@ -738,6 +759,45 @@ CMD:loadallcustom(playerid, params[])
     return 1;
 }
 
+CMD:fixmycveh(playerid, params[])
+{
+    if (!IsPlayerInAnyVehicle(playerid))
+        return SendClientMessage(playerid, -1, C_FAIL "[ExtVeh] You must be inside a vehicle.");
+
+    new veh = GetPlayerVehicleID(playerid);
+	RepairVehicle(veh);
+	return 1;
+}
+
+CMD:setcvehhealth(playerid, params[])
+{
+    if (!IsPlayerInAnyVehicle(playerid))
+        return SendClientMessage(playerid, -1, C_FAIL "[ExtVeh] You must be inside a vehicle.");
+
+    new veh = GetPlayerVehicleID(playerid);
+	SetVehicleHealth(veh, 1000.0);
+	return 1;
+}
+
+CMD:tunemycar(playerid, params[])
+{
+    if (!IsPlayerInAnyVehicle(playerid))
+        return SendClientMessage(playerid, -1, C_FAIL "[ExtVeh] You must be inside a vehicle.");
+
+    new veh = GetPlayerVehicleID(playerid);
+    AttachObjectToVehicle(veh,18690,0,0,0,0,0,0);
+    AddVehicleComponent(veh, 1028);	AddVehicleComponent(veh, 1027);
+	AddVehicleComponent(veh, 1026);	AddVehicleComponent(veh, 1138);
+	AddVehicleComponent(veh, 1141); AddVehicleComponent(veh, 1169);
+	AddVehicleComponent(veh, 1028);	AddVehicleComponent(veh, 1027);
+	AddVehicleComponent(veh, 1026);	AddVehicleComponent(veh, 1138);
+	AddVehicleComponent(veh, 1141); AddVehicleComponent(veh, 1169);
+	AddVehicleComponent(veh, 1080); AddVehicleComponent(veh, 1086);
+	AddVehicleComponent(veh, 1010); AddVehicleComponent(veh, 1032);
+	PlayerPlaySound(playerid,1133,0.0,0.0,0.0);	ChangeVehiclePaintjob(veh,1);
+	return 1;
+}
+
 // =============================================================================
 
 stock RegisterTestDefinitions()
@@ -843,7 +903,7 @@ stock RegisterTestDefinitions()
     }
 
     // ---------------------------------------------------------
-    // Gamma (20003 - BMW M5) loaded via DefineCustomVehicleFromConfig
+    // Gamma
     // ---------------------------------------------------------
     g_GammaDefinitionReady = DefineCustomVehicleFromConfig(TEST_MODEL_GAMMA, BASE_GAMMA_VISUAL);
     Test_Log(
@@ -852,11 +912,29 @@ stock RegisterTestDefinitions()
     );
 
     // ---------------------------------------------------------
-    // Delta (20004 - Turismo GT) loaded via DefineCustomVehicleFromConfig
+    // Delta
     // ---------------------------------------------------------
     g_DeltaDefinitionReady = DefineCustomVehicleFromConfig(TEST_MODEL_DELTA, BASE_DELTA_VISUAL);
     Test_Log(
         g_DeltaDefinitionReady,
         "Definition: Delta (20004 - Turismo GT) loaded via DefineCustomVehicleFromConfig"
+    );
+
+    // ---------------------------------------------------------
+    // Epsilon
+    // ---------------------------------------------------------
+    g_EpsilonDefinitionReady = DefineCustomVehicleFromConfig(TEST_MODEL_EPSILON, BASE_EPSILON_VISUAL);
+    Test_Log(
+        g_EpsilonDefinitionReady,
+        "Definition: Epsilon (20005 - Nebula) loaded via DefineCustomVehicleFromConfig"
+    );
+    
+    // ---------------------------------------------------------
+    // Eta
+    // ---------------------------------------------------------
+    g_EtaDefinitionReady = DefineCustomVehicleFromConfig(TEST_MODEL_ETA, BASE_ETA_VISUAL);
+    Test_Log(
+        g_EtaDefinitionReady,
+        "Definition: Eta (20006 - whatever) loaded via DefineCustomVehicleFromConfig"
     );
 }
