@@ -4,3 +4,6 @@
 [submodule "PawnNatives"]
 	path = Server/deps/pawn-natives
 	url = https://github.com/openmultiplayer/pawn-natives.git
+[submodule "HashLibrary"]
+	path = Server/deps/hash-library
+	url = https://github.com/stbrumme/hash-library.git
