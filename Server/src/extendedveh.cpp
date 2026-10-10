@@ -100,6 +100,29 @@ IPlayer* ExtendedVehCompo::GetPlayerByID(int playerid)
 	return nullptr;
 }
 
+namespace
+{
+static amx_GetAddr_t g_origAmxGetAddr = nullptr;
+
+static int AMXAPI ExtendedVeh_AmxGetAddr(AMX* amx, cell amx_addr, cell** phys_addr)
+{
+	if (!amx || !phys_addr)
+		return AMX_ERR_PARAMS;
+	AMX_HEADER* hdr = reinterpret_cast<AMX_HEADER*>(amx->base);
+	if (hdr && hdr->magic == 0xf1e0)
+	{
+		unsigned char* data = (amx->data != nullptr) ? amx->data : (reinterpret_cast<unsigned char*>(amx->base) + hdr->dat);
+		*phys_addr = reinterpret_cast<cell*>(data + static_cast<uint32_t>(amx_addr));
+		return AMX_ERR_NONE;
+	}
+	if (g_origAmxGetAddr)
+	{
+		return g_origAmxGetAddr(amx, amx_addr, phys_addr);
+	}
+	return AMX_ERR_PARAMS;
+}
+}
+
 void ExtendedVehCompo::onInit(IComponentList* components)
 {
 	StringView name = componentName();
@@ -114,7 +137,10 @@ void ExtendedVehCompo::onInit(IComponentList* components)
 	core_->getPlayers().getPlayerConnectDispatcher().addEventHandler(this);
 	core_->getPlayers().getPlayerSpawnDispatcher().addEventHandler(this);
 
-	setAmxFunctions(pawn_component_->getAmxFunctions());
+	auto amxFuncs = pawn_component_->getAmxFunctions();
+	g_origAmxGetAddr = reinterpret_cast<amx_GetAddr_t>(amxFuncs[AMX_FUNC_GetAddr]);
+	amxFuncs[AMX_FUNC_GetAddr] = reinterpret_cast<void*>(&ExtendedVeh_AmxGetAddr);
+	setAmxFunctions(amxFuncs);
 	setAmxLookups(core_);
 	setAmxLookups(components);
 
@@ -175,34 +201,44 @@ void ExtendedVehCompo::onTick(Microseconds elapsed, TimePoint now)
 
 bool ExtendedVehCompo::onReceive(IPlayer& peer, NetworkBitStream& bs)
 {
-	core_->logLn(LogLevel::Message,
-		"[ExtendedVeh] Received custom packet ID %d from player %d (size=%d, unreadBits=%d)",
-		(int)ExtendedVehPacketID::PKT_EXTVEH, peer.getID(), bs.GetNumberOfBytesUsed(), bs.GetNumberOfUnreadBits());
+	return onReceivePacket(peer, (uint8_t)ExtendedVehPacketID::PKT_EXTVEH, bs);
+}
 
-	if (bs.GetNumberOfUnreadBits() >= 8)
+bool ExtendedVehCompo::onReceivePacket(IPlayer& peer, int id,
+	NetworkBitStream& bs)
+{
+	if (id == (uint8_t)ExtendedVehPacketID::PKT_EXTVEH)
 	{
-		uint8_t action;
-		if (!bs.Read(action))
+		core_->logLn(LogLevel::Message,
+			"[ExtendedVeh] Received custom packet ID %d from player %d (size=%d, unreadBits=%d)",
+			id, peer.getID(), bs.GetNumberOfBytesUsed(), bs.GetNumberOfUnreadBits());
+
+		if (bs.GetNumberOfUnreadBits() >= 8)
+		{
+			uint8_t action;
+			if (!bs.Read(action))
+			{
+				core_->logLn(LogLevel::Warning,
+					"[ExtendedVeh] Failed to read action byte from player %d packet",
+					peer.getID());
+				return false;
+			}
+
+			core_->logLn(LogLevel::Message,
+				"[ExtendedVeh] Processing action %d from player %d",
+				action, peer.getID());
+
+			Actions::Process((CustomVehAction)action, bs, peer);
+		}
+		else
 		{
 			core_->logLn(LogLevel::Warning,
-				"[ExtendedVeh] Failed to read action byte from player %d packet",
-				peer.getID());
-			return false;
+				"[ExtendedVeh] Custom packet from player %d has insufficient bits (%d)",
+				peer.getID(), bs.GetNumberOfUnreadBits());
 		}
-
-		core_->logLn(LogLevel::Message,
-			"[ExtendedVeh] Processing action %d from player %d",
-			action, peer.getID());
-
-		Actions::Process((CustomVehAction)action, bs, peer);
+		return false;
 	}
-	else
-	{
-		core_->logLn(LogLevel::Warning,
-			"[ExtendedVeh] Custom packet from player %d has insufficient bits (%d)",
-			peer.getID(), bs.GetNumberOfUnreadBits());
-	}
-	return false;
+	return true;
 }
 
 void ExtendedVehCompo::onFree(IComponent* component)
