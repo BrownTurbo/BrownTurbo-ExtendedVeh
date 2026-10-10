@@ -34,9 +34,7 @@ using namespace Impl;
 class ExtendedVehCompo final : public IComponent,
 							   public PawnEventHandler,
 							   public CoreEventHandler,
-							   public NetworkInEventHandler,
 							   public SingleNetworkInEventHandler,
-							   public NetworkOutEventHandler,
 							   public PoolEventHandler<IVehicle>,
 							   public PlayerConnectEventHandler,
 							   public PlayerSpawnEventHandler,
@@ -61,8 +59,6 @@ public:
 	void onAmxUnload(IPawnScript& script) override;
 
 	void onTick(Microseconds elapsed, TimePoint now) override;
-
-	bool onReceivePacket(IPlayer& peer, int id, NetworkBitStream& bs) override;
 
 	bool onReceive(IPlayer& peer, NetworkBitStream& bs) override;
 

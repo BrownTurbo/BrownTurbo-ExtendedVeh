@@ -102,12 +102,9 @@ inline cell OnDestroyVehicleHook(AMX* amx, cell* params, amx_native_fn_t orig)
 
 inline void RegisterNativeHooks()
 {
-	auto& hooks = NativeHookManager::Instance();
-
-	hooks.RegisterHookByName("CreateVehicle", &FuncHook::OnCreateVehicleHook);
-	hooks.RegisterHookByName("AddStaticVehicle", &FuncHook::OnAddStaticVehicleHook);
-	hooks.RegisterHookByName("AddStaticVehicleEx", &FuncHook::OnAddStaticVehicleExHook);
-	hooks.RegisterHookByName("DestroyVehicle", &FuncHook::OnDestroyVehicleHook);
+	// Vehicle creation and destruction events are handled natively by open.mp's
+	// PoolEventHandler<IVehicle> (onPoolEntryCreated / onPoolEntryDestroyed), which
+	// avoids intrusive subhook patching and AMX opcode conflicts with y_hooks.
 }
 
 #undef PAWN_NATIVE_DEFN_
