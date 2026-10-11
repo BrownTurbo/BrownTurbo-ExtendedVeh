@@ -74,6 +74,7 @@ void ModelTransferClient::ManualRetry(uint32_t modelId, ModelFileKind kind)
 
 		// reset progress bytes so UI and worker compute timeouts from now
 		entry.compressedBuffer.clear();
+		entry.receivedChunkBitmap.clear();
 		entry.progress.receivedBytes = 0;
 		entry.progress.receivedChunks = 0;
 		entry.progress.startTime = std::chrono::steady_clock::now();
@@ -88,6 +89,23 @@ void ModelTransferClient::ManualRetry(uint32_t modelId, ModelFileKind kind)
 		bs.Write(static_cast<uint8_t>(kind));
 		rakhook::send(&bs, HIGH_PRIORITY, RELIABLE_ORDERED, TransferConfig::Instance().RequestChannel);
 	});
+}
+
+void ModelTransferClient::RetryAllFailed()
+{
+	std::vector<std::pair<uint32_t, ModelFileKind>> toRetry;
+	{
+		std::lock_guard<std::mutex> lock(m_mutex);
+		for (auto& [key, entry] : m_active) {
+			if (entry.progress.failed) {
+				toRetry.emplace_back(entry.progress.modelId, entry.progress.kind);
+			}
+		}
+	}
+	ClientLog(LogLevel::Info, std::format("ModelTransferClient::RetryAllFailed: retrying {} failed transfers", toRetry.size()));
+	for (const auto& [modelId, kind] : toRetry) {
+		ManualRetry(modelId, kind);
+	}
 }
 
 void ModelTransferClient::EnsureWorkerStarted()
@@ -570,7 +588,9 @@ void ModelTransferClient::ScheduleRetry(std::unordered_map<uint64_t, InFlight>::
 	ClientLog(LogLevel::Warning, std::format("ModelTransferClient::ScheduleRetry: modelId={}, kind={}, attempt={}/{}, err='{}'", entry.progress.modelId, static_cast<int>(entry.progress.kind), entry.attempts, cfgMaxAttempts, err));
 
 	if (entry.attempts > cfgMaxAttempts) {
-		// permanent failure - call onReady(false) on main thread and erase entry
+		// permanent failure - notify on main thread but keep in m_active for UI and ManualRetry
+		entry.progress.failed = true;
+		entry.progress.statusText = "failed";
 		auto onReady = entry.onReady;
 		uint64_t key = it->first;
 		MainThreadQueue::Instance().Push([this, key, onReady] {
@@ -579,13 +599,11 @@ void ModelTransferClient::ScheduleRetry(std::unordered_map<uint64_t, InFlight>::
 				auto it2 = m_active.find(key);
 				if (it2 != m_active.end()) {
 					it2->second.progress.failed = true;
-					// keep diagnostic text in progress for snapshot / UI
+					it2->second.progress.statusText = "failed";
 				}
 			}
 			if (onReady)
 				onReady(false, {});
-			std::lock_guard<std::mutex> lock(m_mutex);
-			m_active.erase(key);
 		});
 		return;
 	}
@@ -598,6 +616,7 @@ void ModelTransferClient::ScheduleRetry(std::unordered_map<uint64_t, InFlight>::
 
 	// reset receive buffer/positions for next attempt
 	entry.compressedBuffer.clear();
+	entry.receivedChunkBitmap.clear();
 	entry.progress.receivedBytes = 0;
 	entry.progress.receivedChunks = 0;
 	entry.progress.startTime = std::chrono::steady_clock::now();
@@ -667,6 +686,7 @@ void ModelTransferClient::WorkerMain()
 						entry.backoffMs = std::min(entry.backoffMs ? entry.backoffMs * 2 : cfgInitialBackoff, cfgMaxBackoff);
 						entry.nextRetryTime = now + std::chrono::milliseconds(entry.backoffMs);
 						entry.compressedBuffer.clear();
+						entry.receivedChunkBitmap.clear();
 						entry.progress.receivedBytes = 0;
 						entry.progress.receivedChunks = 0;
 						entry.progress.startTime = std::chrono::steady_clock::now();

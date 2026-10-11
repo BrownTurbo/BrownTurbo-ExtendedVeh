@@ -100,6 +100,39 @@ bool SendMsg(int color, const char* msg)
 	return _sent;
 }
 
+void ToggleSampCursor(bool enable)
+{
+	rakhook::samp_ver version = rakhook::samp_version();
+	switch (version) {
+	case rakhook::samp_ver::v037r1: {
+		auto* pGame = sampapi::v037r1::RefGame();
+		if (pGame)
+			pGame->SetCursorMode(enable ? 2 : 0, !enable);
+		break;
+	}
+	case rakhook::samp_ver::v037r31: {
+		auto* pGame = sampapi::v037r3::RefGame();
+		if (pGame)
+			pGame->SetCursorMode(enable ? 2 : 0, !enable);
+		break;
+	}
+	case rakhook::samp_ver::v037r5: {
+		auto* pGame = sampapi::v037r5::RefGame();
+		if (pGame)
+			pGame->SetCursorMode(enable ? 2 : 0, !enable);
+		break;
+	}
+	case rakhook::samp_ver::v03dlr1: {
+		auto* pGame = sampapi::v03dl::RefGame();
+		if (pGame)
+			pGame->SetCursorMode(enable ? 2 : 0, !enable);
+		break;
+	}
+	default:
+		break;
+	}
+}
+
 PlayerPoolVariant GetPlayerPoolPtr()
 {
 	rakhook::samp_ver version = rakhook::samp_version();

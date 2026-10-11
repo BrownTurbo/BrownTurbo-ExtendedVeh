@@ -209,9 +209,7 @@ bool ExtendedVehCompo::onReceivePacket(IPlayer& peer, int id,
 {
 	if (id == (uint8_t)ExtendedVehPacketID::PKT_EXTVEH)
 	{
-		core_->logLn(LogLevel::Message,
-			"[ExtendedVeh] Received custom packet ID %d from player %d (size=%d, unreadBits=%d)",
-			id, peer.getID(), bs.GetNumberOfBytesUsed(), bs.GetNumberOfUnreadBits());
+		core_->logLn(LogLevel::Message, "[ExtendedVeh] Received custom packet ID %d from player %d (size=%d, unreadBits=%d)", (int)ExtendedVehPacketID::PKT_EXTVEH, peer.getID(), bs.GetNumberOfBytesUsed(), bs.GetNumberOfUnreadBits());
 
 		if (bs.GetNumberOfUnreadBits() >= 8)
 		{

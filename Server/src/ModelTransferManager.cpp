@@ -332,6 +332,7 @@ void ProcessTick()
 
 	ExtendedVehCompo* compo = ExtendedVehCompo::get();
 	std::deque<ActiveTransfer> remainingTransfers;
+	std::unordered_map<int, uint32_t> sentPerPlayer;
 
 	while (!currentBatch.empty())
 	{
@@ -346,8 +347,16 @@ void ProcessTick()
 		if (!cached)
 			continue;
 
-		uint32_t sentThisTick = 0;
-		while (sentThisTick < config.chunksPerPlayerPerTick && transfer.nextChunkIndex < transfer.totalChunks)
+		uint32_t& alreadySent = sentPerPlayer[transfer.playerId];
+		if (alreadySent >= config.chunksPerPlayerPerTick)
+		{
+			remainingTransfers.push_back(transfer);
+			continue;
+		}
+
+		const uint32_t budget = config.chunksPerPlayerPerTick - alreadySent;
+		uint32_t sentThisTransfer = 0;
+		while (sentThisTransfer < budget && transfer.nextChunkIndex < transfer.totalChunks)
 		{
 			const uint32_t offset = transfer.nextChunkIndex * kFileChunkSize;
 			const uint32_t remaining = static_cast<uint32_t>(cached->compressed.size()) - offset;
@@ -362,8 +371,9 @@ void ProcessTick()
 			player->sendPacket(Span<uint8_t>(chunkPkt.data.GetData(), chunkPkt.data.GetNumberOfBitsUsed()), config.fileTransferChannel, true);
 
 			++transfer.nextChunkIndex;
-			++sentThisTick;
+			++sentThisTransfer;
 		}
+		alreadySent += sentThisTransfer;
 
 		if (transfer.nextChunkIndex >= transfer.totalChunks)
 		{

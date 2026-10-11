@@ -111,6 +111,7 @@ public:
 	void Shutdown();
 	void FailImmediately(std::unordered_map<uint64_t, InFlight>::iterator it, const std::string& err);
 	void ManualRetry(uint32_t modelId, ModelFileKind kind);
+	void RetryAllFailed();
 	void CancelAll(const std::string& reason);
 	void CancelModelTransfers(uint32_t customModelId);
 

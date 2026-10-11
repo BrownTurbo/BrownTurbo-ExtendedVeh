@@ -71,6 +71,7 @@ void RenderTransferWindow()
 			g_windowVisible.store(false, std::memory_order_relaxed);
 			g_manuallyToggled.store(true, std::memory_order_relaxed);
 			io.MouseDrawCursor = false;
+			ToggleSampCursor(false);
 			ResetTransferWindowState();
 		}
 		LogImGuiStage("RenderTransferWindow end (collapsed/hidden)");
@@ -82,6 +83,7 @@ void RenderTransferWindow()
 		g_windowVisible.store(false, std::memory_order_relaxed);
 		g_manuallyToggled.store(true, std::memory_order_relaxed);
 		io.MouseDrawCursor = false;
+		ToggleSampCursor(false);
 		ResetTransferWindowState();
 		ImGui::End();
 		LogImGuiStage("RenderTransferWindow end (closed)");
@@ -140,6 +142,7 @@ void RenderTransferWindow()
 			if (!g_manuallyToggled.load(std::memory_order_relaxed)) {
 				g_windowVisible.store(false, std::memory_order_relaxed);
 				io.MouseDrawCursor = false;
+				ToggleSampCursor(false);
 				ResetTransferWindowState();
 				ImGui::End();
 				return;
@@ -149,6 +152,10 @@ void RenderTransferWindow()
 		s_allDoneTime = (std::chrono::steady_clock::time_point::min)();
 		if (failedCount > 0) {
 			ImGui::TextColored(ImVec4(1.0f, 0.3f, 0.3f, 1.0f), "Some transfers failed. Check network or click Retry below.");
+			ImGui::SameLine();
+			if (ImGui::Button("Retry All Failed")) {
+				ModelTransferClient::Instance().RetryAllFailed();
+			}
 		}
 	}
 
@@ -157,13 +164,14 @@ void RenderTransferWindow()
 	if (transfers.empty()) {
 		ImGui::TextDisabled("No active or recent vehicle transfers. Press F9 to hide.");
 	} else {
-		if (ImGui::BeginTable("transfers", 6, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_Resizable | ImGuiTableFlags_ScrollY, ImVec2(0, 180.0f))) {
-			ImGui::TableSetupColumn("Model", ImGuiTableColumnFlags_WidthFixed, 80.0f);
+		if (ImGui::BeginTable("transfers", 7, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_Resizable | ImGuiTableFlags_ScrollY, ImVec2(0, 180.0f))) {
+			ImGui::TableSetupColumn("Model", ImGuiTableColumnFlags_WidthFixed, 70.0f);
 			ImGui::TableSetupColumn("File", ImGuiTableColumnFlags_WidthFixed, 60.0f);
 			ImGui::TableSetupColumn("Progress", ImGuiTableColumnFlags_WidthStretch);
-			ImGui::TableSetupColumn("Size", ImGuiTableColumnFlags_WidthFixed, 110.0f);
-			ImGui::TableSetupColumn("ETA", ImGuiTableColumnFlags_WidthFixed, 90.0f);
-			ImGui::TableSetupColumn("Status", ImGuiTableColumnFlags_WidthFixed, 150.0f);
+			ImGui::TableSetupColumn("Size", ImGuiTableColumnFlags_WidthFixed, 105.0f);
+			ImGui::TableSetupColumn("ETA", ImGuiTableColumnFlags_WidthFixed, 80.0f);
+			ImGui::TableSetupColumn("Status", ImGuiTableColumnFlags_WidthFixed, 180.0f);
+			ImGui::TableSetupColumn("Action", ImGuiTableColumnFlags_WidthFixed, 70.0f);
 			ImGui::TableHeadersRow();
 
 			for (auto& t : transfers) {
@@ -234,18 +242,23 @@ void RenderTransferWindow()
 				}
 				if (t.failed) {
 					ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f), "%s", status.c_str());
-					ImGui::SameLine();
-					char buf[64];
-					std::snprintf(buf, sizeof(buf), "Retry##%u_%u", t.modelId, static_cast<unsigned>(t.kind));
-					if (ImGui::Button(buf)) {
-						ModelTransferClient::Instance().ManualRetry(t.modelId, t.kind);
-					}
 				} else if (t.fromCache) {
 					ImGui::TextColored(ImVec4(0.5f, 0.8f, 1.0f, 1.0f), "%s", status.c_str());
 				} else if (status == "done") {
 					ImGui::TextColored(ImVec4(0.3f, 1.0f, 0.3f, 1.0f), "%s", status.c_str());
 				} else {
 					ImGui::TextUnformatted(status.c_str());
+				}
+
+				ImGui::TableSetColumnIndex(6);
+				if (t.failed) {
+					char buf[64];
+					std::snprintf(buf, sizeof(buf), "Retry##%u_%u", t.modelId, static_cast<unsigned>(t.kind));
+					if (ImGui::Button(buf)) {
+						ModelTransferClient::Instance().ManualRetry(t.modelId, t.kind);
+					}
+				} else {
+					ImGui::TextUnformatted("-");
 				}
 			}
 
@@ -288,6 +301,7 @@ LRESULT CALLBACK hkWndProc(HWND hwnd, UINT u_msg, WPARAM w_param, LPARAM l_param
 		ClientLog(LogLevel::Info, std::format("hkWndProc: toggleKey pressed (key=0x{:X})! new g_windowVisible={}", static_cast<int>(w_param), newVis));
 		if (!newVis && g_bwasInitialized && ImGui::GetCurrentContext() != nullptr) {
 			ImGui::GetIO().MouseDrawCursor = false;
+			ToggleSampCursor(false);
 		}
 		return 0;
 	}
@@ -438,7 +452,14 @@ HRESULT __stdcall hkEndScene(IDirect3DDevice9* pDevice)
 		g_bwasInitialized = true;
 	}
 
-	if (ImGui::GetCurrentContext() != nullptr && g_windowVisible.load(std::memory_order_acquire)) {
+	const bool isVisible = (ImGui::GetCurrentContext() != nullptr && g_windowVisible.load(std::memory_order_acquire));
+	static bool s_lastVisible = false;
+	if (isVisible != s_lastVisible) {
+		s_lastVisible = isVisible;
+		ToggleSampCursor(isVisible);
+	}
+
+	if (isVisible) {
 		ImGuiIO& io = ImGui::GetIO();
 
 		ClipCursor(nullptr);
@@ -571,6 +592,7 @@ void c_plugin::shutdown_for_unload()
 		ImGui::DestroyContext();
 	g_imguiDevice = nullptr;
 	g_bwasInitialized = false;
+	ToggleSampCursor(false);
 }
 
 c_plugin::c_plugin(HMODULE hmodule)
