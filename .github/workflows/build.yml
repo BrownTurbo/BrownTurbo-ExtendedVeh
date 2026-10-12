@@ -48,9 +48,10 @@ jobs:
     - uses: actions/checkout@v4
       with:
         clean: true
-        persist-credentials: false
-        submodules: recursive
         fetch-depth: 0
+
+    - name: Checkout submodules
+      run: git submodule update --init --recursive
 
     - name: Preparing some system related...
       run: |
@@ -106,9 +107,10 @@ jobs:
     - uses: actions/checkout@v4
       with:
         clean: true
-        persist-credentials: false
-        submodules: recursive
         fetch-depth: 0
+
+    - name: Checkout submodules
+      run: git submodule update --init --recursive
 
     - name: Install CMake
       uses: lukka/get-cmake@latest
