@@ -127,12 +127,17 @@ void ModelTransferClient::RequestFile(uint32_t modelId, ModelFileKind kind, cons
 		ClientLog(LogLevel::Info, std::format("ModelTransferClient::RequestFile: cache HIT for modelId={}, kind={}, path='{}'", modelId, static_cast<int>(kind), cached->string()));
 		{
 			std::lock_guard<std::mutex> lock(m_mutex);
-			TransferProgress prog;
-			prog.modelId = modelId;
-			prog.kind = kind;
-			prog.fromCache = true;
-			prog.statusText = "cached";
-			m_completed.push_back(std::move(prog));
+			auto itComp = std::find_if(m_completed.begin(), m_completed.end(), [modelId, kind](const TransferProgress& p) {
+				return p.modelId == modelId && p.kind == kind;
+			});
+			if (itComp == m_completed.end()) {
+				TransferProgress prog;
+				prog.modelId = modelId;
+				prog.kind = kind;
+				prog.fromCache = true;
+				prog.statusText = "cached";
+				m_completed.push_back(std::move(prog));
+			}
 		}
 		onReady(true, *cached);
 		return;
@@ -141,25 +146,33 @@ void ModelTransferClient::RequestFile(uint32_t modelId, ModelFileKind kind, cons
 	ClientLog(LogLevel::Debug, std::format("ModelTransferClient::RequestFile: cache MISS for modelId={}, kind={}, starting network transfer...", modelId, static_cast<int>(kind)));
 	EnsureWorkerStarted();
 
-	InFlight entry;
-	entry.progress.modelId = modelId;
-	entry.progress.kind = kind;
-	entry.progress.startTime = std::chrono::steady_clock::now();
-	entry.progress.statusText = "requesting";
-	entry.progress.attempts = 1;
-	entry.attempts = 1;
-	entry.backoffMs = static_cast<uint32_t>(TransferConfig::Instance().retryInitialBackoffMs);
-	entry.expectedSha256 = expectedSha256Hex;
-	entry.onReady = std::move(onReady);
-
+	const uint64_t key = Key(modelId, kind);
 	{
 		std::lock_guard<std::mutex> lock(m_mutex);
-		m_active[Key(modelId, kind)] = std::move(entry);
+		if (m_active.contains(key)) {
+			ClientLog(LogLevel::Debug, std::format("ModelTransferClient::RequestFile: transfer already in-flight for modelId={}, kind={}", modelId, static_cast<int>(kind)));
+			return;
+		}
+
+		InFlight entry;
+		entry.progress.modelId = modelId;
+		entry.progress.kind = kind;
+		entry.progress.startTime = std::chrono::steady_clock::now();
+		entry.progress.statusText = "requesting";
+		entry.progress.attempts = 1;
+		entry.attempts = 1;
+		entry.backoffMs = static_cast<uint32_t>(TransferConfig::Instance().retryInitialBackoffMs);
+		entry.expectedSha256 = expectedSha256Hex;
+		entry.onReady = std::move(onReady);
+
+		m_active[key] = std::move(entry);
 	}
 
-	// Auto-show download window when network transfer starts
-	ClientLog(LogLevel::Info, std::format("ModelTransferClient::RequestFile: auto-showing download window for modelId={}, kind={}", modelId, static_cast<int>(kind)));
-	g_windowVisible.store(true, std::memory_order_release);
+	// Auto-show download window when network transfer starts (unless manually closed by user)
+	if (!g_manuallyToggled.load(std::memory_order_relaxed)) {
+		ClientLog(LogLevel::Info, std::format("ModelTransferClient::RequestFile: auto-showing download window for modelId={}, kind={}", modelId, static_cast<int>(kind)));
+		g_windowVisible.store(true, std::memory_order_release);
+	}
 
 	// Build RakNet packet: PKT_EXTVEH (251) + ACTION_REQUEST_FILE_TRANSFER (30) + modelId + kind
 	// We enqueue the send on main thread to be safe: main-thread send avoids any RakNet thread-safety issues.
@@ -515,7 +528,14 @@ void ModelTransferClient::OnTransferEnd(RakNet::BitStream* bs)
 					TransferProgress done = it->second.progress;
 					done.receivedBytes = done.compressedSize;
 					done.statusText = "done";
-					m_completed.push_back(std::move(done));
+					auto itComp = std::find_if(m_completed.begin(), m_completed.end(), [modelId, kind](const TransferProgress& p) {
+						return p.modelId == modelId && p.kind == kind;
+					});
+					if (itComp != m_completed.end()) {
+						*itComp = std::move(done);
+					} else {
+						m_completed.push_back(std::move(done));
+					}
 					m_active.erase(it);
 				}
 			}

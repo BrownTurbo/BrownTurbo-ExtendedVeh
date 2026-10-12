@@ -21,6 +21,7 @@
 #include <game_sa/CWaterLevel.h>
 #include <game_sa/Fx_c.h>
 #include <game_sa/rw/rpworld.h>
+#include <game_sa/rw/skeleton.h>
 #include <MinHook.h>
 #include <algorithm>
 #include <format>
@@ -30,6 +31,7 @@
 #include <unordered_set>
 
 #include "CustomVehicleBindingManager.h"
+#include "ImGuiOverlay.h"
 #include "ModelCache.h"
 #include "streamingextender.hpp"
 #include "utils.h"
@@ -63,6 +65,34 @@ static inline void SetWaterDriveCheatActive(bool active)
 }
 
 // Hook function pointers
+
+static RsEventStatus(__cdecl* g_origRsMouseSetPos)(RwV2d* pos) = nullptr;
+
+static RsEventStatus __cdecl Hooked_RsMouseSetPos(RwV2d* pos)
+{
+	if (g_windowVisible.load(std::memory_order_relaxed)) {
+		return rsEVENTPROCESSED;
+	}
+	if (g_origRsMouseSetPos) {
+		return g_origRsMouseSetPos(pos);
+	}
+	return rsEVENTNOTPROCESSED;
+}
+
+static void(__fastcall* g_origUpdateMouse)(CPad* thisPad, void* edx) = nullptr;
+
+static void __fastcall Hooked_UpdateMouse(CPad* thisPad, void* edx)
+{
+	if (g_windowVisible.load(std::memory_order_relaxed)) {
+		CPad::NewMouseControllerState.x = 0.0f;
+		CPad::NewMouseControllerState.y = 0.0f;
+		CPad::NewMouseControllerState.z = 0.0f;
+		return;
+	}
+	if (g_origUpdateMouse) {
+		g_origUpdateMouse(thisPad, edx);
+	}
+}
 
 static void(__fastcall* g_origUpdateWheelMatrix)(CAutomobile* thisCar, void* edx, int nodeIndex, int flags) = nullptr;
 
@@ -3066,20 +3096,25 @@ void InitializeHooks()
 
 	rakhook::on_receive_rpc += [](unsigned char& id, RakNet::BitStream* bs) -> bool {
 		if (id == RPC_InitGame) {
-			ClientLog(LogLevel::Info, "Received RPC_InitGame (139), sending init packet...");
+			ClientLog(LogLevel::Info, "Received RPC_InitGame (139)...");
 			_customVehInstance.SetLocalPlayerSpawned(false);
-			g_windowVisible.store(false, std::memory_order_relaxed);
-			ResetTransferWindowState();
-			ModelTransferClient::Instance().ClearHistory();
-			_customVehInstance.RequestClearAllCustomModels();
 			g_lastVehicleHealth.clear();
 			if (!HandlingManager::ProcessAction(ACTION_RESET_ALL, nullptr)) {
 				ClientLog(LogLevel::Error, "HandlingManager::ProcessAction failed to process ACTION_RESET_ALL.");
 			}
 			if (!_customVehInstance.IsServerAuthorized()) {
-				HandlingManager::ResetInitState();
-				HandlingManager::SendInitPacket();
-				ClientLog(LogLevel::Info, "Game session initialized; handshake sent.");
+				if (!HandlingManager::m_initSent.load(std::memory_order_acquire)) {
+					ModelCache::Instance().ReloadManifest();
+					g_windowVisible.store(false, std::memory_order_relaxed);
+					g_manuallyToggled.store(false, std::memory_order_relaxed);
+					ResetTransferWindowState();
+					ModelTransferClient::Instance().ClearHistory();
+					_customVehInstance.RequestClearAllCustomModels();
+					HandlingManager::SendInitPacket();
+					ClientLog(LogLevel::Info, "Game session initialized; fallback handshake sent on RPC_InitGame.");
+				} else {
+					ClientLog(LogLevel::Debug, "Game session initialized; handshake already pending from connection accept.");
+				}
 			} else {
 				ClientLog(LogLevel::Debug, "localPlayer seems to be already authorized...");
 			}
@@ -3110,8 +3145,9 @@ void InitializeHooks()
 			ClientLog(LogLevel::Info, "Received RPC_GameModeRestart (142), resetting session state and re-sending init packet...");
 			_customVehInstance.SetLocalPlayerSpawned(false);
 			g_windowVisible.store(false, std::memory_order_relaxed);
+			g_manuallyToggled.store(false, std::memory_order_relaxed);
 			ResetTransferWindowState();
-			HandlingManager::m_isServerAuthorized.store(false, std::memory_order_release);
+			HandlingManager::ResetInitState();
 			ModelTransferClient::Instance().CancelAll("gamemode restart");
 			ModelTransferClient::Instance().ClearHistory();
 			_customVehInstance.RequestClearAllCustomModels();
@@ -3119,7 +3155,6 @@ void InitializeHooks()
 			if (!HandlingManager::ProcessAction(ACTION_RESET_ALL, nullptr)) {
 				ClientLog(LogLevel::Error, "HandlingManager::ProcessAction failed to process ACTION_RESET_ALL.");
 			}
-			HandlingManager::ResetInitState();
 			HandlingManager::SendInitPacket();
 			ClientLog(LogLevel::Info, "GameModeRestart processed; handshake re-sent.");
 			return true;
@@ -3127,8 +3162,12 @@ void InitializeHooks()
 			ClientLog(LogLevel::Info, "Received RPC_ServerQuit (166).");
 			_customVehInstance.SetLocalPlayerSpawned(false);
 			g_windowVisible.store(false, std::memory_order_relaxed);
+			g_manuallyToggled.store(false, std::memory_order_relaxed);
 			ResetTransferWindowState();
-			HandlingManager::m_isServerAuthorized.store(false, std::memory_order_release);
+			HandlingManager::ResetInitState();
+			ModelTransferClient::Instance().CancelAll("server quit");
+			ModelTransferClient::Instance().ClearHistory();
+			_customVehInstance.RequestClearAllCustomModels();
 			g_lastVehicleHealth.clear();
 			return true;
 		} else if (id == RPC_ScrRepairVehicle) {
@@ -3267,18 +3306,14 @@ void InitializeHooks()
 			ClientLog(LogLevel::Debug, "RPC_RequestClass sent.");
 			_customVehInstance.SetLocalPlayerSpawned(false);
 			if (!_customVehInstance.IsServerAuthorized() && rakhook::orig && rakhook::orig->IsConnected()) {
-				HandlingManager::ResetInitState();
 				HandlingManager::SendInitPacket();
-				ClientLog(LogLevel::Info, "Handshake sent on RPC_RequestClass fallback.");
 			}
 			return true;
 		} else if (id == RPC_RequestSpawn) {
 			ClientLog(LogLevel::Debug, "RPC_RequestSpawn sent.");
 			_customVehInstance.SetLocalPlayerSpawned(false);
 			if (!_customVehInstance.IsServerAuthorized() && rakhook::orig && rakhook::orig->IsConnected()) {
-				HandlingManager::ResetInitState();
 				HandlingManager::SendInitPacket();
-				ClientLog(LogLevel::Info, "Handshake sent on RPC_RequestSpawn fallback.");
 			}
 			return true;
 		}
@@ -3317,6 +3352,7 @@ void InitializeHooks()
 			ModelCache::Instance().ReloadManifest();
 			_customVehInstance.SetLocalPlayerSpawned(false);
 			g_windowVisible.store(false, std::memory_order_relaxed);
+			g_manuallyToggled.store(false, std::memory_order_relaxed);
 			ResetTransferWindowState();
 			ModelTransferClient::Instance().ClearHistory();
 			_customVehInstance.RequestClearAllCustomModels();
@@ -3334,11 +3370,13 @@ void InitializeHooks()
 			_customVehInstance.SetLocalPlayerSpawned(false);
 			// Hide download window on disconnect
 			g_windowVisible.store(false, std::memory_order_relaxed);
+			g_manuallyToggled.store(false, std::memory_order_relaxed);
 			ResetTransferWindowState();
-			HandlingManager::m_isServerAuthorized.store(false, std::memory_order_release);
+			HandlingManager::ResetInitState();
 			ModelTransferClient::Instance().CancelAll("server connection lost");
 			ModelTransferClient::Instance().ClearHistory();
 			_customVehInstance.RequestClearAllCustomModels();
+			g_lastVehicleHealth.clear();
 			HandlingManager::ProcessAction(ACTION_RESET_ALL, nullptr);
 		}
 		return true;
@@ -4326,6 +4364,30 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD dwReason, LPVOID lpReserved)
 			ClientLog(LogLevel::Error, std::format("Failed to hook CEntity::GetColModel (0x535300): {}", MH_StatusToString(colStatus)));
 		}
 
+		MH_STATUS rsMouseStatus = MH_CreateHook(reinterpret_cast<void*>(0x6194A0), reinterpret_cast<void*>(&Hooked_RsMouseSetPos), reinterpret_cast<void**>(&g_origRsMouseSetPos));
+		if (rsMouseStatus == MH_OK) {
+			MH_STATUS enableStatus = MH_EnableHook(reinterpret_cast<void*>(0x6194A0));
+			if (enableStatus == MH_OK) {
+				ClientLog(LogLevel::Info, "RsMouseSetPos (0x6194A0) hooked successfully via MinHook");
+			} else {
+				ClientLog(LogLevel::Error, std::format("Failed to enable RsMouseSetPos hook: {}", MH_StatusToString(enableStatus)));
+			}
+		} else {
+			ClientLog(LogLevel::Error, std::format("Failed to hook RsMouseSetPos (0x6194A0): {}", MH_StatusToString(rsMouseStatus)));
+		}
+
+		MH_STATUS upMouseStatus = MH_CreateHook(reinterpret_cast<void*>(0x53F3C0), reinterpret_cast<void*>(&Hooked_UpdateMouse), reinterpret_cast<void**>(&g_origUpdateMouse));
+		if (upMouseStatus == MH_OK) {
+			MH_STATUS enableStatus = MH_EnableHook(reinterpret_cast<void*>(0x53F3C0));
+			if (enableStatus == MH_OK) {
+				ClientLog(LogLevel::Info, "CPad::UpdateMouse (0x53F3C0) hooked successfully via MinHook");
+			} else {
+				ClientLog(LogLevel::Error, std::format("Failed to enable CPad::UpdateMouse hook: {}", MH_StatusToString(enableStatus)));
+			}
+		} else {
+			ClientLog(LogLevel::Error, std::format("Failed to hook CPad::UpdateMouse (0x53F3C0): {}", MH_StatusToString(upMouseStatus)));
+		}
+
 		Plugn = std::make_unique<c_plugin>(hModule);
 		static bool threadSpawned = false;
 		if (!threadSpawned) {
@@ -4514,6 +4576,18 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD dwReason, LPVOID lpReserved)
 			MH_DisableHook(reinterpret_cast<void*>(0x6F49A0));
 			MH_RemoveHook(reinterpret_cast<void*>(0x6F49A0));
 			g_origBouncingPanel_ProcessPanel = nullptr;
+		}
+
+		if (g_origRsMouseSetPos) {
+			MH_DisableHook(reinterpret_cast<void*>(0x6194A0));
+			MH_RemoveHook(reinterpret_cast<void*>(0x6194A0));
+			g_origRsMouseSetPos = nullptr;
+		}
+
+		if (g_origUpdateMouse) {
+			MH_DisableHook(reinterpret_cast<void*>(0x53F3C0));
+			MH_RemoveHook(reinterpret_cast<void*>(0x53F3C0));
+			g_origUpdateMouse = nullptr;
 		}
 
 		rakhook::on_receive_rpc.clear();

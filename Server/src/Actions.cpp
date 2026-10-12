@@ -30,18 +30,24 @@ bool Actions::Process(CustomVehAction id, NetworkBitStream& bs, IPlayer& player)
 
 		if (compat_ver >= EXTVEH_COMPAT_VERSION)
 		{
-			pkt.data.Write(true);
 			const bool alreadyAuthorized = gPlayers.HasExtendedVeh(playerid);
+			if (alreadyAuthorized)
+			{
+				if (core_)
+				{
+					core_->logLn(LogLevel::Debug, "[ExtendedVeh] Player %d already authorized, ignoring redundant ACTION_INIT", playerid);
+				}
+				return true;
+			}
+
+			pkt.data.Write(true);
 			gPlayers.SetExtendedVeh(playerid, true);
 			if (core_)
 			{
 				core_->logLn(LogLevel::Message, "[ExtendedVeh] Player %d reports having chandling plugin (compat_ver=0x%X). Sent INIT_RESPONSE(allowed=true)", playerid, compat_ver);
 			}
 			player.sendPacket(Span<uint8_t>(pkt.data.GetData(), pkt.data.GetNumberOfBitsUsed()), 0, false);
-			if (!alreadyAuthorized)
-			{
-				HandlingMgr::OnPlayerAuthorized(player);
-			}
+			HandlingMgr::OnPlayerAuthorized(player);
 			if (gPlayers.IsDebugMode(playerid))
 			{
 				CustomVehicleTransport::SendDebugMode(player, true);

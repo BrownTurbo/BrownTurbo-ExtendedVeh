@@ -1,5 +1,6 @@
 #include "utils.h"
 #include <plugin_sa.h>
+#include <game_sa/CPad.h>
 #include "CryptoUtility.h"
 #include <atomic>
 #include <fstream>
@@ -107,29 +108,33 @@ void ToggleSampCursor(bool enable)
 	case rakhook::samp_ver::v037r1: {
 		auto* pGame = sampapi::v037r1::RefGame();
 		if (pGame)
-			pGame->SetCursorMode(enable ? 2 : 0, !enable);
+			pGame->SetCursorMode(enable ? 3 : 0, !enable);
 		break;
 	}
 	case rakhook::samp_ver::v037r31: {
 		auto* pGame = sampapi::v037r3::RefGame();
 		if (pGame)
-			pGame->SetCursorMode(enable ? 2 : 0, !enable);
+			pGame->SetCursorMode(enable ? 3 : 0, !enable);
 		break;
 	}
 	case rakhook::samp_ver::v037r5: {
 		auto* pGame = sampapi::v037r5::RefGame();
 		if (pGame)
-			pGame->SetCursorMode(enable ? 2 : 0, !enable);
+			pGame->SetCursorMode(enable ? 3 : 0, !enable);
 		break;
 	}
 	case rakhook::samp_ver::v03dlr1: {
 		auto* pGame = sampapi::v03dl::RefGame();
 		if (pGame)
-			pGame->SetCursorMode(enable ? 2 : 0, !enable);
+			pGame->SetCursorMode(enable ? 3 : 0, !enable);
 		break;
 	}
 	default:
 		break;
+	}
+
+	if (!enable) {
+		CPad::ClearMouseHistory();
 	}
 }
 

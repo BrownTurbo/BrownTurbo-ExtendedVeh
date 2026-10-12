@@ -1294,8 +1294,13 @@ void HandlingManager::ResetInitState()
 
 void HandlingManager::SendInitPacket()
 {
+	if (m_isServerAuthorized.load(std::memory_order_acquire)) {
+		ClientLog(LogLevel::Debug, "SendInitPacket: server already authorized for current session.");
+		return;
+	}
+
 	if (m_initSent.exchange(true, std::memory_order_acq_rel)) {
-		ClientLog(LogLevel::Debug, "ACTION_INIT already sent for current session.");
+		ClientLog(LogLevel::Debug, "SendInitPacket: ACTION_INIT already sent for current session.");
 		return;
 	}
 
@@ -1323,9 +1328,13 @@ bool HandlingManager::ProcessAction(CustomVehAction action, RakNet::BitStream* b
 
 		ClientLog(LogLevel::Info, std::format("ACTION_INIT_RESPONSE: allowed={}, server_compat_ver=0x{:X}", allowed, compat_ver));
 		if (allowed && compat_ver == EXTENDEDVEH_COMPAT_VERSION) {
-			m_isServerAuthorized.store(true, std::memory_order_release);
-			ClientLog(LogLevel::Info, "authorization established.");
-			SendMsg(-1, "{00FF00}[ExtendedVeh]{FFFFFF} Server authorized handling modifications.");
+			const bool wasAuthorized = m_isServerAuthorized.exchange(true, std::memory_order_acq_rel);
+			if (!wasAuthorized) {
+				ClientLog(LogLevel::Info, "authorization established.");
+				SendMsg(-1, "{00FF00}[ExtendedVeh]{FFFFFF} Server authorized handling modifications.");
+			} else {
+				ClientLog(LogLevel::Debug, "authorization re-confirmed by server (already authorized).");
+			}
 		} else {
 			SendMsg(-1, "{FF0000}[ExtendedVeh] Version mismatch with server.");
 			return false;

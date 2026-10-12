@@ -314,6 +314,9 @@ LRESULT CALLBACK hkWndProc(HWND hwnd, UINT u_msg, WPARAM w_param, LPARAM l_param
 		if (io.WantCaptureMouse && (u_msg >= WM_MOUSEFIRST && u_msg <= WM_MOUSELAST)) {
 			return 0;
 		}
+		if (u_msg >= WM_LBUTTONDOWN && u_msg <= WM_MBUTTONDBLCLK) {
+			return 0;
+		}
 	}
 
 	if (oWndProc) {
@@ -457,6 +460,9 @@ HRESULT __stdcall hkEndScene(IDirect3DDevice9* pDevice)
 	if (isVisible != s_lastVisible) {
 		s_lastVisible = isVisible;
 		ToggleSampCursor(isVisible);
+		if (!isVisible) {
+			ImGui::GetIO().MouseDrawCursor = false;
+		}
 	}
 
 	if (isVisible) {
