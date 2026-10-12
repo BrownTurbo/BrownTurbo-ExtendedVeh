@@ -1,6 +1,7 @@
 # cmake -B build -A Win32
 # cmake --build build --config Release
 cmake_minimum_required(VERSION 3.23)
+set(CMAKE_POLICY_VERSION_MINIMUM "3.5" CACHE STRING "" FORCE)
 project("brownturbo-extendedveh" LANGUAGES C CXX VERSION 0.0.3)
 
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL" CACHE STRING "" FORCE)
