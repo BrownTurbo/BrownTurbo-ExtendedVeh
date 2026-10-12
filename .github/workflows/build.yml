@@ -135,7 +135,7 @@ jobs:
       run: cmake -S Server -B ${{github.workspace}}/build/Server -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}} -A Win32 -DCMAKE_POLICY_VERSION_MINIMUM="3.5" --preset=vcpkg -DCMAKE_TOOLCHAIN_FILE="${{github.workspace}}/vcpkg/scripts/buildsystems/vcpkg.cmake" -DVCPKG_TARGET_TRIPLET="x86-windows" -DVCPKG_MANIFEST_MODE=ON -DCMAKE_PREFIX_PATH="${{github.workspace}}/vcpkg/installed/x86-windows"
 
     - name: Build Server (${{ github.ref }})
-      run: cmake --build ${{github.workspace}}/build/Server --config ${{env.BUILD_TYPE}} -A Win32 -DCMAKE_POLICY_VERSION_MINIMUM="3.5" --preset=vcpkg
+      run: cmake --build ${{github.workspace}}/build/Server --config ${{env.BUILD_TYPE}} --preset=vcpkg
 
     - name: Prepare Artifacts
       shell: pwsh
