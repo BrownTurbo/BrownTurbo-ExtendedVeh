@@ -3395,6 +3395,8 @@ static void OnGameProcess()
 		return;
 	s_lastFrame = CTimer::m_FrameCounter;
 
+	ResetRenderFrameGate();
+
 	try {
 		MainThreadQueue::Instance().DrainOnMainThread();
 

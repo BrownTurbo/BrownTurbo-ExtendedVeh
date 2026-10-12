@@ -19,10 +19,12 @@ extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg
 
 #define D3D_VFUNCTIONS (119)
 #define DEVICE_PTR (0xC97C28)
-#define ENDSCENE_INDEX (42)
 #define RESET_INDEX (16)
+#define PRESENT_INDEX (17)
+#define ENDSCENE_INDEX (42)
 
 typedef HRESULT(__stdcall* _Reset)(IDirect3DDevice9* pDevice, D3DPRESENT_PARAMETERS* pp);
+typedef HRESULT(__stdcall* _Present)(IDirect3DDevice9* pDevice, const RECT* pSourceRect, const RECT* pDestRect, HWND hDestWindowOverride, const RGNDATA* pDirtyRegion);
 typedef HRESULT(__stdcall* _EndScene)(IDirect3DDevice9* pDevice);
 
 class c_plugin {
@@ -42,3 +44,4 @@ inline std::atomic<bool> g_windowVisible { false };
 inline std::atomic<bool> g_manuallyToggled { false };
 
 void ResetTransferWindowState();
+void ResetRenderFrameGate();

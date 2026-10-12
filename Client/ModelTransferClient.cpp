@@ -26,6 +26,7 @@
 #include <fstream>
 #include <iterator>
 #include <sstream>
+#include <unordered_set>
 
 #include "../Shared/CustomVehicleProtocol.hpp"
 #include "defs.h"
@@ -154,6 +155,10 @@ void ModelTransferClient::RequestFile(uint32_t modelId, ModelFileKind kind, cons
 			return;
 		}
 
+		std::erase_if(m_completed, [modelId, kind](const TransferProgress& p) {
+			return p.modelId == modelId && p.kind == kind;
+		});
+
 		InFlight entry;
 		entry.progress.modelId = modelId;
 		entry.progress.kind = kind;
@@ -192,10 +197,18 @@ std::vector<TransferProgress> ModelTransferClient::Snapshot() const
 	std::lock_guard<std::mutex> lock(m_mutex);
 	std::vector<TransferProgress> result;
 	result.reserve(m_active.size() + m_completed.size());
-	for (auto& [key, entry] : m_active)
+	std::unordered_set<uint64_t> seen;
+	for (auto& [key, entry] : m_active) {
+		seen.insert(key);
 		result.push_back(entry.progress);
-	for (auto& entry : m_completed)
-		result.push_back(entry);
+	}
+	for (auto& entry : m_completed) {
+		uint64_t key = Key(entry.modelId, entry.kind);
+		if (!seen.contains(key)) {
+			seen.insert(key);
+			result.push_back(entry);
+		}
+	}
 	ClientLog(LogLevel::Debug, std::format("ModelTransferClient::Snapshot: returning {} transfers ({} active, {} completed/cached)", result.size(), m_active.size(), m_completed.size()));
 	return result;
 }

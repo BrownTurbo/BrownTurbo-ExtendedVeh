@@ -4,12 +4,20 @@ HWND hWnd;
 WNDPROC oWndProc = nullptr;
 void* g_targetEndScene = nullptr;
 void* g_targetReset = nullptr;
+void* g_targetPresent = nullptr;
 _EndScene oEndScene = nullptr;
 _Reset oReset = nullptr;
+_Present oPresent = nullptr;
+std::atomic<bool> g_renderedThisFrame = false;
 std::atomic<bool> g_shutdownRequested = false;
 bool g_wndProcHooked = false;
 std::thread g_initializationThread;
 IDirect3DDevice9* g_imguiDevice = nullptr;
+
+void ResetRenderFrameGate()
+{
+	g_renderedThisFrame.store(false, std::memory_order_release);
+}
 
 static inline void LogImGuiStage(const char* stage, LogLevel level = LogLevel::Debug)
 {
@@ -270,8 +278,15 @@ void RenderTransferWindow()
 	LogImGuiStage("RenderTransferWindow end");
 }
 
+HRESULT __stdcall hkPresent(IDirect3DDevice9* pDevice, const RECT* pSourceRect, const RECT* pDestRect, HWND hDestWindowOverride, const RGNDATA* pDirtyRegion)
+{
+	g_renderedThisFrame.store(false, std::memory_order_release);
+	return oPresent ? oPresent(pDevice, pSourceRect, pDestRect, hDestWindowOverride, pDirtyRegion) : D3DERR_INVALIDCALL;
+}
+
 HRESULT __stdcall hkReset(IDirect3DDevice9* pDevice, D3DPRESENT_PARAMETERS* pp)
 {
+	g_renderedThisFrame.store(false, std::memory_order_release);
 	if (!oReset)
 		return D3DERR_INVALIDCALL;
 
@@ -328,6 +343,42 @@ LRESULT CALLBACK hkWndProc(HWND hwnd, UINT u_msg, WPARAM w_param, LPARAM l_param
 
 HRESULT __stdcall hkEndScene(IDirect3DDevice9* pDevice)
 {
+	if (!pDevice)
+		return oEndScene ? oEndScene(pDevice) : D3DERR_INVALIDCALL;
+
+	// Verify that the current render target is the actual swapchain backbuffer.
+	// RenderWare in GTA SA renders offscreen passes (shadow maps, rear mirrors, water reflections, vehicle plates)
+	// by redirecting render target 0 to textures and calling EndScene. We must only render to the main backbuffer.
+	IDirect3DSurface9* pRenderTarget = nullptr;
+	IDirect3DSurface9* pBackBuffer = nullptr;
+	bool isMainBackBuffer = true;
+
+	if (SUCCEEDED(pDevice->GetRenderTarget(0, &pRenderTarget))) {
+		if (SUCCEEDED(pDevice->GetBackBuffer(0, 0, D3DBACKBUFFER_TYPE_MONO, &pBackBuffer))) {
+			IUnknown* pUnkRT = nullptr;
+			IUnknown* pUnkBB = nullptr;
+			if (SUCCEEDED(pRenderTarget->QueryInterface(IID_IUnknown, reinterpret_cast<void**>(&pUnkRT))) &&
+			    SUCCEEDED(pBackBuffer->QueryInterface(IID_IUnknown, reinterpret_cast<void**>(&pUnkBB)))) {
+				isMainBackBuffer = (pUnkRT == pUnkBB);
+				pUnkBB->Release();
+				pUnkRT->Release();
+			} else {
+				isMainBackBuffer = (pRenderTarget == pBackBuffer);
+			}
+			pBackBuffer->Release();
+		}
+		pRenderTarget->Release();
+	}
+
+	if (!isMainBackBuffer) {
+		return oEndScene ? oEndScene(pDevice) : D3DERR_INVALIDCALL;
+	}
+
+	// Gate rendering: only render once per frame flip.
+	if (g_renderedThisFrame.exchange(true, std::memory_order_acq_rel)) {
+		return oEndScene ? oEndScene(pDevice) : D3DERR_INVALIDCALL;
+	}
+
 	if (!g_bwasInitialized) {
 		if (!pDevice)
 			return oEndScene ? oEndScene(pDevice) : D3DERR_INVALIDCALL;
@@ -512,6 +563,7 @@ void BackgroundInitializationWorker()
 		void** vTableDevice = *(void***)(deviceAddr);
 		g_targetEndScene = vTableDevice[ENDSCENE_INDEX];
 		g_targetReset = vTableDevice[RESET_INDEX];
+		g_targetPresent = vTableDevice[PRESENT_INDEX];
 
 		MH_STATUS statusES = MH_CreateHook(g_targetEndScene, reinterpret_cast<void*>(&hkEndScene), reinterpret_cast<void**>(&oEndScene));
 		if (statusES == MH_OK) {
@@ -523,6 +575,18 @@ void BackgroundInitializationWorker()
 			}
 		} else {
 			ClientLog(LogLevel::Error, std::format("Failed to hook Direct3D 9 hkEndScene via MinHook: {}", MH_StatusToString(statusES)));
+		}
+
+		MH_STATUS statusPresent = MH_CreateHook(g_targetPresent, reinterpret_cast<void*>(&hkPresent), reinterpret_cast<void**>(&oPresent));
+		if (statusPresent == MH_OK) {
+			MH_STATUS enableStatus = MH_EnableHook(g_targetPresent);
+			if (enableStatus == MH_OK) {
+				ClientLog(LogLevel::Info, "Direct3D 9 hkPresent hooked successfully via MinHook");
+			} else {
+				ClientLog(LogLevel::Error, std::format("Failed to enable Direct3D 9 hkPresent hook: {}", MH_StatusToString(enableStatus)));
+			}
+		} else {
+			ClientLog(LogLevel::Error, std::format("Failed to hook Direct3D 9 hkPresent via MinHook: {}", MH_StatusToString(statusPresent)));
 		}
 
 		MH_STATUS statusReset = MH_CreateHook(g_targetReset, reinterpret_cast<void*>(&hkReset), reinterpret_cast<void**>(&oReset));
@@ -561,6 +625,13 @@ void c_plugin::shutdown_for_unload()
 		MH_RemoveHook(g_targetEndScene);
 		g_targetEndScene = nullptr;
 		oEndScene = nullptr;
+	}
+
+	if (g_targetPresent) {
+		MH_DisableHook(g_targetPresent);
+		MH_RemoveHook(g_targetPresent);
+		g_targetPresent = nullptr;
+		oPresent = nullptr;
 	}
 
 	if (g_targetReset) {
