@@ -497,6 +497,12 @@ void OnPlayerAuthorized(IPlayer& player)
 			player.sendPacket(Span<uint8_t>(p.data.GetData(), p.data.GetNumberOfBitsUsed()), 0, true);
 		}
 	}
+
+	ExtendedVehCompo* compo = ExtendedVehCompo::get();
+	if (compo)
+	{
+		compo->SyncCustomVehiclesToPlayer(player);
+	}
 }
 
 void OnPlayerDisconnect(IPlayer& player, PeerDisconnectReason reason)
@@ -510,7 +516,12 @@ void OnVehicleStreamIn(IVehicle& vehicle, IPlayer& player)
 	int modelid = vehicle.getModel();
 	int forplayerid = player.getID();
 
-	if (IsCustomVehicle(modelid))
+	auto boundCustomModel = CustomVehicleBindingRegistry::Instance().Get(static_cast<uint16_t>(vehicleid));
+	if (boundCustomModel)
+	{
+		SendCustomVehicleDefToPlayer(player, *boundCustomModel);
+	}
+	else if (IsCustomVehicle(modelid))
 	{
 		SendCustomVehicleDefToPlayer(player, modelid);
 	}

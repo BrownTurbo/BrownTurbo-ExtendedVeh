@@ -348,12 +348,32 @@ void ExtendedVehCompo::SyncCustomVehicleToPlayer(IVehicle& vehicle, IPlayer& pla
 	if (!customModel)
 		return;
 
+	HandlingMgr::SendCustomVehicleDefToPlayer(player, *customModel);
 	CustomVehicleTransport::SendVehicleBind(player, vId, *customModel);
 
 	auto stanceOpt = CustomVehicleBindingRegistry::Instance().GetStance(vId);
 	if (stanceOpt)
 	{
 		CustomVehicleTransport::SendVehicleStance(player, *stanceOpt);
+	}
+	else
+	{
+		float fScale = 1.0f, rScale = 1.0f, fCamber = 0.0f, rCamber = 0.0f, fTrack = 0.0f, rTrack = 0.0f;
+		if (HandlingMgr::GetCustomVehicleModelStance(*customModel, fScale, rScale, fCamber, rCamber, fTrack, rTrack))
+		{
+			if (fTrack != 0.0f || rTrack != 0.0f || fCamber != 0.0f || rCamber != 0.0f || (fScale != 1.0f && fScale > 0.01f) || (rScale != 1.0f && rScale > 0.01f))
+			{
+				CustomVeh::Protocol::VehicleStancePacket pkt {};
+				pkt.sampVehicleId = vId;
+				pkt.frontWheelScale = (fScale > 0.01f) ? fScale : 1.0f;
+				pkt.rearWheelScale = (rScale > 0.01f) ? rScale : 1.0f;
+				pkt.frontCamber = fCamber;
+				pkt.rearCamber = rCamber;
+				pkt.frontTrackWidth = fTrack;
+				pkt.rearTrackWidth = rTrack;
+				CustomVehicleTransport::SendVehicleStance(player, pkt);
+			}
+		}
 	}
 
 	auto extrasOpt = CustomVehicleBindingRegistry::Instance().GetExtras(vId);
@@ -430,11 +450,53 @@ void ExtendedVehCompo::SyncCustomVehicleToPlayer(IVehicle& vehicle, IPlayer& pla
 	{
 		CustomVehicleTransport::SendVehicleWheel(player, *wheelOpt);
 	}
+	else
+	{
+		int comp = vehicle.getComponentInSlot(VehicleComponent_Wheels);
+		if (comp == 1025 || (comp >= 1073 && comp <= 1098))
+		{
+			CustomVeh::Protocol::VehicleWheelPacket pkt {};
+			pkt.sampVehicleId = vId;
+			pkt.wheelModelId = static_cast<int16_t>(comp);
+			CustomVehicleTransport::SendVehicleWheel(player, pkt);
+		}
+		else if (customModel)
+		{
+			int16_t modelWheelId = 0;
+			if (HandlingMgr::GetCustomVehicleWheelModel(*customModel, modelWheelId) && modelWheelId > 0)
+			{
+				CustomVeh::Protocol::VehicleWheelPacket pkt {};
+				pkt.sampVehicleId = vId;
+				pkt.wheelModelId = modelWheelId;
+				CustomVehicleTransport::SendVehicleWheel(player, pkt);
+			}
+		}
+	}
 
 	auto offsetsOpt = CustomVehicleBindingRegistry::Instance().GetOffsets(vId);
 	if (offsetsOpt)
 	{
 		CustomVehicleTransport::SendVehicleOffsets(player, *offsetsOpt);
+	}
+	else if (customModel)
+	{
+		float fZ = 0.0f, rZ = 0.0f, fY = 0.0f, rY = 0.0f, cX = 0.0f, cY = 0.0f, cZ = 0.0f;
+		if (HandlingMgr::GetCustomVehicleModelOffsets(*customModel, fZ, rZ, fY, rY, cX, cY, cZ))
+		{
+			if (fZ != 0.0f || rZ != 0.0f || fY != 0.0f || rY != 0.0f || cX != 0.0f || cY != 0.0f || cZ != 0.0f)
+			{
+				CustomVeh::Protocol::VehicleOffsetsPacket pkt {};
+				pkt.sampVehicleId = vId;
+				pkt.frontWheelOffsetZ = fZ;
+				pkt.rearWheelOffsetZ = rZ;
+				pkt.frontWheelOffsetY = fY;
+				pkt.rearWheelOffsetY = rY;
+				pkt.chassisOffsetX = cX;
+				pkt.chassisOffsetY = cY;
+				pkt.chassisOffsetZ = cZ;
+				CustomVehicleTransport::SendVehicleOffsets(player, pkt);
+			}
+		}
 	}
 
 	auto plateOpt = CustomVehicleBindingRegistry::Instance().GetPlate(vId);
@@ -522,6 +584,32 @@ bool ExtendedVehCompo::onVehiclePaintJob(IPlayer& player, IVehicle& vehicle, int
 				if (p && gPlayers.HasExtendedVeh(p->getID()))
 				{
 					CustomVehicleTransport::SendVehiclePaintjob(*p, pkt);
+				}
+			}
+		}
+	}
+	return true;
+}
+
+bool ExtendedVehCompo::onVehicleMod(IPlayer& player, IVehicle& vehicle, int component)
+{
+	uint16_t vId = static_cast<uint16_t>(vehicle.getID());
+	if (CustomVehicleBindingRegistry::Instance().Get(vId))
+	{
+		if (component == 1025 || (component >= 1073 && component <= 1098))
+		{
+			CustomVehicleBindingRegistry::Instance().SetWheel(vId, static_cast<int16_t>(component));
+			CustomVeh::Protocol::VehicleWheelPacket pkt {};
+			pkt.sampVehicleId = vId;
+			pkt.wheelModelId = static_cast<int16_t>(component);
+			if (core_)
+			{
+				for (IPlayer* p : core_->getPlayers().players())
+				{
+					if (p && gPlayers.HasExtendedVeh(p->getID()))
+					{
+						CustomVehicleTransport::SendVehicleWheel(*p, pkt);
+					}
 				}
 			}
 		}

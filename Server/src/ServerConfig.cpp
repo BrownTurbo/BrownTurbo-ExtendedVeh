@@ -13,11 +13,11 @@ ServerConfig& ServerConfig::Instance()
 static nlohmann::json ConfigToJson(const ServerConfig& cfg)
 {
 	return {
-		{"FileTransferChannel", cfg.fileTransferChannel},
-		{"ChunksPerPlayerPerTick", cfg.chunksPerPlayerPerTick},
-		{"MaxActiveTransfersPerPlayer", cfg.maxActiveTransfersPerPlayer},
-		{"MaxModelFileSizeBytes", cfg.maxModelFileSizeBytes},
-		{"ModelsDirectory", cfg.modelsDirectory}
+		{ "FileTransferChannel", cfg.fileTransferChannel },
+		{ "ChunksPerPlayerPerTick", cfg.chunksPerPlayerPerTick },
+		{ "MaxActiveTransfersPerPlayer", cfg.maxActiveTransfersPerPlayer },
+		{ "MaxModelFileSizeBytes", cfg.maxModelFileSizeBytes },
+		{ "ModelsDirectory", cfg.modelsDirectory }
 	};
 }
 

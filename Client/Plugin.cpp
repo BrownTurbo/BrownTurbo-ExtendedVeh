@@ -159,45 +159,57 @@ static void __fastcall Hooked_UpdateWheelMatrix(CAutomobile* thisCar, void* edx,
 
 	if (nodeIndex >= CAR_WHEEL_RF && nodeIndex <= CAR_WHEEL_LB && thisCar->m_aCarNodes[nodeIndex]) {
 		auto* binding = CustomVehicleBindingManager::Instance().FindByVehicle(thisCar);
-		if (binding && binding->modelApplied && thisCar->m_pRwObject && (binding->hasStance || binding->hasOffsets)) {
-			bool isFront = (nodeIndex == CAR_WHEEL_RF || nodeIndex == CAR_WHEEL_LF);
-			bool isRight = (nodeIndex == CAR_WHEEL_RF || nodeIndex == CAR_WHEEL_RM || nodeIndex == CAR_WHEEL_RB);
-			float scale = isFront ? binding->frontWheelScale : binding->rearWheelScale;
-			float camber = isFront ? binding->frontCamber : binding->rearCamber;
-			float trackWidth = isFront ? binding->frontTrackWidth : binding->rearTrackWidth;
-			float offsetZ = isFront ? binding->frontWheelOffsetZ : binding->rearWheelOffsetZ;
-			float offsetY = isFront ? binding->frontWheelOffsetY : binding->rearWheelOffsetY;
-
-			RwFrame* wheelFrame = thisCar->m_aCarNodes[nodeIndex];
-			if (wheelFrame) {
-				bool modified = false;
-
-				if (trackWidth != 0.0f) {
-					wheelFrame->modelling.pos.x += isRight ? trackWidth : -trackWidth;
-					modified = true;
+		if (binding && binding->modelApplied && thisCar->m_pRwObject) {
+			if (!binding->hasOffsets) {
+				CustomVehicleBindingManager::ModelOffsetConfig cfg;
+				if (CustomVehicleBindingManager::GetModelOffsets(binding->customModelId, cfg)) {
+					CustomVehicleBindingManager::ApplyModelOffsetsToBinding(*binding, cfg);
 				}
+			}
+			if (binding->hasStance || binding->hasOffsets) {
+				bool isFront = (nodeIndex == CAR_WHEEL_RF || nodeIndex == CAR_WHEEL_LF);
+				bool isRight = (nodeIndex == CAR_WHEEL_RF || nodeIndex == CAR_WHEEL_RM || nodeIndex == CAR_WHEEL_RB);
+				float scale = isFront ? binding->frontWheelScale : binding->rearWheelScale;
+				float camber = isFront ? binding->frontCamber : binding->rearCamber;
+				float trackWidth = isFront ? binding->frontTrackWidth : binding->rearTrackWidth;
+				float offsetZ = isFront ? binding->frontWheelOffsetZ : binding->rearWheelOffsetZ;
+				float offsetY = isFront ? binding->frontWheelOffsetY : binding->rearWheelOffsetY;
 
-				if (offsetY != 0.0f) {
-					wheelFrame->modelling.pos.y += offsetY;
-					modified = true;
-				}
+				RwFrame* wheelFrame = thisCar->m_aCarNodes[nodeIndex];
+				if (wheelFrame) {
+					bool modified = false;
 
-				if (offsetZ != 0.0f) {
-					wheelFrame->modelling.pos.z += offsetZ;
-					modified = true;
-				}
+					if (trackWidth != 0.0f) {
+						wheelFrame->modelling.pos.x += isRight ? trackWidth : -trackWidth;
+						modified = true;
+					}
 
-				if (camber != 0.0f) {
-					float angle = isRight ? camber : -camber;
-					RwV3d yAxis = { 0.0f, 1.0f, 0.0f };
-					RwMatrixRotate(&wheelFrame->modelling, &yAxis, angle, rwCOMBINEPRECONCAT);
-					modified = true;
-				}
+					if (offsetY != 0.0f) {
+						wheelFrame->modelling.pos.y += offsetY;
+						modified = true;
+					}
 
-				if (scale != 1.0f && scale > 0.01f) {
-					RwV3d scaleVec = { scale, scale, scale };
-					RwMatrixScale(&wheelFrame->modelling, &scaleVec, rwCOMBINEPRECONCAT);
-					modified = true;
+					if (offsetZ != 0.0f) {
+						wheelFrame->modelling.pos.z += offsetZ;
+						modified = true;
+					}
+
+					if (camber != 0.0f) {
+						float angle = isRight ? camber : -camber;
+						RwV3d yAxis = { 0.0f, 1.0f, 0.0f };
+						RwMatrixRotate(&wheelFrame->modelling, &yAxis, angle, rwCOMBINEPRECONCAT);
+						modified = true;
+					}
+
+					if (scale != 1.0f && scale > 0.01f) {
+						RwV3d scaleVec = { scale, scale, scale };
+						RwMatrixScale(&wheelFrame->modelling, &scaleVec, rwCOMBINEPRECONCAT);
+						modified = true;
+					}
+
+					if (modified) {
+						RwFrameUpdateObjects(wheelFrame);
+					}
 				}
 			}
 		}
@@ -1313,8 +1325,7 @@ static void __fastcall Hooked_CVehicle_SetupRender(CVehicle* thisVeh, void* edx)
 				thisVeh->m_nPrimaryColor,
 				thisVeh->m_nSecondaryColor,
 				thisVeh->m_nTertiaryColor,
-				thisVeh->m_nQuaternaryColor
-			);
+				thisVeh->m_nQuaternaryColor);
 		}
 	}
 }
@@ -1512,10 +1523,14 @@ static RwFrame* __cdecl Hooked_GetFrameFromId(RpClump* clump, int id)
 
 	if (id == CAR_CHASSIS) {
 		RwFrame* chassis = CClumpModelInfo::GetFrameFromName(clump, "chassis_dummy");
-		if (!chassis) chassis = CClumpModelInfo::GetFrameFromName(clump, "chassis");
-		if (!chassis) chassis = CClumpModelInfo::GetFrameFromName(clump, "body");
-		if (!chassis) chassis = CClumpModelInfo::GetFrameFromName(clump, "carbody");
-		if (chassis) return chassis;
+		if (!chassis)
+			chassis = CClumpModelInfo::GetFrameFromName(clump, "chassis");
+		if (!chassis)
+			chassis = CClumpModelInfo::GetFrameFromName(clump, "body");
+		if (!chassis)
+			chassis = CClumpModelInfo::GetFrameFromName(clump, "carbody");
+		if (chassis)
+			return chassis;
 	}
 
 	// For custom models with missing dummy/component frames during upgrade installation
@@ -1528,8 +1543,10 @@ static RwFrame* __cdecl Hooked_GetFrameFromId(RpClump* clump, int id)
 				return chassis;
 		}
 		RwFrame* fallbackChassis = CClumpModelInfo::GetFrameFromName(clump, "chassis_dummy");
-		if (!fallbackChassis) fallbackChassis = CClumpModelInfo::GetFrameFromName(clump, "chassis");
-		if (!fallbackChassis) fallbackChassis = CClumpModelInfo::GetFrameFromName(clump, "body");
+		if (!fallbackChassis)
+			fallbackChassis = CClumpModelInfo::GetFrameFromName(clump, "chassis");
+		if (!fallbackChassis)
+			fallbackChassis = CClumpModelInfo::GetFrameFromName(clump, "body");
 		if (fallbackChassis)
 			return fallbackChassis;
 	}
@@ -1568,8 +1585,7 @@ static void __fastcall Hooked_AddUpgrade(CVehicle* thisVehicle, void* edx, int m
 		// Safety check: ensure customModel's m_aUpgrades has valid parentComponentId from baseModel
 		if (customModel && customModel->m_pVehicleStruct && baseModel && baseModel->m_pVehicleStruct) {
 			for (int u = 0; u < 18; ++u) {
-				if (customModel->m_pVehicleStruct->m_aUpgrades[u].m_nParentComponentId == 0 &&
-					baseModel->m_pVehicleStruct->m_aUpgrades[u].m_nParentComponentId != 0) {
+				if (customModel->m_pVehicleStruct->m_aUpgrades[u].m_nParentComponentId == 0 && baseModel->m_pVehicleStruct->m_aUpgrades[u].m_nParentComponentId != 0) {
 					customModel->m_pVehicleStruct->m_aUpgrades[u] = baseModel->m_pVehicleStruct->m_aUpgrades[u];
 				}
 			}
@@ -1639,8 +1655,7 @@ static void __fastcall Hooked_RemoveUpgrade(CVehicle* thisVehicle, void* edx, in
 
 		if (customModel && customModel->m_pVehicleStruct && baseModel && baseModel->m_pVehicleStruct) {
 			for (int u = 0; u < 18; ++u) {
-				if (customModel->m_pVehicleStruct->m_aUpgrades[u].m_nParentComponentId == 0 &&
-					baseModel->m_pVehicleStruct->m_aUpgrades[u].m_nParentComponentId != 0) {
+				if (customModel->m_pVehicleStruct->m_aUpgrades[u].m_nParentComponentId == 0 && baseModel->m_pVehicleStruct->m_aUpgrades[u].m_nParentComponentId != 0) {
 					customModel->m_pVehicleStruct->m_aUpgrades[u] = baseModel->m_pVehicleStruct->m_aUpgrades[u];
 				}
 			}
@@ -2777,7 +2792,8 @@ private:
 								}
 
 								float wheelRadius = (w == CAR_WHEEL_LF || w == CAR_WHEEL_RF) ? (newModel->m_fWheelSizeFront * 0.5f) : (newModel->m_fWheelSizeRear * 0.5f);
-								if (wheelRadius < 0.1f) wheelRadius = 0.35f;
+								if (wheelRadius < 0.1f)
+									wheelRadius = 0.35f;
 
 								CColLine& line = colData->m_pLines[w];
 								line.m_vecStart = CVector(wheelPos.x, wheelPos.y, wheelPos.z + upper);

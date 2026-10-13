@@ -1,6 +1,6 @@
 #include "utils.h"
-#include <plugin_sa.h>
 #include <game_sa/CPad.h>
+#include <plugin_sa.h>
 #include "CryptoUtility.h"
 #include <atomic>
 #include <fstream>

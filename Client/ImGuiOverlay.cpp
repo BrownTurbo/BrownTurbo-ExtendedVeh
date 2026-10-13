@@ -357,8 +357,7 @@ HRESULT __stdcall hkEndScene(IDirect3DDevice9* pDevice)
 		if (SUCCEEDED(pDevice->GetBackBuffer(0, 0, D3DBACKBUFFER_TYPE_MONO, &pBackBuffer))) {
 			IUnknown* pUnkRT = nullptr;
 			IUnknown* pUnkBB = nullptr;
-			if (SUCCEEDED(pRenderTarget->QueryInterface(IID_IUnknown, reinterpret_cast<void**>(&pUnkRT))) &&
-			    SUCCEEDED(pBackBuffer->QueryInterface(IID_IUnknown, reinterpret_cast<void**>(&pUnkBB)))) {
+			if (SUCCEEDED(pRenderTarget->QueryInterface(IID_IUnknown, reinterpret_cast<void**>(&pUnkRT))) && SUCCEEDED(pBackBuffer->QueryInterface(IID_IUnknown, reinterpret_cast<void**>(&pUnkBB)))) {
 				isMainBackBuffer = (pUnkRT == pUnkBB);
 				pUnkBB->Release();
 				pUnkRT->Release();
