@@ -115,7 +115,7 @@ jobs:
       uses: lukka/get-cmake@latest
 
     - name: Add MSBuild to PATH
-      uses: microsoft/setup-msbuild@v2.0.0
+      uses: microsoft/setup-msbuild@v3.0.0
 
     - name: Preparing some...
       working-directory: ${{github.workspace}}
