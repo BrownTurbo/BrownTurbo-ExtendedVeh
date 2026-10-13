@@ -45,7 +45,7 @@ jobs:
       VCPKG_ROOT: ${{ github.workspace }}/vcpkg
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
       with:
         clean: true
         fetch-depth: 0
@@ -80,7 +80,7 @@ jobs:
       run: cmake --build ${{github.workspace}}/build/Server --config ${{env.BUILD_TYPE}} --parallel 4
 
     - name: Upload Linux Server Artifact
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: ExtendedVehicles-Linux-${{ matrix.build-type }}
         path: |
@@ -103,7 +103,7 @@ jobs:
       VCPKG_ROOT: ${{ github.workspace }}/vcpkg
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
       with:
         clean: true
         fetch-depth: 0
@@ -115,7 +115,7 @@ jobs:
       uses: lukka/get-cmake@latest
 
     - name: Add MSBuild to PATH
-      uses: microsoft/setup-msbuild@v2.0.0
+      uses: microsoft/setup-msbuild@v3.0.0
 
     - name: Preparing some...
       working-directory: ${{github.workspace}}
@@ -158,14 +158,14 @@ jobs:
         }
 
     - name: Upload Windows Client Artifact (ASI)
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: BrownTurbo-ExtendedVeh-Win32-ASI-${{ matrix.build-type }}
         path: dist/brownturbo-extendedveh.asi
         if-no-files-found: error
 
     - name: Upload Windows Server Artifact (DLL)
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: ExtendedVehicles-Win32-Server-${{ matrix.build-type }}
         path: dist/extended-vehicles.dll
