@@ -175,7 +175,7 @@ void HandlingManager::ApplyAttribEntries(tHandlingData* handling, const std::vec
 			float maxSpeedKph = e.value.f;
 			float speedGameUnits = maxSpeedKph / 180.0f;
 			handling->m_transmissionData.m_fMaxGearVelocity = speedGameUnits * 1.2f;
-			handling->m_transmissionData.field_5C = speedGameUnits;
+			*reinterpret_cast<float*>(&handling->m_transmissionData.field_5C) = speedGameUnits;
 			float minGearVel = -speedGameUnits * 0.3f;
 			if (minGearVel < -0.2f) {
 				minGearVel = -0.2f;
@@ -1586,7 +1586,11 @@ bool HandlingManager::ProcessAction(CustomVehAction action, RakNet::BitStream* b
 		CustomVeh::Protocol::VehicleBinding binding {};
 		if (bs->Read(reinterpret_cast<char*>(&binding), sizeof(binding))) {
 			ClientLog(LogLevel::Info, std::format("CustomVehicleBind: vehId={}, customModelId={}", binding.sampVehicleId, binding.customModelId));
-			CustomVehicleBindingManager::Instance().Bind(binding.sampVehicleId, binding.customModelId);
+			uint16_t vehicleId = binding.sampVehicleId;
+			uint32_t customModelId = binding.customModelId;
+			MainThreadQueue::Instance().Push([vehicleId, customModelId]() {
+				CustomVehicleBindingManager::Instance().Bind(vehicleId, customModelId);
+			});
 		} else {
 			ClientLog(LogLevel::Error, "CustomVehicleBind: Failed to read binding");
 			return false;

@@ -189,16 +189,14 @@ public:
 		if (def.modelInfo.wheelScaleRear > 0.001f) {
 			newModel->m_fWheelSizeRear = def.modelInfo.wheelScaleRear;
 		}
-		if (def.modelInfo.wheelModelId > 0) {
-			newModel->m_nWheelModelIndex = def.modelInfo.wheelModelId;
-		}
+		newModel->m_nWheelModelIndex = def.modelInfo.wheelModelId;
 		if (def.modelInfo.vehicleClass != 0xFF) {
 			newModel->m_nVehicleClass = def.modelInfo.vehicleClass;
 		}
 		if (def.modelInfo.frequency > 0) {
 			newModel->m_nFrq = def.modelInfo.frequency;
 		}
-		if (def.modelInfo.wheelUpgradeClass != 0xFF && def.modelInfo.wheelUpgradeClass != 0) {
+		if (def.modelInfo.wheelUpgradeClass != 0xFF) {
 			newModel->m_nWheelUpgradeClass = def.modelInfo.wheelUpgradeClass;
 		}
 		if (def.modelInfo.comprate != 0) {

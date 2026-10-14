@@ -72,3 +72,44 @@ std::string GetCurrentServerHash();
 std::string Sha256HexOfBuffer(const unsigned char* data, unsigned int size);
 bool IsRcVehicleModel(int modelIndex);
 bool IsHeavyVehicleModel(int modelIndex);
+
+inline void UseCommonVehicleTexDictionary()
+{
+	// GTA SA 0x004C75A0 saves previous texture find callback into [0x00B4E6A0]
+	// and sets CVehicleModelInfo::FindTextureCB (0x004C7510).
+	// Prevent clobbering if already active.
+	if (*reinterpret_cast<void**>(0x00B4E6A0) == nullptr) {
+		reinterpret_cast<void(__cdecl*)()>(0x004C75A0)();
+	}
+}
+
+inline void StopUsingCommonVehicleTexDictionary()
+{
+	// GTA SA 0x004C75C0 restores texture find callback from [0x00B4E6A0] and clears it to 0.
+	// Only call if [0x00B4E6A0] != nullptr to avoid setting the callback to nullptr (which crashes on texture read).
+	if (*reinterpret_cast<void**>(0x00B4E6A0) != nullptr) {
+		reinterpret_cast<void(__cdecl*)()>(0x004C75C0)();
+	}
+}
+
+struct CommonVehicleTexDictionaryGuard {
+	bool m_active { false };
+
+	CommonVehicleTexDictionaryGuard() {
+		if (*reinterpret_cast<void**>(0x00B4E6A0) == nullptr) {
+			UseCommonVehicleTexDictionary();
+			m_active = true;
+		}
+	}
+
+	~CommonVehicleTexDictionaryGuard() {
+		if (m_active) {
+			StopUsingCommonVehicleTexDictionary();
+			m_active = false;
+		}
+	}
+
+	CommonVehicleTexDictionaryGuard(const CommonVehicleTexDictionaryGuard&) = delete;
+	CommonVehicleTexDictionaryGuard& operator=(const CommonVehicleTexDictionaryGuard&) = delete;
+};
+

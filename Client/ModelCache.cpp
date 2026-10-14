@@ -1,13 +1,185 @@
 #include "ModelCache.h"
 #include "CryptoUtility.h"
 
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#ifdef min
+#undef min
+#endif
+#ifdef max
+#undef max
+#endif
+
 #include <nlohmann/json.hpp>
 
+#include <algorithm>
 #include <chrono>
 #include <ctime>
+#include <format>
 #include <fstream>
 #include <mutex>
 #include <unordered_map>
+
+static bool WriteBufferToFileWin32(const fs::path& filePath, const uint8_t* data, size_t size)
+{
+	if (!data || size == 0)
+		return false;
+
+	std::error_code ec;
+	fs::create_directories(filePath.parent_path(), ec);
+
+	// Clear any read-only attribute on target if it already exists
+	SetFileAttributesW(filePath.c_str(), FILE_ATTRIBUTE_NORMAL);
+
+	// Step 1: Attempt direct writing to target path with retry.
+	// Overwriting in-place with CREATE_ALWAYS avoids all file renaming / sharing violations on Windows.
+	HANDLE hFile = INVALID_HANDLE_VALUE;
+	for (int attempt = 0; attempt < 8; ++attempt) {
+		hFile = CreateFileW(
+			filePath.c_str(),
+			GENERIC_WRITE,
+			FILE_SHARE_READ | FILE_SHARE_WRITE,
+			NULL,
+			CREATE_ALWAYS,
+			FILE_ATTRIBUTE_NORMAL | FILE_FLAG_SEQUENTIAL_SCAN,
+			NULL);
+
+		if (hFile != INVALID_HANDLE_VALUE)
+			break;
+
+		DWORD err = GetLastError();
+		if (err == ERROR_SHARING_VIOLATION || err == ERROR_ACCESS_DENIED) {
+			Sleep(40);
+			continue;
+		}
+		break;
+	}
+
+	if (hFile != INVALID_HANDLE_VALUE) {
+		// Pre-allocate file size on disk to eliminate fragmentation and verify disk space
+		LARGE_INTEGER liSize;
+		liSize.QuadPart = static_cast<LONGLONG>(size);
+		SetFilePointerEx(hFile, liSize, NULL, FILE_BEGIN);
+		SetEndOfFile(hFile);
+		SetFilePointer(hFile, 0, NULL, FILE_BEGIN);
+
+		// Write data in 1 MB chunks to guarantee safe 32-bit I/O
+		constexpr DWORD CHUNK_SIZE = 1024 * 1024;
+		const uint8_t* pCurrent = data;
+		size_t remaining = size;
+		bool writeOk = true;
+
+		while (remaining > 0) {
+			DWORD toWrite = (remaining < CHUNK_SIZE) ? static_cast<DWORD>(remaining) : CHUNK_SIZE;
+			DWORD written = 0;
+			if (!WriteFile(hFile, pCurrent, toWrite, &written, NULL) || written != toWrite) {
+				writeOk = false;
+				break;
+			}
+			pCurrent += written;
+			remaining -= written;
+		}
+
+		FlushFileBuffers(hFile);
+		CloseHandle(hFile);
+
+		if (writeOk) {
+			return true;
+		} else {
+			DeleteFileW(filePath.c_str());
+		}
+	}
+
+	// Step 2: Fallback path - If direct open was locked by a persistent handle,
+	// write to a temporary file and atomically replace/move with retries.
+	fs::path tempPath = filePath.string() + ".tmp";
+	SetFileAttributesW(tempPath.c_str(), FILE_ATTRIBUTE_NORMAL);
+
+	hFile = CreateFileW(
+		tempPath.c_str(),
+		GENERIC_WRITE,
+		FILE_SHARE_READ | FILE_SHARE_WRITE,
+		NULL,
+		CREATE_ALWAYS,
+		FILE_ATTRIBUTE_NORMAL | FILE_FLAG_SEQUENTIAL_SCAN,
+		NULL);
+
+	if (hFile == INVALID_HANDLE_VALUE) {
+		ClientLog(LogLevel::Error, std::format("WriteBufferToFileWin32: Failed to create temp file '{}' (err={})", tempPath.string(), GetLastError()));
+		return false;
+	}
+
+	LARGE_INTEGER liSize;
+	liSize.QuadPart = static_cast<LONGLONG>(size);
+	SetFilePointerEx(hFile, liSize, NULL, FILE_BEGIN);
+	SetEndOfFile(hFile);
+	SetFilePointer(hFile, 0, NULL, FILE_BEGIN);
+
+	constexpr DWORD CHUNK_SIZE = 1024 * 1024;
+	const uint8_t* pCurrent = data;
+	size_t remaining = size;
+	bool writeOk = true;
+
+	while (remaining > 0) {
+		DWORD toWrite = (remaining < CHUNK_SIZE) ? static_cast<DWORD>(remaining) : CHUNK_SIZE;
+		DWORD written = 0;
+		if (!WriteFile(hFile, pCurrent, toWrite, &written, NULL) || written != toWrite) {
+			writeOk = false;
+			break;
+		}
+		pCurrent += written;
+		remaining -= written;
+	}
+
+	FlushFileBuffers(hFile);
+	CloseHandle(hFile);
+
+	if (!writeOk) {
+		DeleteFileW(tempPath.c_str());
+		ClientLog(LogLevel::Error, std::format("WriteBufferToFileWin32: Failed writing data to temp file '{}'", tempPath.string()));
+		return false;
+	}
+
+	// Step 3: Replace target with temp file using retries (giving AV scanner time to release its handle)
+	bool replaced = false;
+	for (int attempt = 0; attempt < 15; ++attempt) {
+		if (ReplaceFileW(filePath.c_str(), tempPath.c_str(), NULL, REPLACEFILE_IGNORE_MERGE_ERRORS, NULL, NULL)) {
+			replaced = true;
+			break;
+		}
+
+		DWORD rErr = GetLastError();
+		// If destination doesn't exist yet, ReplaceFileW returns ERROR_FILE_NOT_FOUND
+		if (rErr == ERROR_FILE_NOT_FOUND) {
+			if (MoveFileExW(tempPath.c_str(), filePath.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_COPY_ALLOWED)) {
+				replaced = true;
+				break;
+			}
+		}
+
+		if (MoveFileExW(tempPath.c_str(), filePath.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_COPY_ALLOWED)) {
+			replaced = true;
+			break;
+		}
+
+		Sleep(50);
+	}
+
+	if (!replaced) {
+		DeleteFileW(filePath.c_str());
+		if (MoveFileExW(tempPath.c_str(), filePath.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_COPY_ALLOWED)) {
+			replaced = true;
+		} else {
+			DeleteFileW(tempPath.c_str());
+			ClientLog(LogLevel::Error, std::format("WriteBufferToFileWin32: Failed to rename '{}' to '{}' after retries (err={})", tempPath.string(), filePath.string(), GetLastError()));
+			return false;
+		}
+	}
+
+	return true;
+}
 
 struct AssetRecord {
 	std::string sha256;
@@ -119,14 +291,8 @@ void ModelCache::UpdateServersMasterIndex(const std::string& serverAddr, const s
 		{ "lastConnected", std::time(nullptr) }
 	};
 
-	fs::path tempFile = masterFile.string() + ".tmp";
-	std::ofstream out(tempFile, std::ios::trunc);
-	if (out.is_open()) {
-		out << root.dump(2);
-		out.close();
-		fs::remove(masterFile, ec);
-		fs::rename(tempFile, masterFile, ec);
-	}
+	std::string dumped = root.dump(2);
+	WriteBufferToFileWin32(masterFile, reinterpret_cast<const uint8_t*>(dumped.data()), dumped.size());
 }
 
 void ModelCache::EnsureServerInitialized()
@@ -253,14 +419,8 @@ void ModelCache::SaveManifest()
 	}
 
 	fs::path manifestFile = serverDir / "cache.json";
-	fs::path tempFile = manifestFile.string() + ".tmp";
-	std::ofstream out(tempFile, std::ios::trunc);
-	if (out.is_open()) {
-		out << root.dump(2);
-		out.close();
-		fs::remove(manifestFile, ec);
-		fs::rename(tempFile, manifestFile, ec);
-	}
+	std::string dumped = root.dump(2);
+	WriteBufferToFileWin32(manifestFile, reinterpret_cast<const uint8_t*>(dumped.data()), dumped.size());
 }
 
 fs::path ModelCache::PathFor(uint32_t modelId, uint8_t fileKind) const
@@ -366,15 +526,18 @@ void ModelCache::Invalidate(uint32_t modelId, uint8_t fileKind)
 	std::error_code ec;
 	if (it != m_impl->assets.end()) {
 		fs::path p = GetServerCacheRoot() / it->second.relPath;
+		SetFileAttributesW(p.c_str(), FILE_ATTRIBUTE_NORMAL);
 		fs::remove(p, ec);
 		m_impl->assets.erase(it);
 		SaveManifest();
 	}
 
 	fs::path standard = GetServerCacheRoot() / std::to_string(modelId) / GetAssetFileName(fileKind, false);
+	SetFileAttributesW(standard.c_str(), FILE_ATTRIBUTE_NORMAL);
 	fs::remove(standard, ec);
 	if (fileKind >= 3 && fileKind <= 7) {
 		fs::path wav = GetServerCacheRoot() / std::to_string(modelId) / GetAssetFileName(fileKind, true);
+		SetFileAttributesW(wav.c_str(), FILE_ATTRIBUTE_NORMAL);
 		fs::remove(wav, ec);
 	}
 }
@@ -400,26 +563,8 @@ bool ModelCache::Store(uint32_t modelId, uint8_t fileKind,
 	fs::path relPath = fs::path(std::to_string(modelId)) / fileName;
 	fs::path finalPath = GetServerCacheRoot() / relPath;
 
-	std::error_code ec;
-	fs::create_directories(finalPath.parent_path(), ec);
-
-	fs::path tempPath = finalPath.string() + ".tmp";
-	{
-		std::ofstream file(tempPath, std::ios::binary | std::ios::trunc);
-		if (!file.is_open())
-			return false;
-		file.write(reinterpret_cast<const char*>(decompressedBytes.data()), decompressedBytes.size());
-		file.close();
-		if (!file) {
-			fs::remove(tempPath, ec);
-			return false;
-		}
-	}
-
-	fs::remove(finalPath, ec);
-	fs::rename(tempPath, finalPath, ec);
-	if (ec) {
-		fs::remove(tempPath, ec);
+	if (!WriteBufferToFileWin32(finalPath, decompressedBytes.data(), decompressedBytes.size())) {
+		ClientLog(LogLevel::Error, std::format("ModelCache::Store: Failed writing asset modelId={}, kind={}, file='{}' ({} bytes)", modelId, static_cast<int>(fileKind), finalPath.string(), decompressedBytes.size()));
 		return false;
 	}
 

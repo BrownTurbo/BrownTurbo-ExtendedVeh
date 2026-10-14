@@ -179,6 +179,12 @@ static void __fastcall Hooked_UpdateWheelMatrix(CAutomobile* thisCar, void* edx,
 				if (wheelFrame) {
 					bool modified = false;
 
+					if (!std::isfinite(trackWidth)) trackWidth = 0.0f;
+					if (!std::isfinite(offsetY)) offsetY = 0.0f;
+					if (!std::isfinite(offsetZ)) offsetZ = 0.0f;
+					if (!std::isfinite(camber)) camber = 0.0f;
+					if (!std::isfinite(scale) || scale <= 0.01f) scale = 1.0f;
+
 					if (trackWidth != 0.0f) {
 						wheelFrame->modelling.pos.x += isRight ? trackWidth : -trackWidth;
 						modified = true;
@@ -201,7 +207,7 @@ static void __fastcall Hooked_UpdateWheelMatrix(CAutomobile* thisCar, void* edx,
 						modified = true;
 					}
 
-					if (scale != 1.0f && scale > 0.01f) {
+					if (scale != 1.0f) {
 						RwV3d scaleVec = { scale, scale, scale };
 						RwMatrixScale(&wheelFrame->modelling, &scaleVec, rwCOMBINEPRECONCAT);
 						modified = true;
@@ -1594,6 +1600,12 @@ static void __fastcall Hooked_AddUpgrade(CVehicle* thisVehicle, void* edx, int m
 		DummySwapGuard guard(baseModel, customModel);
 		if (g_origAddUpgrade)
 			g_origAddUpgrade(thisVehicle, edx, modelIndex, upgradeIndex);
+
+		if (modelIndex == 1025 || (modelIndex >= 1073 && modelIndex <= 1098)) {
+			binding->customWheelModelId = static_cast<int16_t>(modelIndex);
+			binding->hasCustomWheel = true;
+		}
+
 		if (binding->hasWheelColor && modelIndex >= 1025 && modelIndex <= 1098) {
 			CustomVehicleBindingManager::Instance().ApplyWheelColorToVehicle(thisVehicle, binding->wheelColorR, binding->wheelColorG, binding->wheelColorB);
 		}
@@ -1628,6 +1640,11 @@ static void __fastcall Hooked_AddReplacementUpgrade(CVehicle* thisVehicle, void*
 		DummySwapGuard guard(baseModel, customModel);
 		if (g_origAddReplacementUpgrade)
 			g_origAddReplacementUpgrade(thisVehicle, edx, modelIndex, nodeId);
+
+		if (modelIndex == 1025 || (modelIndex >= 1073 && modelIndex <= 1098)) {
+			binding->customWheelModelId = static_cast<int16_t>(modelIndex);
+			binding->hasCustomWheel = true;
+		}
 
 		if (binding->hasWheelColor) {
 			CustomVehicleBindingManager::Instance().ApplyWheelColorToVehicle(thisVehicle, binding->wheelColorR, binding->wheelColorG, binding->wheelColorB);
@@ -1664,6 +1681,11 @@ static void __fastcall Hooked_RemoveUpgrade(CVehicle* thisVehicle, void* edx, in
 		DummySwapGuard guard(baseModel, customModel);
 		if (g_origRemoveUpgrade)
 			g_origRemoveUpgrade(thisVehicle, edx, upgradeIndex);
+
+		if (upgradeIndex == 1025 || (upgradeIndex >= 1073 && upgradeIndex <= 1098)) {
+			binding->hasCustomWheel = false;
+			binding->customWheelModelId = -1;
+		}
 		return;
 	}
 
@@ -2670,16 +2692,13 @@ private:
 				auto SetCollisionModel = reinterpret_cast<void(__cdecl*)(CBaseModelInfo*)>(0x0041B350);
 				SetCollisionModel(newModel);
 				*reinterpret_cast<CBaseModelInfo**>(0x009689E0) = newModel;
-				auto UseCommonVehicleTexDictionary = reinterpret_cast<void(__cdecl*)()>(0x004C75A0);
-				auto StopUsingCommonVehicleTexDictionary = reinterpret_cast<void(__cdecl*)()>(0x004C75C0);
-				UseCommonVehicleTexDictionary();
+				CommonVehicleTexDictionaryGuard texGuard;
 
 				uint32_t clumpException = 0;
 				RpClump* pClump = SafeRpClumpStreamRead(dffStream, &clumpException);
 
 				SetCollisionModel(nullptr);
 				*reinterpret_cast<CBaseModelInfo**>(0x009689E0) = nullptr;
-				StopUsingCommonVehicleTexDictionary();
 				s_bLoadingCustomVehicleDff = false;
 
 				ClientLog(LogLevel::Debug, std::format("RpClumpStreamRead model {} -> clump=0x{:08X} (exc=0x{:08X})", pending->def.customModelId, reinterpret_cast<std::uintptr_t>(pClump), clumpException));

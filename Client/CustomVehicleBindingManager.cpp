@@ -56,20 +56,14 @@ static void ApplyPlateTextPixelSize(RpMaterial* material, uint8_t pixelSize)
 
 	const size_t bufferSize = static_cast<size_t>(raster->stride) * baseHeight;
 	std::vector<RwUInt8> original(pixels, pixels + bufferSize);
-	std::memset(pixels, 0, bufferSize);
 
 	const int outputHeight = pixelSize;
-	const int outputWidth = std::max(1, (baseWidth * outputHeight + baseHeight / 2) / baseHeight);
-	const int xOffset = (baseWidth - outputWidth) / 2;
 	const int yOffset = (baseHeight - outputHeight) / 2;
 	for (int y = 0; y < outputHeight; ++y) {
 		const int sourceY = y * baseHeight / outputHeight;
-		for (int x = 0; x < outputWidth; ++x) {
-			const int sourceX = x * baseWidth / outputWidth;
-			const size_t sourceOffset = static_cast<size_t>(sourceY) * raster->stride + sourceX * 4;
-			const size_t targetOffset = static_cast<size_t>(y + yOffset) * raster->stride + (x + xOffset) * 4;
-			std::memcpy(pixels + targetOffset, original.data() + sourceOffset, 4);
-		}
+		const size_t sourceRowOffset = static_cast<size_t>(sourceY) * raster->stride;
+		const size_t targetRowOffset = static_cast<size_t>(y + yOffset) * raster->stride;
+		std::memcpy(pixels + targetRowOffset, original.data() + sourceRowOffset, static_cast<size_t>(baseWidth) * 4);
 	}
 	RwRasterUnlock(raster);
 }
@@ -232,7 +226,7 @@ void CustomVehicleBindingManager::Bind(uint16_t vehicleId, uint32_t customModelI
 	auto existing = m_bindings.find(vehicleId);
 	if (existing != m_bindings.end()) {
 		Binding& binding = existing->second;
-		if (binding.customModelId == customModelId && binding.modelApplied) {
+		if (binding.customModelId == customModelId) {
 			{
 				std::lock_guard baseLock(s_baseModelMutex);
 				auto baseIt = s_baseModelIds.find(customModelId);
@@ -243,7 +237,28 @@ void CustomVehicleBindingManager::Bind(uint16_t vehicleId, uint32_t customModelI
 					baseModelId = baseIt->second;
 				}
 			}
-			ClientLog(LogLevel::Debug, std::format("Duplicate bind ignored (already active): vehicle={} customModel={}", vehicleId, customModelId));
+			if (!binding.hasOffsets) {
+				auto offsetIt = s_modelOffsets.find(customModelId);
+				if (offsetIt != s_modelOffsets.end()) {
+					ApplyModelOffsetsToBinding(binding, offsetIt->second);
+				}
+			}
+			auto plateIt = s_modelPlateConfigs.find(customModelId);
+			if (plateIt != s_modelPlateConfigs.end()) {
+				if (!binding.hasFrontPlateMesh && plateIt->second.frontPlate.enabled) {
+					binding.frontPlateMesh = plateIt->second.frontPlate;
+					binding.hasFrontPlateMesh = true;
+				}
+				if (!binding.hasRearPlateMesh && plateIt->second.rearPlate.enabled) {
+					binding.rearPlateMesh = plateIt->second.rearPlate;
+					binding.hasRearPlateMesh = true;
+				}
+				if (!binding.hasTargetPlateTexture && !plateIt->second.targetTexture.empty()) {
+					strncpy_s(binding.targetPlateTexture, sizeof(binding.targetPlateTexture), plateIt->second.targetTexture.c_str(), _TRUNCATE);
+					binding.hasTargetPlateTexture = true;
+				}
+			}
+			ClientLog(LogLevel::Debug, std::format("Duplicate bind ignored (already active, offsets/plates merged): vehicle={} customModel={}", vehicleId, customModelId));
 			return;
 		}
 
@@ -541,12 +556,12 @@ void CustomVehicleBindingManager::SetVehicleStance(uint16_t vehicleId, float fro
 	auto& binding = m_bindings[vehicleId];
 	binding.sampVehicleId = vehicleId;
 	binding.hasStance = true;
-	binding.frontWheelScale = frontScale;
-	binding.rearWheelScale = rearScale;
-	binding.frontCamber = frontCamber;
-	binding.rearCamber = rearCamber;
-	binding.frontTrackWidth = frontTrackWidth;
-	binding.rearTrackWidth = rearTrackWidth;
+	binding.frontWheelScale = (std::isfinite(frontScale) && frontScale > 0.01f) ? frontScale : 1.0f;
+	binding.rearWheelScale = (std::isfinite(rearScale) && rearScale > 0.01f) ? rearScale : 1.0f;
+	binding.frontCamber = std::isfinite(frontCamber) ? frontCamber : 0.0f;
+	binding.rearCamber = std::isfinite(rearCamber) ? rearCamber : 0.0f;
+	binding.frontTrackWidth = std::isfinite(frontTrackWidth) ? frontTrackWidth : 0.0f;
+	binding.rearTrackWidth = std::isfinite(rearTrackWidth) ? rearTrackWidth : 0.0f;
 }
 
 void CustomVehicleBindingManager::SetVehicleInstanceOffsets(uint16_t vehicleId, float frontZ, float rearZ, float frontY, float rearY, float chassisX, float chassisY, float chassisZ)
@@ -1301,23 +1316,39 @@ void CustomVehicleBindingManager::Process()
 
 			// Synchronize custom wheels & fallback offsets for active / remote vehicle on main thread
 			if (vehicle && IsVehiclePointerValid(vehicle)) {
-				int targetWheel = -1;
-				if (binding.hasCustomWheel && binding.customWheelModelId > 0) {
-					targetWheel = binding.customWheelModelId;
+				if (binding.hasCustomWheel) {
+					if (binding.customWheelModelId > 0) {
+						bool hasTargetWheel = false;
+						for (int i = 0; i < 15; ++i) {
+							if (vehicle->m_anUpgrades[i] == binding.customWheelModelId) {
+								hasTargetWheel = true;
+								break;
+							}
+						}
+						if (!hasTargetWheel) {
+							ApplyWheelToVehicle(vehicle, binding.customWheelModelId);
+						}
+					} else {
+						// Custom stock DFF wheels (wheelModelId <= 0): remove any unwanted wheel upgrades
+						for (int i = 0; i < 15; ++i) {
+							short upg = vehicle->m_anUpgrades[i];
+							if (upg == 1025 || (upg >= 1073 && upg <= 1098)) {
+								ApplyWheelToVehicle(vehicle, -1);
+								break;
+							}
+						}
+					}
 				} else if (model && model->m_nWheelModelIndex > 0) {
-					targetWheel = model->m_nWheelModelIndex;
-				}
-
-				if (targetWheel > 0) {
-					bool hasWheel = false;
+					bool hasAnyWheelUpgrade = false;
 					for (int i = 0; i < 15; ++i) {
-						if (vehicle->m_anUpgrades[i] == targetWheel) {
-							hasWheel = true;
+						short upg = vehicle->m_anUpgrades[i];
+						if (upg == 1025 || (upg >= 1073 && upg <= 1098)) {
+							hasAnyWheelUpgrade = true;
 							break;
 						}
 					}
-					if (!hasWheel) {
-						ApplyWheelToVehicle(vehicle, static_cast<int16_t>(targetWheel));
+					if (!hasAnyWheelUpgrade) {
+						ApplyWheelToVehicle(vehicle, static_cast<int16_t>(model->m_nWheelModelIndex));
 					}
 				}
 
@@ -1438,7 +1469,7 @@ void CustomVehicleBindingManager::SetVehicleWheel(uint16_t vehicleId, int16_t wh
 	std::lock_guard lock(m_mutex);
 	auto& binding = m_bindings[vehicleId];
 	binding.sampVehicleId = vehicleId;
-	binding.hasCustomWheel = true;
+	binding.hasCustomWheel = (wheelModelId > 0);
 	binding.customWheelModelId = wheelModelId;
 
 	if (binding.appliedGameVehicle && IsVehiclePointerValid(binding.appliedGameVehicle)) {
@@ -1887,7 +1918,7 @@ RpAtomic* CustomVehicleBindingManager::CreatePlateQuadAtomic(
 			CVisibilityPlugins::SetUserValue(ctx.foundAtomic, 1);
 			RpGeometry* geom = RpAtomicGetGeometry(ctx.foundAtomic);
 			if (geom) {
-				if (geom->numVertices == 4 && geom->numTriangles == 4) {
+				if (geom->numVertices == 4 && (geom->numTriangles == 2 || geom->numTriangles == 4)) {
 					float s = (cfg.scale > 0.001f) ? cfg.scale : 1.0f;
 					const float halfW = 0.160f * s;
 					const float halfH = 0.080f * s;
@@ -1932,7 +1963,7 @@ RpAtomic* CustomVehicleBindingManager::CreatePlateQuadAtomic(
 	// Create new 3D plate atomic with a clean single-layer 2:1 aspect ratio quad.
 	// GTA SA's CCustomCarPlateMgr::SetupMaterialPlateTexture creates the full plate texture
 	// (background + stamped text) at standard vehicle plate proportions (2:1).
-	RpGeometry* geom = RpGeometryCreate(4, 4, rpGEOMETRYPOSITIONS | rpGEOMETRYTEXTURED | rpGEOMETRYNORMALS | rpGEOMETRYMODULATEMATERIALCOLOR | rpGEOMETRYPRELIT);
+	RpGeometry* geom = RpGeometryCreate(4, 2, rpGEOMETRYPOSITIONS | rpGEOMETRYTEXTURED | rpGEOMETRYNORMALS | rpGEOMETRYMODULATEMATERIALCOLOR | rpGEOMETRYPRELIT);
 	if (!geom)
 		return nullptr;
 
@@ -1983,19 +2014,12 @@ RpAtomic* CustomVehicleBindingManager::CreatePlateQuadAtomic(
 	}
 
 	RpTriangle* tris = geom->triangles;
-	// Front faces (clockwise when viewed from front)
+	// Front faces (clockwise winding for Direct3D 9 front-facing +Y)
 	RpGeometryTriangleSetVertexIndices(geom, &tris[0], 0, 1, 2);
 	RpGeometryTriangleSetMaterial(geom, &tris[0], mat);
 
 	RpGeometryTriangleSetVertexIndices(geom, &tris[1], 0, 2, 3);
 	RpGeometryTriangleSetMaterial(geom, &tris[1], mat);
-
-	// Back faces (reverse winding so visible if viewed from behind)
-	RpGeometryTriangleSetVertexIndices(geom, &tris[2], 2, 1, 0);
-	RpGeometryTriangleSetMaterial(geom, &tris[2], mat);
-
-	RpGeometryTriangleSetVertexIndices(geom, &tris[3], 3, 2, 0);
-	RpGeometryTriangleSetMaterial(geom, &tris[3], mat);
 
 	RpGeometryUnlock(geom);
 	RpMaterialDestroy(mat); // Decrement initial ref count; geom holds ref
@@ -2274,8 +2298,13 @@ bool CustomVehicleBindingManager::ApplyPlateToClump(
 
 	int textPlatesApplied = 0;
 	int bgPlatesApplied = 0;
+	std::unordered_set<RpMaterial*> appliedMaterials;
 
 	for (auto& entry : plateMaterials) {
+		if (appliedMaterials.find(entry.material) != appliedMaterials.end())
+			continue;
+		appliedMaterials.insert(entry.material);
+
 		if (entry.isBackground) {
 			CCustomCarPlateMgr::SetupMaterialPlatebackTexture(entry.material, 0);
 			bgPlatesApplied++;
@@ -2560,14 +2589,19 @@ void CustomVehicleBindingManager::ApplyVehicleColors(CVehicle* vehicle, uint8_t 
 	CRGBA primCol = colorTable[prim & 127];
 	CRGBA secCol = colorTable[sec & 127];
 
+	bool isAutomobile = (vehicle->m_nVehicleSubClass == VEHICLE_AUTOMOBILE || vehicle->m_nVehicleSubClass == VEHICLE_MTRUCK || vehicle->m_nVehicleSubClass == VEHICLE_QUAD);
+	CAutomobile* car = isAutomobile ? reinterpret_cast<CAutomobile*>(vehicle) : nullptr;
+
 	struct ColorContext {
 		RwRGBA prim;
 		RwRGBA sec;
+		CAutomobile* car;
 		bool hasTexturedBody {};
 		std::vector<RpMaterial*> untexturedOpaqueMaterials;
 	} ctx {
 		{ primCol.r, primCol.g, primCol.b, 255 },
-		{ secCol.r, secCol.g, secCol.b, 255 }
+		{ secCol.r, secCol.g, secCol.b, 255 },
+		car
 	};
 
 	RpClumpForAllAtomics(clump, [](RpAtomic* atomic, void* data) -> RpAtomic* {
@@ -2577,13 +2611,38 @@ void CustomVehicleBindingManager::ApplyVehicleColors(CVehicle* vehicle, uint8_t 
 			return atomic;
 
 		RwFrame* frame = RpAtomicGetFrame(atomic);
-		const char* frameName = frame ? GetFrameNodeName(frame) : nullptr;
-		std::string fNameLower = frameName ? frameName : "";
-		std::transform(fNameLower.begin(), fNameLower.end(), fNameLower.begin(), ::tolower);
+		if (!frame)
+			return atomic;
 
 		// Skip dynamic license plates and wheels (wheels have their own coloring)
-		if (fNameLower.find("bt_plate") != std::string::npos || fNameLower.find("wheel") != std::string::npos)
+		bool isExcluded = false;
+		for (RwFrame* f = frame; f != nullptr; f = RwFrameGetParent(f)) {
+			const char* fn = GetFrameNodeName(f);
+			if (fn && *fn) {
+				std::string fnLower = fn;
+				std::transform(fnLower.begin(), fnLower.end(), fnLower.begin(), ::tolower);
+				if (fnLower.find("bt_plate") != std::string::npos ||
+					fnLower.find("plate") != std::string::npos ||
+					fnLower.find("wheel") != std::string::npos ||
+					fnLower.find("rim") != std::string::npos ||
+					fnLower.find("tyre") != std::string::npos ||
+					fnLower.find("tire") != std::string::npos) {
+					isExcluded = true;
+					break;
+				}
+			}
+		}
+
+		if (isExcluded)
 			return atomic;
+
+		if (c->car) {
+			for (int i = CAR_WHEEL_RF; i <= CAR_WHEEL_LB; ++i) {
+				if (c->car->m_aCarNodes[i] && IsFrameOrChildOf(frame, c->car->m_aCarNodes[i])) {
+					return atomic;
+				}
+			}
+		}
 
 		RpGeometryForAllMaterials(geom, [](RpMaterial* mat, void* data) -> RpMaterial* {
 			auto* c = reinterpret_cast<ColorContext*>(data);
@@ -2598,7 +2657,20 @@ void CustomVehicleBindingManager::ApplyVehicleColors(CVehicle* vehicle, uint8_t 
 			}
 
 			// Exclude non-body components (glass, lights, tires, brakes, interior, engine, badges)
-			if (texLower.find("glass") != std::string::npos || texLower.find("window") != std::string::npos || texLower.find("windscreen") != std::string::npos || texLower.find("light") != std::string::npos || texLower.find("lamp") != std::string::npos || texLower.find("vehiclelights") != std::string::npos || texLower.find("wheel") != std::string::npos || texLower.find("tyre") != std::string::npos || texLower.find("tire") != std::string::npos || texLower.find("brake") != std::string::npos || texLower.find("disc") != std::string::npos || texLower.find("caliper") != std::string::npos || texLower.find("plate") != std::string::npos || texLower.find("nomer") != std::string::npos || texLower.find("interior") != std::string::npos || texLower.find("seat") != std::string::npos || texLower.find("steer") != std::string::npos || texLower.find("engine") != std::string::npos || texLower.find("exhaust") != std::string::npos || texLower.find("handle") != std::string::npos || texLower.find("badge") != std::string::npos || texLower.find("logo") != std::string::npos || texLower.find("shad") != std::string::npos) {
+			if (texLower.find("glass") != std::string::npos || texLower.find("window") != std::string::npos ||
+				texLower.find("windscreen") != std::string::npos || texLower.find("light") != std::string::npos ||
+				texLower.find("lamp") != std::string::npos || texLower.find("vehiclelights") != std::string::npos ||
+				texLower.find("wheel") != std::string::npos || texLower.find("tyre") != std::string::npos ||
+				texLower.find("tire") != std::string::npos || texLower.find("rim") != std::string::npos ||
+				texLower.find("rubber") != std::string::npos || texLower.find("alloy") != std::string::npos ||
+				texLower.find("chrome") != std::string::npos || texLower.find("brake") != std::string::npos ||
+				texLower.find("disc") != std::string::npos || texLower.find("rotor") != std::string::npos ||
+				texLower.find("caliper") != std::string::npos || texLower.find("plate") != std::string::npos ||
+				texLower.find("nomer") != std::string::npos || texLower.find("interior") != std::string::npos ||
+				texLower.find("seat") != std::string::npos || texLower.find("steer") != std::string::npos ||
+				texLower.find("engine") != std::string::npos || texLower.find("exhaust") != std::string::npos ||
+				texLower.find("handle") != std::string::npos || texLower.find("badge") != std::string::npos ||
+				texLower.find("logo") != std::string::npos || texLower.find("shad") != std::string::npos) {
 				return mat;
 			}
 
