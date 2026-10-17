@@ -2355,7 +2355,7 @@ void SendModelPlateConfigToPlayer(IPlayer& player, uint32_t customModelId)
 
 	CustomVeh::Protocol::ModelPlateConfigPacket pkt {};
 	pkt.customModelId = customModelId;
-	std::strncpy(pkt.targetTexture, it->second.targetPlateTexture, sizeof(pkt.targetTexture) - 1);
+	std::memcpy(pkt.targetTexture, it->second.targetPlateTexture, sizeof(pkt.targetTexture));
 	pkt.targetTexture[sizeof(pkt.targetTexture) - 1] = '\0';
 	pkt.frontPlate = it->second.frontPlate;
 	pkt.rearPlate = it->second.rearPlate;

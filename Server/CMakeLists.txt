@@ -252,6 +252,7 @@ if(DEFINED UNIX)
         -Wno-array-bounds
         -Wno-stringop-overread
         -Wno-stringop-overflow
+        -Wno-stringop-truncation
     )
     target_link_options(${COMPONENT_NAME_LOWERCASE} PRIVATE
         -m32
