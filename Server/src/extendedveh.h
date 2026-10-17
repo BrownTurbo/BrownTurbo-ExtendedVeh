@@ -4,10 +4,37 @@
 #include <Impl/network_impl.hpp>
 #include <Impl/pool_impl.hpp>
 #include <amx/amx.h>
+#include <bit>
+#include <cstring>
+#include <cstdint>
+
+inline float amx_ctof_impl(cell c) noexcept {
+	static_assert(sizeof(float) == sizeof(uint32_t), "Size of float and uint32_t must match");
+	const uint32_t u = static_cast<uint32_t>(static_cast<ucell>(c));
+#if defined(__cpp_lib_bit_cast)
+	return std::bit_cast<float>(u);
+#else
+	float f;
+	std::memcpy(&f, &u, sizeof(f));
+	return f;
+#endif
+}
+
+inline cell amx_ftoc_impl(float f) noexcept {
+	static_assert(sizeof(float) == sizeof(uint32_t), "Size of float and uint32_t must match");
+#if defined(__cpp_lib_bit_cast)
+	const uint32_t u = std::bit_cast<uint32_t>(f);
+#else
+	uint32_t u;
+	std::memcpy(&u, &f, sizeof(u));
+#endif
+	return static_cast<cell>(u);
+}
+
 #undef amx_ctof
-#define amx_ctof(c) (*((float*)&(c)))
+#define amx_ctof(c) (amx_ctof_impl(static_cast<cell>(c)))
 #undef amx_ftoc
-#define amx_ftoc(f) (static_cast<cell>(*reinterpret_cast<const uint32_t*>(&(f))))
+#define amx_ftoc(f) (amx_ftoc_impl(static_cast<float>(f)))
 #include <pawn-natives/NativeFunc.hpp>
 #define PAWN_NATIVES_HAS_FUNC
 #include <sdk.hpp>
