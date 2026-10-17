@@ -36,6 +36,11 @@ inline cell amx_ftoc_impl(float f) noexcept {
 #undef amx_ftoc
 #define amx_ftoc(f) (amx_ftoc_impl(static_cast<float>(f)))
 #include <pawn-natives/NativeFunc.hpp>
+#include <limits>
+#undef PAWN_NATIVE__DEFAULT_RETURN_cell
+#define PAWN_NATIVE__DEFAULT_RETURN_cell(...) return (std::numeric_limits<cell>::min)()
+#undef PAWN_NATIVE__DEFAULT_RETURN_float
+#define PAWN_NATIVE__DEFAULT_RETURN_float(...) return (std::numeric_limits<float>::quiet_NaN)()
 #define PAWN_NATIVES_HAS_FUNC
 #include <sdk.hpp>
 #include <Server/Components/Pawn/pawn.hpp>
