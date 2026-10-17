@@ -202,7 +202,7 @@ inline uint32_t ResolveVehicleBaseModel(IVehicle& vehicle)
 
 // Vehicle handling related funcs
 // native GetHandlingAttribType(attrib);
-SCRIPT_API(GetHandlingAttribType, int(int attr))
+SCRIPT_API(GetHandlingAttribType, cell(int attr))
 {
 	CHandlingAttrib handlingAttr = static_cast<CHandlingAttrib>(attr);
 	CHandlingAttribType type = GetHandlingAttributeType(handlingAttr);
@@ -215,7 +215,7 @@ SCRIPT_API(GetHandlingAttribType, int(int attr))
 			core_->logLn(LogLevel::Message, "[ExtendedVeh] GetHandlingAttribType(attr=%d) returning %d", attr, static_cast<int>(type));
 		}
 	}
-	return static_cast<int>(type);
+	return static_cast<cell>(type);
 }
 
 // native IsPlayerUsingExtendedVeh(playerid);
@@ -1708,21 +1708,21 @@ SCRIPT_API(IsVehicleCustom, bool(IVehicle& vehicle))
 }
 
 // native GetCustomVehicleVisualBase(customModelId);
-SCRIPT_API(GetCustomVehicleVisualBase, int(int customModelId))
+SCRIPT_API(GetCustomVehicleVisualBase, cell(int customModelId))
 {
-	return static_cast<int>(HandlingMgr::GetCustomVehicleVisualBase(static_cast<uint32_t>(customModelId)));
+	return static_cast<cell>(HandlingMgr::GetCustomVehicleVisualBase(static_cast<uint32_t>(customModelId)));
 }
 
 // native GetCustomVehicleAudioBase(customModelId);
-SCRIPT_API(GetCustomVehicleAudioBase, int(int customModelId))
+SCRIPT_API(GetCustomVehicleAudioBase, cell(int customModelId))
 {
-	return static_cast<int>(HandlingMgr::GetCustomVehicleAudioBase(static_cast<uint32_t>(customModelId)));
+	return static_cast<cell>(HandlingMgr::GetCustomVehicleAudioBase(static_cast<uint32_t>(customModelId)));
 }
 
 // native GetCustomVehicleHandlingBase(customModelId);
-SCRIPT_API(GetCustomVehicleHandlingBase, int(int customModelId))
+SCRIPT_API(GetCustomVehicleHandlingBase, cell(int customModelId))
 {
-	return static_cast<int>(HandlingMgr::GetCustomVehicleHandlingBase(static_cast<uint32_t>(customModelId)));
+	return static_cast<cell>(HandlingMgr::GetCustomVehicleHandlingBase(static_cast<uint32_t>(customModelId)));
 }
 
 // native bool:LoadCustomVehicleConfig(customModelId);
@@ -1761,10 +1761,10 @@ SCRIPT_API(DefineCustomVehicleFromConfig, bool(int customModelId, int defaultVis
 }
 
 // native LoadAllCustomVehicles(defaultVisualBase = 411);
-SCRIPT_API(LoadAllCustomVehicles, int(int defaultVisualBase))
+SCRIPT_API(LoadAllCustomVehicles, cell(int defaultVisualBase))
 {
 	uint32_t base = (defaultVisualBase >= 400 && defaultVisualBase <= 611) ? static_cast<uint32_t>(defaultVisualBase) : 411;
-	return HandlingMgr::LoadAllCustomVehicles(base);
+	return static_cast<cell>(HandlingMgr::LoadAllCustomVehicles(base));
 }
 
 // native bool:GetCustomVehicleName(customModelId, output[], maxlen = sizeof(output));
@@ -1816,9 +1816,9 @@ SCRIPT_API(SetCustomVehicleConfigFloat, bool(int customModelId, const std::strin
 }
 
 // native GetCustomVehicleColorVariationsCount(customModelId);
-SCRIPT_API(GetCustomVehicleColorVariationsCount, int(int customModelId))
+SCRIPT_API(GetCustomVehicleColorVariationsCount, cell(int customModelId))
 {
-	return HandlingMgr::GetCustomVehicleColorVariationsCount(static_cast<uint32_t>(customModelId));
+	return static_cast<cell>(HandlingMgr::GetCustomVehicleColorVariationsCount(static_cast<uint32_t>(customModelId)));
 }
 
 // native bool:GetCustomVehicleColorVariation(customModelId, variationIndex, &primary, &secondary, &tertiary, &quaternary);
@@ -1834,15 +1834,15 @@ SCRIPT_API(GetCustomVehicleDefaultColors, bool(int customModelId, int& primary, 
 }
 
 // native GetCustomVehicleAllowedUpgradesCount(customModelId);
-SCRIPT_API(GetCustomVehicleAllowedUpgradesCount, int(int customModelId))
+SCRIPT_API(GetCustomVehicleAllowedUpgradesCount, cell(int customModelId))
 {
-	return HandlingMgr::GetCustomVehicleAllowedUpgradesCount(static_cast<uint32_t>(customModelId));
+	return static_cast<cell>(HandlingMgr::GetCustomVehicleAllowedUpgradesCount(static_cast<uint32_t>(customModelId)));
 }
 
 // native GetCustomVehicleAllowedUpgrade(customModelId, index);
-SCRIPT_API(GetCustomVehicleAllowedUpgrade, int(int customModelId, int index))
+SCRIPT_API(GetCustomVehicleAllowedUpgrade, cell(int customModelId, int index))
 {
-	return HandlingMgr::GetCustomVehicleAllowedUpgrade(static_cast<uint32_t>(customModelId), index);
+	return static_cast<cell>(HandlingMgr::GetCustomVehicleAllowedUpgrade(static_cast<uint32_t>(customModelId), index));
 }
 
 // native bool:SetCustomVehicleLightingOffset(customModelId, Float:hlOffsetX, Float:hlOffsetY, Float:hlOffsetZ, Float:tlOffsetX = 0.0, Float:tlOffsetY = 0.0, Float:tlOffsetZ = 0.0);
@@ -2160,15 +2160,15 @@ SCRIPT_API(UnbindVehicleModel, bool(IVehicle& vehicle))
 }
 
 // native GetCustomVehicleModel(vehicleid);
-SCRIPT_API(GetCustomVehicleModel, int(IVehicle& vehicle))
+SCRIPT_API(GetCustomVehicleModel, cell(IVehicle& vehicle))
 {
-	return CustomVehicleNatives::GetCustomVehicleModel(vehicle);
+	return static_cast<cell>(CustomVehicleNatives::GetCustomVehicleModel(vehicle));
 }
 
 // Legacy alias: GetVehicleCustomModel -> GetCustomVehicleModel
-SCRIPT_API(GetVehicleCustomModel, int(IVehicle& vehicle))
+SCRIPT_API(GetVehicleCustomModel, cell(IVehicle& vehicle))
 {
-	return CustomVehicleNatives::GetCustomVehicleModel(vehicle);
+	return static_cast<cell>(CustomVehicleNatives::GetCustomVehicleModel(vehicle));
 }
 
 namespace CustomVehicleNatives
@@ -2928,15 +2928,15 @@ inline int GetCustomVehiclePaintjob(IVehicle& vehicle)
 }
 
 // native GetCustomVehiclePaintjob(vehicleid);
-SCRIPT_API(GetCustomVehiclePaintjob, int(IVehicle& vehicle))
+SCRIPT_API(GetCustomVehiclePaintjob, cell(IVehicle& vehicle))
 {
-	return CustomVehicleNatives::GetCustomVehiclePaintjob(vehicle);
+	return static_cast<cell>(CustomVehicleNatives::GetCustomVehiclePaintjob(vehicle));
 }
 
 // Legacy alias: GetVehiclePaintjob -> GetCustomVehiclePaintjob
-SCRIPT_API(GetVehiclePaintjob, int(IVehicle& vehicle))
+SCRIPT_API(GetVehiclePaintjob, cell(IVehicle& vehicle))
 {
-	return CustomVehicleNatives::GetCustomVehiclePaintjob(vehicle);
+	return static_cast<cell>(CustomVehicleNatives::GetCustomVehiclePaintjob(vehicle));
 }
 
 namespace CustomVehicleNatives
@@ -3679,7 +3679,7 @@ SCRIPT_API(InvalidateModelCache, bool(int modelId, int kind))
 
 // native GetClientFileStoreStatus(playerid, modelId, fileKind);
 // 0=unknown, 1=success, 2=failure
-SCRIPT_API(GetClientFileStoreStatus, int(IPlayer& player, int modelId, int kind))
+SCRIPT_API(GetClientFileStoreStatus, cell(IPlayer& player, int modelId, int kind))
 {
 	ExtendedVehCompo* compo = ExtendedVehCompo::get();
 	if (!compo)
@@ -3690,7 +3690,7 @@ SCRIPT_API(GetClientFileStoreStatus, int(IPlayer& player, int modelId, int kind)
 	int playerid = player.getID();
 	if (core_->getPlayers().get(playerid) == nullptr)
 		return 0;
-	return ModelTransferMgr::GetClientFileStoreStatus(playerid, static_cast<uint32_t>(modelId), static_cast<ModelFileKind>(kind));
+	return static_cast<cell>(ModelTransferMgr::GetClientFileStoreStatus(playerid, static_cast<uint32_t>(modelId), static_cast<ModelFileKind>(kind)));
 }
 
 namespace CustomVehicleNatives

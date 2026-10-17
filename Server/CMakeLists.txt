@@ -249,6 +249,9 @@ if(DEFINED UNIX)
         -Wno-volatile
         -Wno-type-limits
         -Wno-format-zero-length
+        -Wno-array-bounds
+        -Wno-stringop-overread
+        -Wno-stringop-overflow
     )
     target_link_options(${COMPONENT_NAME_LOWERCASE} PRIVATE
         -m32
