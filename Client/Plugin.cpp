@@ -2880,7 +2880,12 @@ private:
 
 	bool IsCustomModelCurrentlyInUse(uint32_t customModelId)
 	{
-		return HandlingManager::GetModelUseCount(customModelId) > 0;
+		if (HandlingManager::GetModelUseCount(customModelId) > 0)
+			return true;
+		int gtaSlot = StreamingExtender::GetGtaModelSlot(customModelId);
+		if (gtaSlot >= 0 && StreamingExtender::IsGtaSlotUsedByVehicle(gtaSlot))
+			return true;
+		return false;
 	}
 
 public:

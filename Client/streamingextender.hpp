@@ -8,6 +8,7 @@
 #include "game_sa/CCustomCarPlateMgr.h"
 #include "game_sa/CHandlingDataMgr.h"
 #include "game_sa/CModelInfo.h"
+#include "game_sa/CPools.h"
 #include "game_sa/CStreaming.h"
 #include "game_sa/CTxdStore.h"
 #include "game_sa/CVehicleModelInfo.h"
@@ -636,6 +637,43 @@ public:
 		return s_customModels.contains(id);
 	}
 
+	static int GetGtaModelSlot(uint32_t customId)
+	{
+		auto it = s_customModels.find(customId);
+		if (it != s_customModels.end() && it->second) {
+			return it->second->gtaModelSlot;
+		}
+		return -1;
+	}
+
+	static bool IsGtaSlotUsedByVehicle(int gtaSlot)
+	{
+		auto* pool = CPools::ms_pVehiclePool;
+		if (!pool || gtaSlot < 0)
+			return false;
+		for (int i = 0; i < pool->m_nSize; ++i) {
+			CVehicle* veh = pool->GetAt(i);
+			if (veh && veh->m_nModelIndex == gtaSlot)
+				return true;
+		}
+		return false;
+	}
+
+	static void FreeCustomModelInfo(CVehicleModelInfo* pInfo)
+	{
+		if (pInfo) {
+			// NOTE: Do NOT call `delete pInfo`.
+			// `newModel` was allocated on the plugin's CRT heap, but `memcpy` from `vBaseInfo`
+			// copied GTA SA's `CVehicleModelInfo` vtable. Polymorphic `delete pInfo` invokes
+			// GTA's virtual scalar deleting destructor, which calls GTA's internal allocator
+			// to free memory from the plugin's heap -> APPLICATION_VERIFIER_HEAPS_SWITCHED_HEAP_HANDLE.
+			// All GTA resources (RW clump, col model, TXD) are already cleaned up before this call,
+			// so we directly release the raw memory back to the plugin's CRT heap without dispatching
+			// the virtual destructor.
+			::operator delete(static_cast<void*>(pInfo));
+		}
+	}
+
 	static void SafeFreeCustomColModel(CColModel* col)
 	{
 		if (!col)
@@ -651,8 +689,19 @@ public:
 
 	static void DestroyCustomModel(uint32_t customId)
 	{
-		// Check if the model is still in use
-		if (HandlingManager::GetModelUseCount(customId) > 0) {
+		auto it = s_customModels.find(customId);
+		if (it == s_customModels.end())
+			return;
+
+		CustomModelEntry* modelEntry = it->second;
+		if (!modelEntry) {
+			s_customModels.erase(it);
+			return;
+		}
+
+		// Check if the model is still in use by SA-MP or GTA vehicle pool
+		if (HandlingManager::GetModelUseCount(customId) > 0 ||
+			(modelEntry->gtaModelSlot >= 0 && IsGtaSlotUsedByVehicle(modelEntry->gtaModelSlot))) {
 			// Re-queue the destruction command
 			if (s_destructionRequeueCallback) {
 				s_destructionRequeueCallback(customId);
@@ -661,12 +710,7 @@ public:
 		}
 
 		// Proceed with destruction...
-		auto it = s_customModels.find(customId);
-		if (it == s_customModels.end())
-			return;
-
-		CustomModelEntry* modelEntry = it->second;
-		CVehicleModelInfo* pInfo = modelEntry ? modelEntry->modelInfo : nullptr;
+		CVehicleModelInfo* pInfo = modelEntry->modelInfo;
 		if (pInfo) {
 			if (modelEntry->gtaModelSlot >= 0 && modelEntry->gtaModelSlot < TOTAL_GTA_MODEL_COUNT)
 				GetModelInfoTable()[modelEntry->gtaModelSlot] = nullptr;
@@ -685,12 +729,7 @@ public:
 				}
 				pInfo->m_nTxdIndex = -1;
 			}
-			// NOTE: Do NOT delete pInfo->m_pVehicleStruct here.
-			// DeleteRwObject() (0x4C8040) already calls the CVehicleStructure destructor
-			// (0x4C7410) and releases it back to CPool<CVehicleStructure> (0x4C9580),
-			// then zeroes m_pVehicleStruct. Calling CRT delete on a pool pointer is
-			// heap corruption / double-free. Verified: MTA:SA CRenderWareSA.cpp:406-417.
-			delete pInfo;
+			FreeCustomModelInfo(pInfo);
 		}
 		delete modelEntry;
 		s_customModels.erase(it);
@@ -706,6 +745,15 @@ public:
 		for (auto& [id, entry] : models) {
 			if (!entry)
 				continue;
+
+			// If a vehicle in GTA's world is still using this model slot (e.g. on kick/disconnect
+			// before SA-MP removes vehicles), do NOT free the model info or RW clump yet.
+			// Freeing it while a vehicle still exists causes an immediate crash on the next frame's render.
+			if (entry->gtaModelSlot >= 0 && IsGtaSlotUsedByVehicle(entry->gtaModelSlot)) {
+				s_customModels[id] = entry;
+				continue;
+			}
+
 			CVehicleModelInfo* pInfo = entry->modelInfo;
 			if (pInfo) {
 				if (entry->gtaModelSlot >= 0 && entry->gtaModelSlot < TOTAL_GTA_MODEL_COUNT)
@@ -725,7 +773,7 @@ public:
 					}
 					pInfo->m_nTxdIndex = -1;
 				}
-				delete pInfo;
+				FreeCustomModelInfo(pInfo);
 			}
 			delete entry;
 			AudioExtender::UnregisterVehicleAudio(id);
