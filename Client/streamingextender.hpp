@@ -396,6 +396,156 @@ public:
 					ClientLog(LogLevel::Info, std::format("Re-parented wheel dummy '{}' to clump root (pos: {:.3f}, {:.3f}, {:.3f})", wname, newLocal.pos.x, newLocal.pos.y, newLocal.pos.z));
 				}
 			}
+
+			// 3. Normalize wheel dummy frame names to end with '_dummy'.
+			// GTA SA's PreprocessHierarchy strictly looks for "wheel_rf_dummy", "wheel_lf_dummy", etc.
+			const char* wheelRenamePairs[][2] = {
+				{ "wheel_rf", "wheel_rf_dummy" },
+				{ "wheel_lf", "wheel_lf_dummy" },
+				{ "wheel_rb", "wheel_rb_dummy" },
+				{ "wheel_lb", "wheel_lb_dummy" },
+				{ "wheel_rm", "wheel_rm_dummy" },
+				{ "wheel_lm", "wheel_lm_dummy" }
+			};
+			for (auto& pair : wheelRenamePairs) {
+				RwFrame* targetDummy = CClumpModelInfo::GetFrameFromName(pClump, pair[1]);
+				if (!targetDummy) {
+					RwFrame* baseFrame = CClumpModelInfo::GetFrameFromName(pClump, pair[0]);
+					if (baseFrame) {
+						SetFrameNodeName(baseFrame, pair[1]);
+						ClientLog(LogLevel::Info, std::format("Renamed wheel frame '{}' to '{}'", pair[0], pair[1]));
+					}
+				}
+			}
+
+			// 4. Custom wheel atomic discovery and promotion.
+			// GTA SA's CVehicleModelInfo::SetClump -> PreprocessHierarchy expects the master wheel atomic
+			// to be directly attached to "wheel_rf_dummy". It then sets the wheel render callback on it,
+			// and automatically clones it to wheel_lf_dummy, wheel_rb_dummy, wheel_lb_dummy.
+			// Modders almost universally export models where wheel_rf_dummy is an empty dummy frame,
+			// and the actual wheel mesh atomic is attached to a child frame (e.g. "WheelFrRight", "wheel", "wheel_shiny").
+			// Because GTA SA only inspects direct objects on wheel_rf_dummy, it finds no atomic, leaves
+			// the master wheel atomic null, and skips cloning to the other 3 wheels, leaving the car with no wheels
+			// or crashing when looking sideways (Q/E).
+			auto getFirstDirectAtomic = [](RwFrame* frame) -> RpAtomic* {
+				if (!frame) return nullptr;
+				RpAtomic* found = nullptr;
+				RwFrameForAllObjects(frame, [](RwObject* obj, void* data) -> RwObject* {
+					if (obj && obj->type == rpATOMIC) {
+						*reinterpret_cast<RpAtomic**>(data) = reinterpret_cast<RpAtomic*>(obj);
+						return nullptr;
+					}
+					return obj;
+				}, &found);
+				return found;
+			};
+
+			std::function<RpAtomic*(RwFrame*)> findAtomicTree = [&](RwFrame* frame) -> RpAtomic* {
+				if (!frame) return nullptr;
+				RpAtomic* at = getFirstDirectAtomic(frame);
+				if (at) return at;
+				for (RwFrame* child = frame->child; child != nullptr; child = child->next) {
+					at = findAtomicTree(child);
+					if (at) return at;
+				}
+				return nullptr;
+			};
+
+			RwFrame* wheelRf = CClumpModelInfo::GetFrameFromName(pClump, "wheel_rf_dummy");
+			RpAtomic* masterWheelAtomic = wheelRf ? getFirstDirectAtomic(wheelRf) : nullptr;
+
+			if (wheelRf && !masterWheelAtomic) {
+				// Search child frames under wheel_rf_dummy (e.g. WheelFrRight, wheel, wheel_shiny)
+				for (RwFrame* child = wheelRf->child; child != nullptr; child = child->next) {
+					masterWheelAtomic = findAtomicTree(child);
+					if (masterWheelAtomic) {
+						RwFrame* origFrame = RpAtomicGetFrame(masterWheelAtomic);
+						const char* origName = origFrame ? GetFrameNodeName(origFrame) : nullptr;
+						RpAtomicSetFrame(masterWheelAtomic, wheelRf);
+						ClientLog(LogLevel::Info, std::format("Promoted custom wheel atomic from child frame '{}' to 'wheel_rf_dummy'", origName ? origName : "unnamed"));
+						break;
+					}
+				}
+			}
+
+			// If still no atomic on wheel_rf_dummy, check other wheel dummies (e.g. modder put atomic on wheel_lf_dummy)
+			if (wheelRf && !masterWheelAtomic) {
+				const char* otherDummies[] = { "wheel_lf_dummy", "wheel_rb_dummy", "wheel_lb_dummy" };
+				for (const char* od : otherDummies) {
+					RwFrame* otherF = CClumpModelInfo::GetFrameFromName(pClump, od);
+					if (otherF) {
+						RpAtomic* otherAt = findAtomicTree(otherF);
+						if (otherAt) {
+							RpAtomic* cloned = RpAtomicClone(otherAt);
+							if (cloned) {
+								RpClumpAddAtomic(pClump, cloned);
+								RpAtomicSetFrame(cloned, wheelRf);
+								masterWheelAtomic = cloned;
+								ClientLog(LogLevel::Info, std::format("Cloned wheel atomic from '{}' to 'wheel_rf_dummy'", od));
+								break;
+							}
+						}
+					}
+				}
+			}
+
+			// If still no atomic, search for any frame whose name contains "wheel" (excluding steeringwheel and dummy)
+			if (wheelRf && !masterWheelAtomic) {
+				struct WheelSearchCtx {
+					RpAtomic* found { nullptr };
+				} wsc;
+				RpClumpForAllAtomics(pClump, [](RpAtomic* atomic, void* data) -> RpAtomic* {
+					auto* ctx = reinterpret_cast<WheelSearchCtx*>(data);
+					RwFrame* f = RpAtomicGetFrame(atomic);
+					if (f) {
+						const char* fn = GetFrameNodeName(f);
+						if (fn) {
+							std::string nameLower = fn;
+							std::transform(nameLower.begin(), nameLower.end(), nameLower.begin(), ::tolower);
+							if (nameLower.find("wheel") != std::string::npos && nameLower.find("steering") == std::string::npos && nameLower.find("dummy") == std::string::npos) {
+								ctx->found = atomic;
+								return nullptr; // stop search
+							}
+						}
+					}
+					return atomic;
+				}, &wsc);
+
+				if (wsc.found) {
+					RpAtomicSetFrame(wsc.found, wheelRf);
+					masterWheelAtomic = wsc.found;
+					ClientLog(LogLevel::Info, "Assigned wheel atomic from clump to 'wheel_rf_dummy'");
+				}
+			}
+
+			// Clean up duplicate pre-existing atomics on other wheel dummy children,
+			// because SetClump is about to clone masterWheelAtomic to wheel_lf, wheel_rb, wheel_lb.
+			if (masterWheelAtomic) {
+				const char* slaveDummies[] = { "wheel_lf_dummy", "wheel_rb_dummy", "wheel_lb_dummy", "wheel_rm_dummy", "wheel_lm_dummy" };
+				for (const char* sd : slaveDummies) {
+					RwFrame* sf = CClumpModelInfo::GetFrameFromName(pClump, sd);
+					if (sf) {
+						for (RwFrame* child = sf->child; child != nullptr; child = child->next) {
+							RpAtomic* extraAt = findAtomicTree(child);
+							while (extraAt) {
+								RpClumpRemoveAtomic(pClump, extraAt);
+								RpAtomicDestroy(extraAt);
+								extraAt = findAtomicTree(child);
+							}
+						}
+					}
+				}
+			}
+
+			// Fallback ONLY when the DFF genuinely has NO wheel geometry anywhere and wheelModelId <= 0:
+			if (!masterWheelAtomic && pInfo->m_nWheelModelIndex <= 0) {
+				int fallbackWheel = 1080;
+				if (pBaseInfo && pBaseInfo->m_nWheelModelIndex > 0) {
+					fallbackWheel = pBaseInfo->m_nWheelModelIndex;
+				}
+				pInfo->m_nWheelModelIndex = static_cast<int16_t>(fallbackWheel);
+				ClientLog(LogLevel::Warning, std::format("Model has NO wheel geometry in DFF and wheelModelId <= 0. Falling back to wheelModelId={}", fallbackWheel));
+			}
 		}
 
 		ClientLog(LogLevel::Debug, "FinalizeClump -> BEFORE SetupVehicleVariables");
@@ -433,7 +583,7 @@ public:
 		ClientLog(LogLevel::Debug, "FinalizeClump -> AFTER SetAtomicRenderCallbacks");
 
 		// Auto-detect wheel sizes if model has wheel atomics under wheel dummies
-		if (pInfo->m_fWheelSizeFront < 0.1f || fabsf(pInfo->m_fWheelSizeFront - 0.7f) < 0.01f) {
+		if (pInfo->m_fWheelSizeFront < 0.1f || (pBaseInfo && fabsf(pInfo->m_fWheelSizeFront - pBaseInfo->m_fWheelSizeFront) < 0.001f) || fabsf(pInfo->m_fWheelSizeFront - 0.7f) < 0.01f) {
 			const char* testWheelDummies[] = { "wheel_rf_dummy", "wheel_lf_dummy", "wheel_rb_dummy", "wheel_lb_dummy" };
 			for (const char* wd : testWheelDummies) {
 				RwFrame* wf = CClumpModelInfo::GetFrameFromName(pClump, wd);
@@ -447,10 +597,22 @@ public:
 							RpAtomic* atomic = reinterpret_cast<RpAtomic*>(obj);
 							RpGeometry* geom = RpAtomicGetGeometry(atomic);
 							if (geom) {
+								float r = 0.0f;
 								const RwSphere* sph = RpAtomicGetBoundingSphere(atomic);
-								if (sph && sph->radius > 0.1f && sph->radius < 1.2f) {
+								if (sph && sph->radius > 0.1f && sph->radius < 1.5f) {
+									r = sph->radius;
+								} else if (geom->morphTarget && geom->morphTarget[0].verts && geom->numVertices > 0) {
+									float maxRSq = 0.0f;
+									for (int v = 0; v < geom->numVertices; ++v) {
+										const RwV3d& pt = geom->morphTarget[0].verts[v];
+										float rSq = pt.x * pt.x + pt.y * pt.y + pt.z * pt.z;
+										if (rSq > maxRSq) maxRSq = rSq;
+									}
+									r = std::sqrt(maxRSq);
+								}
+								if (r > 0.15f && r < 1.5f) {
 									auto* ctx = reinterpret_cast<WheelSizeFinder*>(data);
-									ctx->maxRadius = std::max(ctx->maxRadius, sph->radius);
+									ctx->maxRadius = std::max(ctx->maxRadius, r);
 								}
 							}
 						}
