@@ -15,6 +15,8 @@
 
 #include <pawn-natives/NativesMain.hpp>
 
+#include "../pluginconfig.h"
+
 ICore* core_ {};
 IPawnComponent* pawn_component_ {};
 IVehiclesComponent* vehicles_ = nullptr;
@@ -23,7 +25,7 @@ StringView ExtendedVehCompo::componentName() const { return "ExtendedVeh"; }
 
 SemanticVersion ExtendedVehCompo::componentVersion() const
 {
-	return SemanticVersion(EXTVEH_VERSION_MAJOR, EXTVEH_VERSION_MINOR, EXTVEH_VERSION_PATCH, 0);
+	return SemanticVersion(PLUGIN_VERSION_MAJOR, PLUGIN_VERSION_MINOR, PLUGIN_VERSION_PATCH, PLUGIN_VERSION_BUILD);
 }
 
 void ExtendedVehCompo::onLoad(ICore* c)
@@ -53,9 +55,8 @@ void ExtendedVehCompo::onLoad(ICore* c)
 	core_->logLn(LogLevel::Message, " ");
 	core_->logLn(LogLevel::Message, " =======================================================================");
 	core_->logLn(LogLevel::Message,
-		"  ExtendedVehicles %d.%d.%d%s by Zorono loaded!",
-		EXTVEH_VERSION_MAJOR, EXTVEH_VERSION_MINOR, EXTVEH_VERSION_PATCH,
-		(EXTVEH_PHASE_DEV ? "-dev" : ""));
+		"  ExtendedVehicles %d.%d.%d.%d-%s by Zorono loaded!",
+		PLUGIN_VERSION_MAJOR, PLUGIN_VERSION_MINOR, PLUGIN_VERSION_PATCH, PLUGIN_VERSION_BUILD, PLUGIN_PHASE);
 	core_->logLn(LogLevel::Message, " =======================================================================");
 	core_->logLn(LogLevel::Message, " ");
 }

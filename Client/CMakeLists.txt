@@ -1,8 +1,15 @@
-# cmake -B build -A Win32
-# cmake --build build --config Release
-cmake_minimum_required(VERSION 3.23)
+cmake_minimum_required(VERSION 3.24 FATAL_ERROR)
+cmake_policy(SET CMP0115 NEW)
 set(CMAKE_POLICY_VERSION_MINIMUM "3.5" CACHE STRING "" FORCE)
-project("brownturbo-extendedveh" LANGUAGES C CXX VERSION 0.0.3)
+#==============================================================================#
+set(PLUGIN_NAME "brownturbo-extendedveh")
+set(PLUGIN_VERSION_MAJOR 0)
+set(PLUGIN_VERSION_MINOR 0)
+set(PLUGIN_VERSION_PATCH 3)
+set(PLUGIN_VERSION_BUILD 6)
+set(PLUGIN_PHASE "alpha")
+#==============================================================================#
+project(${PLUGIN_NAME} LANGUAGES C CXX VERSION ${PLUGIN_VERSION_MAJOR}.${PLUGIN_VERSION_MINOR}.${PLUGIN_VERSION_PATCH}.${PLUGIN_VERSION_BUILD})
 
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL" CACHE STRING "" FORCE)
 set(POLYHOOK_STATIC_RUNTIME OFF CACHE BOOL "" FORCE)
@@ -212,6 +219,8 @@ function(force_dynamic_runtime_on_all_targets dir)
         endif()
     endforeach()
 endfunction()
+
+configure_file("${CMAKE_SOURCE_DIR}/../pluginconfig.h.in" "${CMAKE_SOURCE_DIR}/pluginconfig.h")
 
 force_dynamic_runtime_on_all_targets(${CMAKE_CURRENT_SOURCE_DIR})
 

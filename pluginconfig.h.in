@@ -1,0 +1,9 @@
+/* NOTE: This file is generated automatically. Do not edit. */
+
+#pragma once
+
+const short PLUGIN_VERSION_MAJOR = @PLUGIN_VERSION_MAJOR@;
+const short PLUGIN_VERSION_MINOR = @PLUGIN_VERSION_MINOR@;
+const short PLUGIN_VERSION_PATCH = @PLUGIN_VERSION_PATCH@;
+const short PLUGIN_VERSION_BUILD = @PLUGIN_VERSION_BUILD@;
+const char PLUGIN_PHASE[] = "@PLUGIN_PHASE@";

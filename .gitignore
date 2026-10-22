@@ -8,3 +8,4 @@ bin/
 vcpkg_installed/
 *.zip
 *.log
+pluginconfig.h

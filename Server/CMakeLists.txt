@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.20 FATAL_ERROR)
+cmake_minimum_required(VERSION 3.24 FATAL_ERROR)
 cmake_policy(SET CMP0115 NEW)
 set(CMAKE_POLICY_VERSION_MINIMUM "3.5" CACHE STRING "" FORCE)
 
@@ -12,9 +12,15 @@ elseif(CMAKE_HOST_WIN32 OR WIN32)
         set(VCPKG_TARGET_TRIPLET "x86-windows" CACHE STRING "")
     endif()
 endif()
-
-set(COMPONENT_NAME "Extended-Vehicles")
-project(${COMPONENT_NAME} LANGUAGES C CXX VERSION 0.0.3)
+#==============================================================================#
+set(PLUGIN_NAME "Extended-Vehicles")
+set(PLUGIN_VERSION_MAJOR 0)
+set(PLUGIN_VERSION_MINOR 0)
+set(PLUGIN_VERSION_PATCH 3)
+set(PLUGIN_VERSION_BUILD 6)
+set(PLUGIN_PHASE "alpha")
+#==============================================================================#
+project(${PLUGIN_NAME} LANGUAGES C CXX VERSION ${PLUGIN_VERSION_MAJOR}.${PLUGIN_VERSION_MINOR}.${PLUGIN_VERSION_PATCH}.${PLUGIN_VERSION_BUILD})
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/bin)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/bin)
@@ -45,7 +51,7 @@ if(CMAKE_SIZEOF_VOID_P EQUAL 8)
     message(FATAL_ERROR "component MUST be compiled as 32-bit (x86).")
 endif()
 
-string(TOLOWER ${COMPONENT_NAME} COMPONENT_NAME_LOWERCASE)
+string(TOLOWER ${PLUGIN_NAME} PLUGIN_NAME_LOWERCASE)
 
 ### .........
 function(ListFilesInSubmodule directory_path pattern)
@@ -85,7 +91,7 @@ function(ListFilesInSubmodule directory_path pattern)
     endif()
 
     # Push accumulated files to parent scope
-    set(COMPONENT_STRUCTURES ${COMPONENT_STRUCTURES} ${_Temp} PARENT_SCOPE)
+    set(PLUGIN_STRUCTURES ${PLUGIN_STRUCTURES} ${_Temp} PARENT_SCOPE)
 endfunction()
 ### .........
 ListFilesInSubmodule("${CMAKE_CURRENT_SOURCE_DIR}/src" "*.cpp" 1)
@@ -95,27 +101,27 @@ ListFilesInSubmodule("${CMAKE_CURRENT_SOURCE_DIR}/../Shared" "*.hpp" 1)
 ListFilesInSubmodule("${CMAKE_CURRENT_SOURCE_DIR}/src" "*.h" 1)
 ListFilesInSubmodule("${CMAKE_CURRENT_SOURCE_DIR}/../Shared" "*.h" 1)
 
-foreach(PROJECT_FILE IN ITEMS ${COMPONENT_STRUCTURES})
+foreach(PROJECT_FILE IN ITEMS ${PLUGIN_STRUCTURES})
     get_filename_component(FileExt ${PROJECT_FILE} EXT)
     if(FileExt STREQUAL ".hpp" OR FileExt STREQUAL ".h")
-        set(COMPONENT_HDR
-            ${COMPONENT_HDR}
+        set(PLUGIN_HDR
+            ${PLUGIN_HDR}
             ${PROJECT_FILE}
         )
     elseif(FileExt STREQUAL ".cpp" OR FileExt STREQUAL ".c" OR FileExt STREQUAL ".cc")
-        set(COMPONENT_SRC
-            ${COMPONENT_SRC}
+        set(PLUGIN_SRC
+            ${PLUGIN_SRC}
             ${PROJECT_FILE}
         )
     endif()
 endforeach()
 
-add_library(${COMPONENT_NAME_LOWERCASE} SHARED)
-target_sources(${COMPONENT_NAME_LOWERCASE} PUBLIC ${COMPONENT_SRC} ${COMPONENT_HDR})
-set_target_properties(${COMPONENT_NAME_LOWERCASE} PROPERTIES PREFIX "")
+add_library(${PLUGIN_NAME_LOWERCASE} SHARED)
+target_sources(${PLUGIN_NAME_LOWERCASE} PUBLIC ${PLUGIN_SRC} ${PLUGIN_HDR})
+set_target_properties(${PLUGIN_NAME_LOWERCASE} PROPERTIES PREFIX "")
 
 add_subdirectory(${CMAKE_SOURCE_DIR}/deps/omp-sdk)
-target_include_directories(${COMPONENT_NAME_LOWERCASE} SYSTEM PUBLIC ${CMAKE_SOURCE_DIR}/deps/omp-sdk/include)
+target_include_directories(${PLUGIN_NAME_LOWERCASE} SYSTEM PUBLIC ${CMAKE_SOURCE_DIR}/deps/omp-sdk/include)
 
 file(GLOB PawnNatives_HDR "${CMAKE_SOURCE_DIR}/deps/pawn-natives/*.hpp" "${CMAKE_SOURCE_DIR}/deps/pawn-natives/Internal/*.hpp")
 add_library(PawnNatives OBJECT ${PawnNatives_HDR})
@@ -214,20 +220,20 @@ target_include_directories(hash-library
         ${CMAKE_SOURCE_DIR}/deps
 )
 
-target_link_libraries(${COMPONENT_NAME_LOWERCASE} PRIVATE PawnNatives OMP-SDK SUBHOOK AMX RakNet ZLIB::ZLIB hash-library nlohmann_json::nlohmann_json)
+target_link_libraries(${PLUGIN_NAME_LOWERCASE} PRIVATE PawnNatives OMP-SDK SUBHOOK AMX RakNet ZLIB::ZLIB hash-library nlohmann_json::nlohmann_json)
 
 if(MSVC)
-    target_link_options(${COMPONENT_NAME_LOWERCASE} PRIVATE $<$<CONFIG:Release>:/DEBUG /OPT:REF /OPT:ICF>)
-    target_compile_options(${COMPONENT_NAME_LOWERCASE} PRIVATE /p:VcpkgEnableManifest=true)
+    target_link_options(${PLUGIN_NAME_LOWERCASE} PRIVATE $<$<CONFIG:Release>:/DEBUG /OPT:REF /OPT:ICF>)
+    target_compile_options(${PLUGIN_NAME_LOWERCASE} PRIVATE /p:VcpkgEnableManifest=true)
 endif()
 
 if(DEFINED UNIX)
     add_definitions(-DLINUX -DENABLE_BINRELOC -D_GLIBCXX_USE_CXX11_ABI=0)
 
     if(CMAKE_SYSTEM_PROCESSOR MATCHES "(x86_64)|(x64)|(X64)|(amd64)|(AMD64)" OR CMAKE_SIZEOF_VOID_P EQUAL 8)
-        set_property(TARGET ${COMPONENT_NAME_LOWERCASE} PROPERTY FIND_LIBRARY_USE_LIB64_PATHS OFF)
+        set_property(TARGET ${PLUGIN_NAME_LOWERCASE} PROPERTY FIND_LIBRARY_USE_LIB64_PATHS OFF)
     endif()
-    target_compile_options(${COMPONENT_NAME_LOWERCASE} PRIVATE
+    target_compile_options(${PLUGIN_NAME_LOWERCASE} PRIVATE
         -m32
         -Wall
         -Wextra
@@ -254,16 +260,16 @@ if(DEFINED UNIX)
         -Wno-stringop-overflow
         -Wno-stringop-truncation
     )
-    target_link_options(${COMPONENT_NAME_LOWERCASE} PRIVATE
+    target_link_options(${PLUGIN_NAME_LOWERCASE} PRIVATE
         -m32
     )
     option(ENABLE_ASAN "Enable AddressSanitizer (requires LD_PRELOAD on uninstrumented hosts)" OFF)
     if(ENABLE_ASAN)
-        target_compile_options(${COMPONENT_NAME_LOWERCASE} PRIVATE -fsanitize=address,leak)
-        target_link_options(${COMPONENT_NAME_LOWERCASE} PRIVATE -fsanitize=address,leak -static-libasan)
+        target_compile_options(${PLUGIN_NAME_LOWERCASE} PRIVATE -fsanitize=address,leak)
+        target_link_options(${PLUGIN_NAME_LOWERCASE} PRIVATE -fsanitize=address,leak -static-libasan)
     endif()
     if(EXISTS "/usr/lib/i386-linux-gnu")
-        target_link_directories(${COMPONENT_NAME_LOWERCASE} PRIVATE /usr/lib/i386-linux-gnu)
+        target_link_directories(${PLUGIN_NAME_LOWERCASE} PRIVATE /usr/lib/i386-linux-gnu)
     endif()
 	# link runtime statically
     if(STATIC_BUILD)
@@ -282,7 +288,7 @@ elseif(DEFINED WIN32)
 		message(FATAL_ERROR "Building for Windows requires -A Win32 flag.")
     endif()
 
-    set_property(TARGET ${COMPONENT_NAME_LOWERCASE} PROPERTY POSITION_INDEPENDENT_CODE Off)
+    set_property(TARGET ${PLUGIN_NAME_LOWERCASE} PROPERTY POSITION_INDEPENDENT_CODE Off)
 	add_definitions(
 		-D_CRT_SECURE_NO_WARNINGS
         -DHAVE_STDINT_H
@@ -328,14 +334,16 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++20")
 endif()
 
+configure_file("${CMAKE_SOURCE_DIR}/../pluginconfig.h.in" "${CMAKE_SOURCE_DIR}/pluginconfig.h")
+
 if(DEFINED WIN32)
-    add_custom_command(TARGET ${COMPONENT_NAME_LOWERCASE} POST_BUILD
+    add_custom_command(TARGET ${PLUGIN_NAME_LOWERCASE} POST_BUILD
         COMMAND ${CMAKE_COMMAND}
             "-DTRGT=${CMAKE_SOURCE_DIR}/vcpkg_installed/x86-windows/bin"
             "-DDEST=${CMAKE_RUNTIME_OUTPUT_DIRECTORY}"
             -P "${CMAKE_SOURCE_DIR}/CopyRuntimeDlls.cmake"
         COMMAND_EXPAND_LISTS
         VERBATIM
-        COMMENT "Resolving and copying runtime DLL dependencies for ${COMPONENT_NAME_LOWERCASE}..."
+        COMMENT "Resolving and copying runtime DLL dependencies for ${PLUGIN_NAME_LOWERCASE}..."
     )
 endif()

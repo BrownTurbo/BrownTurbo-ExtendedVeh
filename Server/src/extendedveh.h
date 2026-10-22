@@ -51,11 +51,6 @@ inline cell amx_ftoc_impl(float f) noexcept {
 #include <algorithm>
 #include <vector>
 
-#define EXTVEH_PHASE_DEV true
-#define EXTVEH_VERSION_MAJOR 0
-#define EXTVEH_VERSION_MINOR 0
-#define EXTVEH_VERSION_PATCH 3
-
 #define EXTVEH_COMPAT_VERSION 0xA839F
 
 #define IS_VALID_PLAYERID(playerid) \
