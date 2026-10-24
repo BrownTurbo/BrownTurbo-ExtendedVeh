@@ -95,14 +95,16 @@ inline void StopUsingCommonVehicleTexDictionary()
 struct CommonVehicleTexDictionaryGuard {
 	bool m_active { false };
 
-	CommonVehicleTexDictionaryGuard() {
+	CommonVehicleTexDictionaryGuard()
+	{
 		if (*reinterpret_cast<void**>(0x00B4E6A0) == nullptr) {
 			UseCommonVehicleTexDictionary();
 			m_active = true;
 		}
 	}
 
-	~CommonVehicleTexDictionaryGuard() {
+	~CommonVehicleTexDictionaryGuard()
+	{
 		if (m_active) {
 			StopUsingCommonVehicleTexDictionary();
 			m_active = false;
@@ -112,4 +114,3 @@ struct CommonVehicleTexDictionaryGuard {
 	CommonVehicleTexDictionaryGuard(const CommonVehicleTexDictionaryGuard&) = delete;
 	CommonVehicleTexDictionaryGuard& operator=(const CommonVehicleTexDictionaryGuard&) = delete;
 };
-

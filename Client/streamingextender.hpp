@@ -511,7 +511,8 @@ public:
 			// the master wheel atomic null, and skips cloning to the other 3 wheels, leaving the car with no wheels
 			// or crashing when looking sideways (Q/E).
 			auto getFirstDirectAtomic = [](RwFrame* frame) -> RpAtomic* {
-				if (!frame) return nullptr;
+				if (!frame)
+					return nullptr;
 				RpAtomic* found = nullptr;
 				RwFrameForAllObjects(frame, [](RwObject* obj, void* data) -> RwObject* {
 					if (obj && obj->type == rpATOMIC) {
@@ -519,17 +520,21 @@ public:
 						return nullptr;
 					}
 					return obj;
-				}, &found);
+				},
+					&found);
 				return found;
 			};
 
 			std::function<RpAtomic*(RwFrame*)> findAtomicTree = [&](RwFrame* frame) -> RpAtomic* {
-				if (!frame) return nullptr;
+				if (!frame)
+					return nullptr;
 				RpAtomic* at = getFirstDirectAtomic(frame);
-				if (at) return at;
+				if (at)
+					return at;
 				for (RwFrame* child = frame->child; child != nullptr; child = child->next) {
 					at = findAtomicTree(child);
-					if (at) return at;
+					if (at)
+						return at;
 				}
 				return nullptr;
 			};
@@ -592,7 +597,8 @@ public:
 						}
 					}
 					return atomic;
-				}, &wsc);
+				},
+					&wsc);
 
 				if (wsc.found) {
 					RpAtomicSetFrame(wsc.found, wheelRf);
@@ -689,7 +695,8 @@ public:
 									for (int v = 0; v < geom->numVertices; ++v) {
 										const RwV3d& pt = geom->morphTarget[0].verts[v];
 										float rSq = pt.x * pt.x + pt.y * pt.y + pt.z * pt.z;
-										if (rSq > maxRSq) maxRSq = rSq;
+										if (rSq > maxRSq)
+											maxRSq = rSq;
 									}
 									r = std::sqrt(maxRSq);
 								}
@@ -842,8 +849,7 @@ public:
 			// Explicitly zero rear passenger seat (slot 5) if the custom model DFF does not contain rear doors.
 			// Inheriting rear seat dummy positions on a 2-door vehicle causes GTA SA to create passenger entry points
 			// for non-existing rear doors, making peds open invisible/non-existing doors in thin air.
-			bool hasRearDoors = (CClumpModelInfo::GetFrameFromName(pClump, "door_lr_dummy") != nullptr ||
-			                     CClumpModelInfo::GetFrameFromName(pClump, "door_lr") != nullptr);
+			bool hasRearDoors = (CClumpModelInfo::GetFrameFromName(pClump, "door_lr_dummy") != nullptr || CClumpModelInfo::GetFrameFromName(pClump, "door_lr") != nullptr);
 			if (!hasRearDoors && CClumpModelInfo::GetFrameFromName(pClump, "ped_backseat") == nullptr) {
 				pInfo->m_pVehicleStruct->m_avDummyPos[5] = CVector(0.0f, 0.0f, 0.0f);
 			}
@@ -958,8 +964,7 @@ public:
 		}
 
 		// Check if the model is still in use by SA-MP or GTA vehicle pool
-		if (HandlingManager::GetModelUseCount(customId) > 0 ||
-			(modelEntry->gtaModelSlot >= 0 && IsGtaSlotUsedByVehicle(modelEntry->gtaModelSlot))) {
+		if (HandlingManager::GetModelUseCount(customId) > 0 || (modelEntry->gtaModelSlot >= 0 && IsGtaSlotUsedByVehicle(modelEntry->gtaModelSlot))) {
 			// Re-queue the destruction command
 			if (s_destructionRequeueCallback) {
 				s_destructionRequeueCallback(customId);

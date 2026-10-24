@@ -1207,45 +1207,60 @@ void CustomVehicleBindingManager::Process()
 					}
 					if (!car->m_aCarNodes[CAR_DOOR_LF]) {
 						car->m_aCarNodes[CAR_DOOR_LF] = CClumpModelInfo::GetFrameFromName(newClump, "door_lf_dummy");
-						if (!car->m_aCarNodes[CAR_DOOR_LF]) car->m_aCarNodes[CAR_DOOR_LF] = CClumpModelInfo::GetFrameFromName(newClump, "door_lf");
+						if (!car->m_aCarNodes[CAR_DOOR_LF])
+							car->m_aCarNodes[CAR_DOOR_LF] = CClumpModelInfo::GetFrameFromName(newClump, "door_lf");
 					}
 					if (!car->m_aCarNodes[CAR_DOOR_RF]) {
 						car->m_aCarNodes[CAR_DOOR_RF] = CClumpModelInfo::GetFrameFromName(newClump, "door_rf_dummy");
-						if (!car->m_aCarNodes[CAR_DOOR_RF]) car->m_aCarNodes[CAR_DOOR_RF] = CClumpModelInfo::GetFrameFromName(newClump, "door_rf");
+						if (!car->m_aCarNodes[CAR_DOOR_RF])
+							car->m_aCarNodes[CAR_DOOR_RF] = CClumpModelInfo::GetFrameFromName(newClump, "door_rf");
 					}
 					if (!car->m_aCarNodes[CAR_DOOR_LR]) {
 						car->m_aCarNodes[CAR_DOOR_LR] = CClumpModelInfo::GetFrameFromName(newClump, "door_lr_dummy");
-						if (!car->m_aCarNodes[CAR_DOOR_LR]) car->m_aCarNodes[CAR_DOOR_LR] = CClumpModelInfo::GetFrameFromName(newClump, "door_lr");
+						if (!car->m_aCarNodes[CAR_DOOR_LR])
+							car->m_aCarNodes[CAR_DOOR_LR] = CClumpModelInfo::GetFrameFromName(newClump, "door_lr");
 					}
 					if (!car->m_aCarNodes[CAR_DOOR_RR]) {
 						car->m_aCarNodes[CAR_DOOR_RR] = CClumpModelInfo::GetFrameFromName(newClump, "door_rr_dummy");
-						if (!car->m_aCarNodes[CAR_DOOR_RR]) car->m_aCarNodes[CAR_DOOR_RR] = CClumpModelInfo::GetFrameFromName(newClump, "door_rr");
+						if (!car->m_aCarNodes[CAR_DOOR_RR])
+							car->m_aCarNodes[CAR_DOOR_RR] = CClumpModelInfo::GetFrameFromName(newClump, "door_rr");
 					}
 					if (!car->m_aCarNodes[CAR_BONNET]) {
 						car->m_aCarNodes[CAR_BONNET] = CClumpModelInfo::GetFrameFromName(newClump, "bonnet_dummy");
-						if (!car->m_aCarNodes[CAR_BONNET]) car->m_aCarNodes[CAR_BONNET] = CClumpModelInfo::GetFrameFromName(newClump, "bonnet");
-						if (!car->m_aCarNodes[CAR_BONNET]) car->m_aCarNodes[CAR_BONNET] = CClumpModelInfo::GetFrameFromName(newClump, "hood");
+						if (!car->m_aCarNodes[CAR_BONNET])
+							car->m_aCarNodes[CAR_BONNET] = CClumpModelInfo::GetFrameFromName(newClump, "bonnet");
+						if (!car->m_aCarNodes[CAR_BONNET])
+							car->m_aCarNodes[CAR_BONNET] = CClumpModelInfo::GetFrameFromName(newClump, "hood");
 					}
 					if (!car->m_aCarNodes[CAR_BOOT]) {
 						car->m_aCarNodes[CAR_BOOT] = CClumpModelInfo::GetFrameFromName(newClump, "boot_dummy");
-						if (!car->m_aCarNodes[CAR_BOOT]) car->m_aCarNodes[CAR_BOOT] = CClumpModelInfo::GetFrameFromName(newClump, "boot");
-						if (!car->m_aCarNodes[CAR_BOOT]) car->m_aCarNodes[CAR_BOOT] = CClumpModelInfo::GetFrameFromName(newClump, "trunk");
+						if (!car->m_aCarNodes[CAR_BOOT])
+							car->m_aCarNodes[CAR_BOOT] = CClumpModelInfo::GetFrameFromName(newClump, "boot");
+						if (!car->m_aCarNodes[CAR_BOOT])
+							car->m_aCarNodes[CAR_BOOT] = CClumpModelInfo::GetFrameFromName(newClump, "trunk");
 					}
 					if (!car->m_aCarNodes[CAR_BUMP_FRONT]) {
 						car->m_aCarNodes[CAR_BUMP_FRONT] = CClumpModelInfo::GetFrameFromName(newClump, "bump_front_dummy");
-						if (!car->m_aCarNodes[CAR_BUMP_FRONT]) car->m_aCarNodes[CAR_BUMP_FRONT] = CClumpModelInfo::GetFrameFromName(newClump, "bump_front");
-						if (!car->m_aCarNodes[CAR_BUMP_FRONT]) car->m_aCarNodes[CAR_BUMP_FRONT] = CClumpModelInfo::GetFrameFromName(newClump, "front_part");
-						if (!car->m_aCarNodes[CAR_BUMP_FRONT]) car->m_aCarNodes[CAR_BUMP_FRONT] = CClumpModelInfo::GetFrameFromName(newClump, "front_bump");
+						if (!car->m_aCarNodes[CAR_BUMP_FRONT])
+							car->m_aCarNodes[CAR_BUMP_FRONT] = CClumpModelInfo::GetFrameFromName(newClump, "bump_front");
+						if (!car->m_aCarNodes[CAR_BUMP_FRONT])
+							car->m_aCarNodes[CAR_BUMP_FRONT] = CClumpModelInfo::GetFrameFromName(newClump, "front_part");
+						if (!car->m_aCarNodes[CAR_BUMP_FRONT])
+							car->m_aCarNodes[CAR_BUMP_FRONT] = CClumpModelInfo::GetFrameFromName(newClump, "front_bump");
 					}
 					if (!car->m_aCarNodes[CAR_BUMP_REAR]) {
 						car->m_aCarNodes[CAR_BUMP_REAR] = CClumpModelInfo::GetFrameFromName(newClump, "bump_rear_dummy");
-						if (!car->m_aCarNodes[CAR_BUMP_REAR]) car->m_aCarNodes[CAR_BUMP_REAR] = CClumpModelInfo::GetFrameFromName(newClump, "bump_rear");
-						if (!car->m_aCarNodes[CAR_BUMP_REAR]) car->m_aCarNodes[CAR_BUMP_REAR] = CClumpModelInfo::GetFrameFromName(newClump, "rear_bump");
-						if (!car->m_aCarNodes[CAR_BUMP_REAR]) car->m_aCarNodes[CAR_BUMP_REAR] = CClumpModelInfo::GetFrameFromName(newClump, "rear_part");
+						if (!car->m_aCarNodes[CAR_BUMP_REAR])
+							car->m_aCarNodes[CAR_BUMP_REAR] = CClumpModelInfo::GetFrameFromName(newClump, "bump_rear");
+						if (!car->m_aCarNodes[CAR_BUMP_REAR])
+							car->m_aCarNodes[CAR_BUMP_REAR] = CClumpModelInfo::GetFrameFromName(newClump, "rear_bump");
+						if (!car->m_aCarNodes[CAR_BUMP_REAR])
+							car->m_aCarNodes[CAR_BUMP_REAR] = CClumpModelInfo::GetFrameFromName(newClump, "rear_part");
 					}
 					if (!car->m_aCarNodes[CAR_WINDSCREEN]) {
 						car->m_aCarNodes[CAR_WINDSCREEN] = CClumpModelInfo::GetFrameFromName(newClump, "windscreen_dummy");
-						if (!car->m_aCarNodes[CAR_WINDSCREEN]) car->m_aCarNodes[CAR_WINDSCREEN] = CClumpModelInfo::GetFrameFromName(newClump, "windscreen");
+						if (!car->m_aCarNodes[CAR_WINDSCREEN])
+							car->m_aCarNodes[CAR_WINDSCREEN] = CClumpModelInfo::GetFrameFromName(newClump, "windscreen");
 					}
 
 					// Reset all 6 doors cleanly
@@ -1444,10 +1459,7 @@ void CustomVehicleBindingManager::Process()
 					}
 				}
 
-				if (vehicle->m_nVehicleSubClass == VEHICLE_AUTOMOBILE || 
-					vehicle->m_nVehicleSubClass == VEHICLE_MTRUCK || 
-					vehicle->m_nVehicleSubClass == VEHICLE_QUAD) 
-				{
+				if (vehicle->m_nVehicleSubClass == VEHICLE_AUTOMOBILE || vehicle->m_nVehicleSubClass == VEHICLE_MTRUCK || vehicle->m_nVehicleSubClass == VEHICLE_QUAD) {
 					auto* car = reinterpret_cast<CAutomobile*>(vehicle);
 					if (!car->m_aCarNodes[CAR_DOOR_LR] && !car->m_aCarNodes[CAR_DOOR_RR]) {
 						if (vehicle->m_nMaxPassengers > 1) {
@@ -1604,10 +1616,7 @@ void CustomVehicleBindingManager::Process()
 					}
 				}
 
-				if (vehicle->m_nVehicleSubClass == VEHICLE_AUTOMOBILE || 
-					vehicle->m_nVehicleSubClass == VEHICLE_MTRUCK || 
-					vehicle->m_nVehicleSubClass == VEHICLE_QUAD) 
-				{
+				if (vehicle->m_nVehicleSubClass == VEHICLE_AUTOMOBILE || vehicle->m_nVehicleSubClass == VEHICLE_MTRUCK || vehicle->m_nVehicleSubClass == VEHICLE_QUAD) {
 					auto* car = reinterpret_cast<CAutomobile*>(vehicle);
 					if (!car->m_aCarNodes[CAR_DOOR_LR] && !car->m_aCarNodes[CAR_DOOR_RR]) {
 						if (vehicle->m_nMaxPassengers > 1) {
@@ -2901,12 +2910,7 @@ void CustomVehicleBindingManager::ApplyVehicleColors(CVehicle* vehicle, uint8_t 
 			if (fn && *fn) {
 				std::string fnLower = fn;
 				std::transform(fnLower.begin(), fnLower.end(), fnLower.begin(), ::tolower);
-				if (fnLower.find("bt_plate") != std::string::npos ||
-					fnLower.find("plate") != std::string::npos ||
-					fnLower.find("wheel") != std::string::npos ||
-					fnLower.find("rim") != std::string::npos ||
-					fnLower.find("tyre") != std::string::npos ||
-					fnLower.find("tire") != std::string::npos) {
+				if (fnLower.find("bt_plate") != std::string::npos || fnLower.find("plate") != std::string::npos || fnLower.find("wheel") != std::string::npos || fnLower.find("rim") != std::string::npos || fnLower.find("tyre") != std::string::npos || fnLower.find("tire") != std::string::npos) {
 					isExcluded = true;
 					break;
 				}
@@ -2937,20 +2941,7 @@ void CustomVehicleBindingManager::ApplyVehicleColors(CVehicle* vehicle, uint8_t 
 			}
 
 			// Exclude non-body components (glass, lights, tires, brakes, interior, engine, badges)
-			if (texLower.find("glass") != std::string::npos || texLower.find("window") != std::string::npos ||
-				texLower.find("windscreen") != std::string::npos || texLower.find("light") != std::string::npos ||
-				texLower.find("lamp") != std::string::npos || texLower.find("vehiclelights") != std::string::npos ||
-				texLower.find("wheel") != std::string::npos || texLower.find("tyre") != std::string::npos ||
-				texLower.find("tire") != std::string::npos || texLower.find("rim") != std::string::npos ||
-				texLower.find("rubber") != std::string::npos || texLower.find("alloy") != std::string::npos ||
-				texLower.find("chrome") != std::string::npos || texLower.find("brake") != std::string::npos ||
-				texLower.find("disc") != std::string::npos || texLower.find("rotor") != std::string::npos ||
-				texLower.find("caliper") != std::string::npos || texLower.find("plate") != std::string::npos ||
-				texLower.find("nomer") != std::string::npos || texLower.find("interior") != std::string::npos ||
-				texLower.find("seat") != std::string::npos || texLower.find("steer") != std::string::npos ||
-				texLower.find("engine") != std::string::npos || texLower.find("exhaust") != std::string::npos ||
-				texLower.find("handle") != std::string::npos || texLower.find("badge") != std::string::npos ||
-				texLower.find("logo") != std::string::npos || texLower.find("shad") != std::string::npos) {
+			if (texLower.find("glass") != std::string::npos || texLower.find("window") != std::string::npos || texLower.find("windscreen") != std::string::npos || texLower.find("light") != std::string::npos || texLower.find("lamp") != std::string::npos || texLower.find("vehiclelights") != std::string::npos || texLower.find("wheel") != std::string::npos || texLower.find("tyre") != std::string::npos || texLower.find("tire") != std::string::npos || texLower.find("rim") != std::string::npos || texLower.find("rubber") != std::string::npos || texLower.find("alloy") != std::string::npos || texLower.find("chrome") != std::string::npos || texLower.find("brake") != std::string::npos || texLower.find("disc") != std::string::npos || texLower.find("rotor") != std::string::npos || texLower.find("caliper") != std::string::npos || texLower.find("plate") != std::string::npos || texLower.find("nomer") != std::string::npos || texLower.find("interior") != std::string::npos || texLower.find("seat") != std::string::npos || texLower.find("steer") != std::string::npos || texLower.find("engine") != std::string::npos || texLower.find("exhaust") != std::string::npos || texLower.find("handle") != std::string::npos || texLower.find("badge") != std::string::npos || texLower.find("logo") != std::string::npos || texLower.find("shad") != std::string::npos) {
 				return mat;
 			}
 

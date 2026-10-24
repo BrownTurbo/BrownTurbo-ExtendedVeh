@@ -14,12 +14,12 @@
 #include <game_sa/CPad.h>
 #include <game_sa/CPlayerPed.h>
 #include <game_sa/CShadows.h>
+#include <game_sa/CTaskComplexEnterCar.h>
 #include <game_sa/CTimer.h>
 #include <game_sa/CTxdStore.h>
 #include <game_sa/CVehicle.h>
 #include <game_sa/CVisibilityPlugins.h>
 #include <game_sa/CWaterLevel.h>
-#include <game_sa/CTaskComplexEnterCar.h>
 #include <game_sa/Fx_c.h>
 #include <game_sa/rw/rpworld.h>
 #include <game_sa/rw/skeleton.h>
@@ -180,11 +180,16 @@ static void __fastcall Hooked_UpdateWheelMatrix(CAutomobile* thisCar, void* edx,
 				if (wheelFrame) {
 					bool modified = false;
 
-					if (!std::isfinite(trackWidth)) trackWidth = 0.0f;
-					if (!std::isfinite(offsetY)) offsetY = 0.0f;
-					if (!std::isfinite(offsetZ)) offsetZ = 0.0f;
-					if (!std::isfinite(camber)) camber = 0.0f;
-					if (!std::isfinite(scale) || scale <= 0.01f) scale = 1.0f;
+					if (!std::isfinite(trackWidth))
+						trackWidth = 0.0f;
+					if (!std::isfinite(offsetY))
+						offsetY = 0.0f;
+					if (!std::isfinite(offsetZ))
+						offsetZ = 0.0f;
+					if (!std::isfinite(camber))
+						camber = 0.0f;
+					if (!std::isfinite(scale) || scale <= 0.01f)
+						scale = 1.0f;
 
 					if (trackWidth != 0.0f) {
 						wheelFrame->modelling.pos.x += isRight ? trackWidth : -trackWidth;
@@ -1001,8 +1006,8 @@ static bool(__cdecl* g_origComputeBestPassengerDoor)(
 	int* pOutDoor,
 	bool bCheckSeatOccupied,
 	bool bCheckDoorLocked,
-	bool bCheckDoorMissing
-) = nullptr;
+	bool bCheckDoorMissing)
+	= nullptr;
 static bool(__cdecl* g_origCanDoorBeOpened)(CVehicle* vehicle, int targetDoor) = nullptr;
 static CTask*(__fastcall* g_origEnterCar_CreateSubTaskForDoor)(CTaskComplexEnterCar* thisTask, void* edx, CPed* ped) = nullptr;
 static void(__fastcall* g_origCAutomobile_BlowUpCar)(CAutomobile* thisCar, void* edx, CEntity* damager, bool bHideExplosion) = nullptr;
@@ -1122,13 +1127,26 @@ static bool __fastcall Hooked_CAutomobile_IsDoorMissing(CAutomobile* thisCar, vo
 
 	int nodeIdx = -1;
 	switch (door) {
-	case BONNET: nodeIdx = CAR_BONNET; break;
-	case BOOT: nodeIdx = CAR_BOOT; break;
-	case DOOR_FRONT_LEFT: nodeIdx = CAR_DOOR_LF; break;
-	case DOOR_FRONT_RIGHT: nodeIdx = CAR_DOOR_RF; break;
-	case DOOR_REAR_LEFT: nodeIdx = CAR_DOOR_LR; break;
-	case DOOR_REAR_RIGHT: nodeIdx = CAR_DOOR_RR; break;
-	default: break;
+	case BONNET:
+		nodeIdx = CAR_BONNET;
+		break;
+	case BOOT:
+		nodeIdx = CAR_BOOT;
+		break;
+	case DOOR_FRONT_LEFT:
+		nodeIdx = CAR_DOOR_LF;
+		break;
+	case DOOR_FRONT_RIGHT:
+		nodeIdx = CAR_DOOR_RF;
+		break;
+	case DOOR_REAR_LEFT:
+		nodeIdx = CAR_DOOR_LR;
+		break;
+	case DOOR_REAR_RIGHT:
+		nodeIdx = CAR_DOOR_RR;
+		break;
+	default:
+		break;
 	}
 
 	if (nodeIdx >= 0 && nodeIdx < CAR_NUM_NODES) {
@@ -1148,10 +1166,7 @@ static unsigned char __fastcall GetVehicleEffectiveNumDoors(CVehicle* vehicle)
 	if (!vehicle || !IsVehiclePointerValid(vehicle))
 		return 4;
 
-	if (vehicle->m_nVehicleSubClass == VEHICLE_AUTOMOBILE ||
-		vehicle->m_nVehicleSubClass == VEHICLE_MTRUCK ||
-		vehicle->m_nVehicleSubClass == VEHICLE_QUAD)
-	{
+	if (vehicle->m_nVehicleSubClass == VEHICLE_AUTOMOBILE || vehicle->m_nVehicleSubClass == VEHICLE_MTRUCK || vehicle->m_nVehicleSubClass == VEHICLE_QUAD) {
 		auto* car = reinterpret_cast<CAutomobile*>(vehicle);
 		// If neither rear door node exists, car cannot have rear passenger doors!
 		if (!car->m_aCarNodes[CAR_DOOR_LR] && !car->m_aCarNodes[CAR_DOOR_RR]) {
@@ -1182,8 +1197,7 @@ static bool __cdecl Hooked_ComputeBestPassengerDoor(
 	int* pOutDoor,
 	bool bCheckSeatOccupied,
 	bool bCheckDoorLocked,
-	bool bCheckDoorMissing
-)
+	bool bCheckDoorMissing)
 {
 	bool res = false;
 	if (g_origComputeBestPassengerDoor) {
@@ -1191,10 +1205,7 @@ static bool __cdecl Hooked_ComputeBestPassengerDoor(
 	}
 
 	if (pVehicle && IsVehiclePointerValid(pVehicle)) {
-		if (pVehicle->m_nVehicleSubClass == VEHICLE_AUTOMOBILE ||
-			pVehicle->m_nVehicleSubClass == VEHICLE_MTRUCK ||
-			pVehicle->m_nVehicleSubClass == VEHICLE_QUAD)
-		{
+		if (pVehicle->m_nVehicleSubClass == VEHICLE_AUTOMOBILE || pVehicle->m_nVehicleSubClass == VEHICLE_MTRUCK || pVehicle->m_nVehicleSubClass == VEHICLE_QUAD) {
 			auto* car = reinterpret_cast<CAutomobile*>(pVehicle);
 			unsigned char numDoors = GetVehicleEffectiveNumDoors(car);
 			if (numDoors <= 2) {
@@ -1218,19 +1229,29 @@ static bool __cdecl Hooked_ComputeBestPassengerDoor(
 static bool __cdecl Hooked_CanDoorBeOpened(CVehicle* vehicle, int targetDoor)
 {
 	if (vehicle && IsVehiclePointerValid(vehicle)) {
-		if (vehicle->m_nVehicleSubClass == VEHICLE_AUTOMOBILE ||
-			vehicle->m_nVehicleSubClass == VEHICLE_MTRUCK ||
-			vehicle->m_nVehicleSubClass == VEHICLE_QUAD)
-		{
+		if (vehicle->m_nVehicleSubClass == VEHICLE_AUTOMOBILE || vehicle->m_nVehicleSubClass == VEHICLE_MTRUCK || vehicle->m_nVehicleSubClass == VEHICLE_QUAD) {
 			auto* car = reinterpret_cast<CAutomobile*>(vehicle);
 			int doorNode = -1;
 			eDoors eDoor = DOOR_FRONT_LEFT;
 			switch (targetDoor) {
-			case 8: doorNode = CAR_DOOR_RF; eDoor = DOOR_FRONT_RIGHT; break;
-			case 9: doorNode = CAR_DOOR_RR; eDoor = DOOR_REAR_RIGHT; break;
-			case 10: doorNode = CAR_DOOR_LF; eDoor = DOOR_FRONT_LEFT; break;
-			case 11: doorNode = CAR_DOOR_LR; eDoor = DOOR_REAR_LEFT; break;
-			default: break;
+			case 8:
+				doorNode = CAR_DOOR_RF;
+				eDoor = DOOR_FRONT_RIGHT;
+				break;
+			case 9:
+				doorNode = CAR_DOOR_RR;
+				eDoor = DOOR_REAR_RIGHT;
+				break;
+			case 10:
+				doorNode = CAR_DOOR_LF;
+				eDoor = DOOR_FRONT_LEFT;
+				break;
+			case 11:
+				doorNode = CAR_DOOR_LR;
+				eDoor = DOOR_REAR_LEFT;
+				break;
+			default:
+				break;
 			}
 
 			if (doorNode >= 0 && doorNode < CAR_NUM_NODES) {
@@ -1253,10 +1274,7 @@ static CTask* __fastcall Hooked_EnterCar_CreateSubTaskForDoor(CTaskComplexEnterC
 {
 	if (thisTask && thisTask->m_pTargetVehicle && IsVehiclePointerValid(thisTask->m_pTargetVehicle)) {
 		CVehicle* veh = thisTask->m_pTargetVehicle;
-		if (veh->m_nVehicleSubClass == VEHICLE_AUTOMOBILE ||
-			veh->m_nVehicleSubClass == VEHICLE_MTRUCK ||
-			veh->m_nVehicleSubClass == VEHICLE_QUAD)
-		{
+		if (veh->m_nVehicleSubClass == VEHICLE_AUTOMOBILE || veh->m_nVehicleSubClass == VEHICLE_MTRUCK || veh->m_nVehicleSubClass == VEHICLE_QUAD) {
 			auto* car = reinterpret_cast<CAutomobile*>(veh);
 			unsigned char numDoors = GetVehicleEffectiveNumDoors(car);
 			if (numDoors <= 2 && !thisTask->m_bAsDriver) {
@@ -1279,26 +1297,35 @@ static CTask* __fastcall Hooked_EnterCar_CreateSubTaskForDoor(CTaskComplexEnterC
 	if (resultTask && resultTask->GetId() == TASK_SIMPLE_CAR_GET_IN) {
 		if (thisTask && thisTask->m_pTargetVehicle && IsVehiclePointerValid(thisTask->m_pTargetVehicle)) {
 			CVehicle* veh = thisTask->m_pTargetVehicle;
-			if (veh->m_nVehicleSubClass == VEHICLE_AUTOMOBILE ||
-				veh->m_nVehicleSubClass == VEHICLE_MTRUCK ||
-				veh->m_nVehicleSubClass == VEHICLE_QUAD)
-			{
+			if (veh->m_nVehicleSubClass == VEHICLE_AUTOMOBILE || veh->m_nVehicleSubClass == VEHICLE_MTRUCK || veh->m_nVehicleSubClass == VEHICLE_QUAD) {
 				auto* car = reinterpret_cast<CAutomobile*>(veh);
 				int doorNode = -1;
 				eDoors eDoor = DOOR_FRONT_LEFT;
 				switch (thisTask->m_nTargetDoor) {
-				case 8: doorNode = CAR_DOOR_RF; eDoor = DOOR_FRONT_RIGHT; break;
-				case 9: doorNode = CAR_DOOR_RR; eDoor = DOOR_REAR_RIGHT; break;
-				case 10: doorNode = CAR_DOOR_LF; eDoor = DOOR_FRONT_LEFT; break;
-				case 11: doorNode = CAR_DOOR_LR; eDoor = DOOR_REAR_LEFT; break;
-				default: break;
+				case 8:
+					doorNode = CAR_DOOR_RF;
+					eDoor = DOOR_FRONT_RIGHT;
+					break;
+				case 9:
+					doorNode = CAR_DOOR_RR;
+					eDoor = DOOR_REAR_RIGHT;
+					break;
+				case 10:
+					doorNode = CAR_DOOR_LF;
+					eDoor = DOOR_FRONT_LEFT;
+					break;
+				case 11:
+					doorNode = CAR_DOOR_LR;
+					eDoor = DOOR_REAR_LEFT;
+					break;
+				default:
+					break;
 				}
 
 				if (doorNode >= 0 && doorNode < CAR_NUM_NODES && car->m_aCarNodes[doorNode]) {
 					float angle = car->m_doors[eDoor].m_fAngle;
 					if (std::fabs(angle) < 0.1f) {
-						ClientLog(LogLevel::Info, std::format("Hooked_EnterCar_CreateSubTaskForDoor: targetDoor {} (door {}) is closed (angle {:.2f}), forcing 0x322 instead of 0x327",
-							thisTask->m_nTargetDoor, (int)eDoor, angle));
+						ClientLog(LogLevel::Info, std::format("Hooked_EnterCar_CreateSubTaskForDoor: targetDoor {} (door {}) is closed (angle {:.2f}), forcing 0x322 instead of 0x327", thisTask->m_nTargetDoor, (int)eDoor, angle));
 
 						// Free the 0x327 task via GTA SA's scalar deleting destructor (vtable[0])
 						auto dtor = reinterpret_cast<void(__thiscall*)(CTask*, int)>((*reinterpret_cast<uintptr_t**>(resultTask))[0]);

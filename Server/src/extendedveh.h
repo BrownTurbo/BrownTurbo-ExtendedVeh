@@ -8,7 +8,8 @@
 #include <cstring>
 #include <cstdint>
 
-inline float amx_ctof_impl(cell c) noexcept {
+inline float amx_ctof_impl(cell c) noexcept
+{
 	static_assert(sizeof(float) == sizeof(uint32_t), "Size of float and uint32_t must match");
 	const uint32_t u = static_cast<uint32_t>(static_cast<ucell>(c));
 #if defined(__cpp_lib_bit_cast)
@@ -20,7 +21,8 @@ inline float amx_ctof_impl(cell c) noexcept {
 #endif
 }
 
-inline cell amx_ftoc_impl(float f) noexcept {
+inline cell amx_ftoc_impl(float f) noexcept
+{
 	static_assert(sizeof(float) == sizeof(uint32_t), "Size of float and uint32_t must match");
 #if defined(__cpp_lib_bit_cast)
 	const uint32_t u = std::bit_cast<uint32_t>(f);
