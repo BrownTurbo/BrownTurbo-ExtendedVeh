@@ -992,6 +992,7 @@ static bool(__fastcall* g_origCVehicle_CanVehicleBeDamaged)(CVehicle* thisVeh, v
 static void(__fastcall* g_origCAutomobile_VehicleDamage)(CAutomobile* thisCar, void* edx, float damageIntensity, unsigned short collisionComponent, CEntity* damager, CVector* vecCollisionCoors, CVector* vecCollisionDirection, eWeaponType weapon) = nullptr;
 static void(__fastcall* g_origCAutomobile_PopDoor)(CAutomobile* thisCar, void* edx, int nodeIndex, eDoors door, bool showVisualEffect) = nullptr;
 static void(__fastcall* g_origCAutomobile_PopPanel)(CAutomobile* thisCar, void* edx, int nodeIndex, ePanels panel, bool showVisualEffect) = nullptr;
+static bool(__fastcall* g_origCAutomobile_IsDoorMissing)(CAutomobile* thisCar, void* edx, eDoors door) = nullptr;
 static void(__fastcall* g_origCAutomobile_BlowUpCar)(CAutomobile* thisCar, void* edx, CEntity* damager, bool bHideExplosion) = nullptr;
 static void(__fastcall* g_origCVehicle_ProcessDelayedExplosion)(CVehicle* thisVeh, void* edx) = nullptr;
 
@@ -1097,6 +1098,69 @@ static void __fastcall Hooked_CAutomobile_PopPanel(CAutomobile* thisCar, void* e
 	if (thisCar && IsVehiclePointerValid(thisCar)) {
 		CustomVehicleBindingManager::Instance().UpdateVehiclePlateVisibility(thisCar);
 	}
+}
+
+static bool __fastcall Hooked_CAutomobile_IsDoorMissing(CAutomobile* thisCar, void* edx, eDoors door)
+{
+	if (!thisCar || !IsVehiclePointerValid(thisCar)) {
+		if (g_origCAutomobile_IsDoorMissing)
+			return g_origCAutomobile_IsDoorMissing(thisCar, edx, door);
+		return true;
+	}
+
+	int nodeIdx = -1;
+	switch (door) {
+	case BONNET: nodeIdx = CAR_BONNET; break;
+	case BOOT: nodeIdx = CAR_BOOT; break;
+	case DOOR_FRONT_LEFT: nodeIdx = CAR_DOOR_LF; break;
+	case DOOR_FRONT_RIGHT: nodeIdx = CAR_DOOR_RF; break;
+	case DOOR_REAR_LEFT: nodeIdx = CAR_DOOR_LR; break;
+	case DOOR_REAR_RIGHT: nodeIdx = CAR_DOOR_RR; break;
+	default: break;
+	}
+
+	if (nodeIdx >= 0 && nodeIdx < CAR_NUM_NODES) {
+		if (!thisCar->m_aCarNodes[nodeIdx]) {
+			return true; // Door frame node physically missing from model -> door is missing!
+		}
+	}
+
+	if (g_origCAutomobile_IsDoorMissing)
+		return g_origCAutomobile_IsDoorMissing(thisCar, edx, door);
+
+	return thisCar->m_damageManager.GetDoorStatus(door) == DAMSTATE_NOTPRESENT;
+}
+
+static unsigned char __fastcall GetVehicleEffectiveNumDoors(CVehicle* vehicle)
+{
+	if (!vehicle || !IsVehiclePointerValid(vehicle))
+		return 4;
+
+	if (vehicle->m_nVehicleSubClass == VEHICLE_AUTOMOBILE ||
+		vehicle->m_nVehicleSubClass == VEHICLE_MTRUCK ||
+		vehicle->m_nVehicleSubClass == VEHICLE_QUAD)
+	{
+		auto* car = reinterpret_cast<CAutomobile*>(vehicle);
+		// If neither rear door node exists, car cannot have rear passenger doors!
+		if (!car->m_aCarNodes[CAR_DOOR_LR] && !car->m_aCarNodes[CAR_DOOR_RR]) {
+			return 2;
+		}
+	}
+
+	auto* binding = CustomVehicleBindingManager::Instance().FindByVehicle(vehicle);
+	if (binding && binding->customModelId > 0) {
+		auto* model = StreamingExtender::GetCustomModel(binding->customModelId);
+		if (model && model->m_nNumDoors > 0) {
+			return model->m_nNumDoors;
+		}
+	}
+
+	auto* info = reinterpret_cast<CVehicleModelInfo*>(CModelInfo::ms_modelInfoPtrs[vehicle->m_nModelIndex]);
+	if (info) {
+		return info->m_nNumDoors;
+	}
+
+	return 4;
 }
 
 static void __fastcall Hooked_CAutomobile_BlowUpCar(CAutomobile* thisCar, void* edx, CEntity* damager, bool bHideExplosion)
@@ -4220,6 +4284,45 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD dwReason, LPVOID lpReserved)
 			ClientLog(LogLevel::Error, std::format("Failed to hook CAutomobile::PopPanel (0x6ADF80): {}", MH_StatusToString(popPanelStatus)));
 		}
 
+		MH_STATUS isDoorMissingStatus = MH_CreateHook(reinterpret_cast<void*>(0x6A2330), reinterpret_cast<void*>(&Hooked_CAutomobile_IsDoorMissing), reinterpret_cast<void**>(&g_origCAutomobile_IsDoorMissing));
+		if (isDoorMissingStatus == MH_OK) {
+			MH_STATUS enableStatus = MH_EnableHook(reinterpret_cast<void*>(0x6A2330));
+			if (enableStatus == MH_OK) {
+				ClientLog(LogLevel::Info, "CAutomobile::IsDoorMissing (0x6A2330) hooked successfully via MinHook");
+			} else {
+				ClientLog(LogLevel::Error, std::format("Failed to enable CAutomobile::IsDoorMissing hook: {}", MH_StatusToString(enableStatus)));
+			}
+		} else {
+			ClientLog(LogLevel::Error, std::format("Failed to hook CAutomobile::IsDoorMissing (0x6A2330): {}", MH_StatusToString(isDoorMissingStatus)));
+		}
+
+		// Patch 0x00650E05 in ComputeBestPassengerDoor (0x650BB0):
+		// Use effective door count so 2-door vehicles always route passengers to CAR_DOOR_RF
+		{
+			uintptr_t patchAddr = 0x00650E05;
+			DWORD oldProt = 0;
+			if (VirtualProtect(reinterpret_cast<void*>(patchAddr), 15, PAGE_EXECUTE_READWRITE, &oldProt)) {
+				uint8_t patchBytes[15];
+				patchBytes[0] = 0x8B; // mov ecx, esi
+				patchBytes[1] = 0xCE;
+				patchBytes[2] = 0xE8; // call rel32
+				uintptr_t callTarget = reinterpret_cast<uintptr_t>(&GetVehicleEffectiveNumDoors);
+				uintptr_t nextIp = patchAddr + 2 + 5; // after 'call' instruction
+				int32_t rel = static_cast<int32_t>(callTarget - nextIp);
+				std::memcpy(&patchBytes[3], &rel, sizeof(int32_t));
+				patchBytes[7] = 0x3C; // cmp al, 2
+				patchBytes[8] = 0x02;
+				std::memset(&patchBytes[9], 0x90, 6); // nop x 6
+
+				std::memcpy(reinterpret_cast<void*>(patchAddr), patchBytes, 15);
+				VirtualProtect(reinterpret_cast<void*>(patchAddr), 15, oldProt, &oldProt);
+				FlushInstructionCache(GetCurrentProcess(), reinterpret_cast<void*>(patchAddr), 15);
+				ClientLog(LogLevel::Info, "ComputeBestPassengerDoor (0x00650E05) patched successfully");
+			} else {
+				ClientLog(LogLevel::Error, "Failed to VirtualProtect 0x00650E05 for passenger door patch");
+			}
+		}
+
 		MH_STATUS blowUpStatus = MH_CreateHook(reinterpret_cast<void*>(0x6B3780), reinterpret_cast<void*>(&Hooked_CAutomobile_BlowUpCar), reinterpret_cast<void**>(&g_origCAutomobile_BlowUpCar));
 		if (blowUpStatus == MH_OK) {
 			MH_STATUS enableStatus = MH_EnableHook(reinterpret_cast<void*>(0x6B3780));
@@ -4528,6 +4631,12 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD dwReason, LPVOID lpReserved)
 			MH_DisableHook(reinterpret_cast<void*>(0x6ADF80));
 			MH_RemoveHook(reinterpret_cast<void*>(0x6ADF80));
 			g_origCAutomobile_PopPanel = nullptr;
+		}
+
+		if (g_origCAutomobile_IsDoorMissing) {
+			MH_DisableHook(reinterpret_cast<void*>(0x6A2330));
+			MH_RemoveHook(reinterpret_cast<void*>(0x6A2330));
+			g_origCAutomobile_IsDoorMissing = nullptr;
 		}
 
 		if (g_origCAutomobile_BlowUpCar) {

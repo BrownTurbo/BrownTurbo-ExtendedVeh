@@ -531,6 +531,7 @@ void CustomVehicleBindingManager::Unbind(uint16_t vehicleId)
 						}
 						car->SetupSuspensionLines();
 						car->ResetSuspension();
+						vehicle->m_nMaxPassengers = CVehicleModelInfo::GetMaximumNumberOfPassengersFromNumberOfDoors(vehicle->m_nModelIndex);
 					} else if (vehicle->m_nVehicleSubClass == VEHICLE_BIKE || vehicle->m_nVehicleSubClass == VEHICLE_BMX) {
 						reinterpret_cast<CBike*>(vehicle)->SetupModelNodes();
 					} else if (vehicle->m_nVehicleSubClass == VEHICLE_BOAT) {
@@ -746,15 +747,20 @@ void CustomVehicleBindingManager::OnVehicleFixed(CVehicle* vehicle)
 				};
 
 				for (const auto& d : kDoors) {
-					car->FixDoor(d.nodeIdx, d.door);
-					car->m_doors[d.door].m_fAngle = car->m_doors[d.door].m_fClosedAngle;
-					car->m_doors[d.door].m_fPrevAngle = car->m_doors[d.door].m_fClosedAngle;
-					car->m_doors[d.door].m_fAngVel = 0.0f;
-					car->m_doors[d.door].m_nDoorState = DOOR_NOTHING;
-
 					RwFrame* doorFrame = car->m_aCarNodes[d.nodeIdx];
 					if (doorFrame) {
+						car->FixDoor(d.nodeIdx, d.door);
+						car->m_doors[d.door].m_fAngle = car->m_doors[d.door].m_fClosedAngle;
+						car->m_doors[d.door].m_fPrevAngle = car->m_doors[d.door].m_fClosedAngle;
+						car->m_doors[d.door].m_fAngVel = 0.0f;
+						car->m_doors[d.door].m_nDoorState = DOOR_NOTHING;
 						car->SetComponentVisibility(doorFrame, 1);
+					} else {
+						car->m_damageManager.SetDoorStatus(d.door, DAMSTATE_NOTPRESENT);
+						car->m_doors[d.door].m_fAngle = 0.0f;
+						car->m_doors[d.door].m_fPrevAngle = 0.0f;
+						car->m_doors[d.door].m_fAngVel = 0.0f;
+						car->m_doors[d.door].m_nDoorState = DOOR_NOTHING;
 					}
 				}
 
@@ -771,10 +777,12 @@ void CustomVehicleBindingManager::OnVehicleFixed(CVehicle* vehicle)
 				};
 
 				for (const auto& p : kPanels) {
-					car->FixPanel(p.nodeIdx, p.panel);
 					RwFrame* panelFrame = car->m_aCarNodes[p.nodeIdx];
 					if (panelFrame) {
+						car->FixPanel(p.nodeIdx, p.panel);
 						car->SetComponentVisibility(panelFrame, 1);
+					} else {
+						car->m_damageManager.SetPanelStatus(p.panel, PANEL_STATUS_MISSING);
 					}
 				}
 
@@ -786,6 +794,16 @@ void CustomVehicleBindingManager::OnVehicleFixed(CVehicle* vehicle)
 
 				// Reset damage manager & flag
 				car->m_damageManager.ResetDamageStatus();
+				for (const auto& d : kDoors) {
+					if (!car->m_aCarNodes[d.nodeIdx]) {
+						car->m_damageManager.SetDoorStatus(d.door, DAMSTATE_NOTPRESENT);
+					}
+				}
+				for (const auto& p : kPanels) {
+					if (!car->m_aCarNodes[p.nodeIdx]) {
+						car->m_damageManager.SetPanelStatus(p.panel, PANEL_STATUS_MISSING);
+					}
+				}
 				car->bIsDamaged = false;
 				reinterpret_cast<uint8_t*>(car)[0x42A] &= ~1;
 
@@ -1325,6 +1343,15 @@ void CustomVehicleBindingManager::Process()
 						}
 						car->ResetSuspension();
 					}
+
+					// Enforce passenger capacity for custom model
+					if (!car->m_aCarNodes[CAR_DOOR_LR] && !car->m_aCarNodes[CAR_DOOR_RR]) {
+						vehicle->m_nMaxPassengers = 1;
+					} else if (model && model->m_nNumDoors <= 2) {
+						vehicle->m_nMaxPassengers = 1;
+					} else {
+						vehicle->m_nMaxPassengers = 3;
+					}
 				} else if (vehicle->m_nVehicleSubClass == VEHICLE_BIKE || vehicle->m_nVehicleSubClass == VEHICLE_BMX) {
 					reinterpret_cast<CBike*>(vehicle)->SetupModelNodes();
 				} else if (vehicle->m_nVehicleSubClass == VEHICLE_BOAT) {
@@ -1414,6 +1441,41 @@ void CustomVehicleBindingManager::Process()
 					auto it = s_modelOffsets.find(binding.customModelId);
 					if (it != s_modelOffsets.end()) {
 						ApplyModelOffsetsToBinding(binding, it->second);
+					}
+				}
+
+				if (vehicle->m_nVehicleSubClass == VEHICLE_AUTOMOBILE || 
+					vehicle->m_nVehicleSubClass == VEHICLE_MTRUCK || 
+					vehicle->m_nVehicleSubClass == VEHICLE_QUAD) 
+				{
+					auto* car = reinterpret_cast<CAutomobile*>(vehicle);
+					if (!car->m_aCarNodes[CAR_DOOR_LR] && !car->m_aCarNodes[CAR_DOOR_RR]) {
+						if (vehicle->m_nMaxPassengers > 1) {
+							vehicle->m_nMaxPassengers = 1;
+						}
+					} else if (model && model->m_nNumDoors <= 2) {
+						if (vehicle->m_nMaxPassengers > 1) {
+							vehicle->m_nMaxPassengers = 1;
+						}
+					}
+
+					static const struct {
+						int nodeIdx;
+						eDoors door;
+					} kDoors[] = {
+						{ CAR_BONNET, BONNET },
+						{ CAR_BOOT, BOOT },
+						{ CAR_DOOR_LF, DOOR_FRONT_LEFT },
+						{ CAR_DOOR_RF, DOOR_FRONT_RIGHT },
+						{ CAR_DOOR_LR, DOOR_REAR_LEFT },
+						{ CAR_DOOR_RR, DOOR_REAR_RIGHT }
+					};
+					for (const auto& d : kDoors) {
+						if (!car->m_aCarNodes[d.nodeIdx]) {
+							if (car->m_damageManager.GetDoorStatus(d.door) != DAMSTATE_NOTPRESENT) {
+								car->m_damageManager.SetDoorStatus(d.door, DAMSTATE_NOTPRESENT);
+							}
+						}
 					}
 				}
 
@@ -1539,6 +1601,41 @@ void CustomVehicleBindingManager::Process()
 					auto it = s_modelOffsets.find(binding.customModelId);
 					if (it != s_modelOffsets.end()) {
 						ApplyModelOffsetsToBinding(binding, it->second);
+					}
+				}
+
+				if (vehicle->m_nVehicleSubClass == VEHICLE_AUTOMOBILE || 
+					vehicle->m_nVehicleSubClass == VEHICLE_MTRUCK || 
+					vehicle->m_nVehicleSubClass == VEHICLE_QUAD) 
+				{
+					auto* car = reinterpret_cast<CAutomobile*>(vehicle);
+					if (!car->m_aCarNodes[CAR_DOOR_LR] && !car->m_aCarNodes[CAR_DOOR_RR]) {
+						if (vehicle->m_nMaxPassengers > 1) {
+							vehicle->m_nMaxPassengers = 1;
+						}
+					} else if (model && model->m_nNumDoors <= 2) {
+						if (vehicle->m_nMaxPassengers > 1) {
+							vehicle->m_nMaxPassengers = 1;
+						}
+					}
+
+					static const struct {
+						int nodeIdx;
+						eDoors door;
+					} kDoors[] = {
+						{ CAR_BONNET, BONNET },
+						{ CAR_BOOT, BOOT },
+						{ CAR_DOOR_LF, DOOR_FRONT_LEFT },
+						{ CAR_DOOR_RF, DOOR_FRONT_RIGHT },
+						{ CAR_DOOR_LR, DOOR_REAR_LEFT },
+						{ CAR_DOOR_RR, DOOR_REAR_RIGHT }
+					};
+					for (const auto& d : kDoors) {
+						if (!car->m_aCarNodes[d.nodeIdx]) {
+							if (car->m_damageManager.GetDoorStatus(d.door) != DAMSTATE_NOTPRESENT) {
+								car->m_damageManager.SetDoorStatus(d.door, DAMSTATE_NOTPRESENT);
+							}
+						}
 					}
 				}
 			}
