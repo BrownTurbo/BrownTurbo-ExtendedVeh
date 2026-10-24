@@ -3143,18 +3143,15 @@ void InitializeHooks()
 				ClientLog(LogLevel::Error, "HandlingManager::ProcessAction failed to process ACTION_RESET_ALL.");
 			}
 			if (!_customVehInstance.IsServerAuthorized()) {
-				if (!HandlingManager::m_initSent.load(std::memory_order_acquire)) {
-					ModelCache::Instance().ReloadManifest();
-					g_windowVisible.store(false, std::memory_order_relaxed);
-					g_manuallyToggled.store(false, std::memory_order_relaxed);
-					ResetTransferWindowState();
-					ModelTransferClient::Instance().ClearHistory();
-					_customVehInstance.RequestClearAllCustomModels();
-					HandlingManager::SendInitPacket();
-					ClientLog(LogLevel::Info, "Game session initialized; fallback handshake sent on RPC_InitGame.");
-				} else {
-					ClientLog(LogLevel::Debug, "Game session initialized; handshake already pending from connection accept.");
-				}
+				ModelCache::Instance().ReloadManifest();
+				g_windowVisible.store(false, std::memory_order_relaxed);
+				g_manuallyToggled.store(false, std::memory_order_relaxed);
+				ResetTransferWindowState();
+				ModelTransferClient::Instance().ClearHistory();
+				_customVehInstance.RequestClearAllCustomModels();
+				HandlingManager::ResetInitState();
+				HandlingManager::SendInitPacket();
+				ClientLog(LogLevel::Info, "Game session initialized; handshake sent on RPC_InitGame.");
 			} else {
 				ClientLog(LogLevel::Debug, "localPlayer seems to be already authorized...");
 			}
@@ -3346,6 +3343,7 @@ void InitializeHooks()
 			ClientLog(LogLevel::Debug, "RPC_RequestClass sent.");
 			_customVehInstance.SetLocalPlayerSpawned(false);
 			if (!_customVehInstance.IsServerAuthorized() && rakhook::orig && rakhook::orig->IsConnected()) {
+				HandlingManager::ResetInitState();
 				HandlingManager::SendInitPacket();
 			}
 			return true;
@@ -3353,6 +3351,7 @@ void InitializeHooks()
 			ClientLog(LogLevel::Debug, "RPC_RequestSpawn sent.");
 			_customVehInstance.SetLocalPlayerSpawned(false);
 			if (!_customVehInstance.IsServerAuthorized() && rakhook::orig && rakhook::orig->IsConnected()) {
+				HandlingManager::ResetInitState();
 				HandlingManager::SendInitPacket();
 			}
 			return true;
@@ -3421,6 +3420,13 @@ void InitializeHooks()
 		}
 		return true;
 	};
+
+	// If already connected to a server when rakhook finishes initialization, announce presence immediately (like BrownTurbo-CJSkin)
+	if (!_customVehInstance.IsServerAuthorized() && rakhook::orig && rakhook::orig->IsConnected()) {
+		HandlingManager::ResetInitState();
+		HandlingManager::SendInitPacket();
+		ClientLog(LogLevel::Info, "rakhook initialized while connected; initial handshake sent.");
+	}
 }
 
 std::unique_ptr<c_plugin> Plugn;
@@ -3455,7 +3461,7 @@ static void OnGameProcess()
 		static uint32_t s_lastAuthRetryTick = 0;
 		if (!_customVehInstance.IsServerAuthorized() && rakhook::orig && rakhook::orig->IsConnected()) {
 			uint32_t now = GetTickCount();
-			if (now - s_lastAuthRetryTick > 3000) {
+			if (now - s_lastAuthRetryTick >= 1500) {
 				s_lastAuthRetryTick = now;
 				HandlingManager::ResetInitState();
 				HandlingManager::SendInitPacket();

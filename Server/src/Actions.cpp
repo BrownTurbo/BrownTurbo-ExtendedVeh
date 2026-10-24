@@ -31,16 +31,17 @@ bool Actions::Process(CustomVehAction id, NetworkBitStream& bs, IPlayer& player)
 		if (compat_ver >= EXTVEH_COMPAT_VERSION)
 		{
 			const bool alreadyAuthorized = gPlayers.HasExtendedVeh(playerid);
+			pkt.data.Write(true);
 			if (alreadyAuthorized)
 			{
 				if (core_)
 				{
-					core_->logLn(LogLevel::Debug, "[ExtendedVeh] Player %d already authorized, ignoring redundant ACTION_INIT", playerid);
+					core_->logLn(LogLevel::Debug, "[ExtendedVeh] Player %d already authorized, re-confirming ACTION_INIT", playerid);
 				}
+				player.sendPacket(Span<uint8_t>(pkt.data.GetData(), pkt.data.GetNumberOfBitsUsed()), 0, false);
 				return true;
 			}
 
-			pkt.data.Write(true);
 			gPlayers.SetExtendedVeh(playerid, true);
 			if (core_)
 			{

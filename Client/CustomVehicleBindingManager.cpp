@@ -29,6 +29,8 @@
 #include <sstream>
 #include <unordered_set>
 
+constexpr unsigned int PANEL_STATUS_MISSING = 3;
+
 static bool IsFrameOrChildOf(RwFrame* frame, RwFrame* targetParent)
 {
 	for (RwFrame* f = frame; f != nullptr; f = RwFrameGetParent(f)) {
@@ -452,6 +454,74 @@ void CustomVehicleBindingManager::Unbind(uint16_t vehicleId)
 					if (vehicle->m_nVehicleSubClass == VEHICLE_AUTOMOBILE || vehicle->m_nVehicleSubClass == VEHICLE_MTRUCK || vehicle->m_nVehicleSubClass == VEHICLE_QUAD) {
 						auto* car = reinterpret_cast<CAutomobile*>(vehicle);
 						car->SetupModelNodes();
+
+						static const struct {
+							int nodeIdx;
+							eDoors door;
+						} kDoors[] = {
+							{ CAR_BONNET, BONNET },
+							{ CAR_BOOT, BOOT },
+							{ CAR_DOOR_LF, DOOR_FRONT_LEFT },
+							{ CAR_DOOR_RF, DOOR_FRONT_RIGHT },
+							{ CAR_DOOR_LR, DOOR_REAR_LEFT },
+							{ CAR_DOOR_RR, DOOR_REAR_RIGHT }
+						};
+
+						for (const auto& d : kDoors) {
+							RwFrame* doorFrame = car->m_aCarNodes[d.nodeIdx];
+							if (doorFrame) {
+								car->FixDoor(d.nodeIdx, d.door);
+								if (car->m_doors[d.door].m_fOpenAngle == 0.0f) {
+									if (d.door == DOOR_FRONT_LEFT || d.door == DOOR_REAR_LEFT) {
+										car->m_doors[d.door].m_fOpenAngle = -1.3f;
+										car->m_doors[d.door].m_nAxis = 2;
+									} else if (d.door == DOOR_FRONT_RIGHT || d.door == DOOR_REAR_RIGHT) {
+										car->m_doors[d.door].m_fOpenAngle = 1.3f;
+										car->m_doors[d.door].m_nAxis = 2;
+									} else if (d.door == BONNET) {
+										car->m_doors[d.door].m_fOpenAngle = -0.94f;
+										car->m_doors[d.door].m_nAxis = 0;
+									} else if (d.door == BOOT) {
+										car->m_doors[d.door].m_fOpenAngle = 0.94f;
+										car->m_doors[d.door].m_nAxis = 0;
+									}
+									car->m_doors[d.door].m_fClosedAngle = 0.0f;
+								}
+								car->m_doors[d.door].m_fAngle = car->m_doors[d.door].m_fClosedAngle;
+								car->m_doors[d.door].m_fPrevAngle = car->m_doors[d.door].m_fClosedAngle;
+								car->m_doors[d.door].m_fAngVel = 0.0f;
+								car->m_doors[d.door].m_nDoorState = DOOR_NOTHING;
+								car->SetComponentVisibility(doorFrame, 1);
+							} else {
+								car->m_damageManager.SetDoorStatus(d.door, DAMSTATE_NOTPRESENT);
+								car->m_doors[d.door].m_fAngle = 0.0f;
+								car->m_doors[d.door].m_fPrevAngle = 0.0f;
+								car->m_doors[d.door].m_fAngVel = 0.0f;
+								car->m_doors[d.door].m_nDoorState = DOOR_NOTHING;
+							}
+						}
+
+						static const struct {
+							int nodeIdx;
+							ePanels panel;
+						} kPanels[] = {
+							{ CAR_BUMP_FRONT, BUMP_FRONT },
+							{ CAR_BUMP_REAR, BUMP_REAR },
+							{ CAR_WING_LF, WING_FRONT_LEFT },
+							{ CAR_WING_RF, WING_FRONT_RIGHT },
+							{ CAR_WINDSCREEN, WINDSCREEN }
+						};
+
+						for (const auto& p : kPanels) {
+							RwFrame* panelFrame = car->m_aCarNodes[p.nodeIdx];
+							if (panelFrame) {
+								car->FixPanel(p.nodeIdx, p.panel);
+								car->SetComponentVisibility(panelFrame, 1);
+							} else {
+								car->m_damageManager.SetPanelStatus(p.panel, PANEL_STATUS_MISSING);
+							}
+						}
+
 						for (int p = 0; p < 3; ++p) {
 							short frameId = car->m_panels[p].m_nFrameId;
 							if (frameId >= 0 && (frameId >= CAR_NUM_NODES || !car->m_aCarNodes[frameId])) {
@@ -1107,13 +1177,7 @@ void CustomVehicleBindingManager::Process()
 				if (vehicle->m_nVehicleSubClass == VEHICLE_AUTOMOBILE || vehicle->m_nVehicleSubClass == VEHICLE_MTRUCK || vehicle->m_nVehicleSubClass == VEHICLE_QUAD) {
 					auto* car = reinterpret_cast<CAutomobile*>(vehicle);
 					car->SetupModelNodes();
-					for (int p = 0; p < 3; ++p) {
-						short frameId = car->m_panels[p].m_nFrameId;
-						if (frameId >= 0 && (frameId >= CAR_NUM_NODES || !car->m_aCarNodes[frameId])) {
-							car->m_panels[p].m_nFrameId = -1;
-							car->m_panels[p].ResetPanel();
-						}
-					}
+
 					if (!car->m_aCarNodes[CAR_CHASSIS]) {
 						car->m_aCarNodes[CAR_CHASSIS] = CClumpModelInfo::GetFrameFromName(newClump, "chassis_dummy");
 						if (!car->m_aCarNodes[CAR_CHASSIS]) {
@@ -1121,6 +1185,125 @@ void CustomVehicleBindingManager::Process()
 						}
 						if (!car->m_aCarNodes[CAR_CHASSIS]) {
 							car->m_aCarNodes[CAR_CHASSIS] = CClumpModelInfo::GetFrameFromName(newClump, "body");
+						}
+					}
+					if (!car->m_aCarNodes[CAR_DOOR_LF]) {
+						car->m_aCarNodes[CAR_DOOR_LF] = CClumpModelInfo::GetFrameFromName(newClump, "door_lf_dummy");
+						if (!car->m_aCarNodes[CAR_DOOR_LF]) car->m_aCarNodes[CAR_DOOR_LF] = CClumpModelInfo::GetFrameFromName(newClump, "door_lf");
+					}
+					if (!car->m_aCarNodes[CAR_DOOR_RF]) {
+						car->m_aCarNodes[CAR_DOOR_RF] = CClumpModelInfo::GetFrameFromName(newClump, "door_rf_dummy");
+						if (!car->m_aCarNodes[CAR_DOOR_RF]) car->m_aCarNodes[CAR_DOOR_RF] = CClumpModelInfo::GetFrameFromName(newClump, "door_rf");
+					}
+					if (!car->m_aCarNodes[CAR_DOOR_LR]) {
+						car->m_aCarNodes[CAR_DOOR_LR] = CClumpModelInfo::GetFrameFromName(newClump, "door_lr_dummy");
+						if (!car->m_aCarNodes[CAR_DOOR_LR]) car->m_aCarNodes[CAR_DOOR_LR] = CClumpModelInfo::GetFrameFromName(newClump, "door_lr");
+					}
+					if (!car->m_aCarNodes[CAR_DOOR_RR]) {
+						car->m_aCarNodes[CAR_DOOR_RR] = CClumpModelInfo::GetFrameFromName(newClump, "door_rr_dummy");
+						if (!car->m_aCarNodes[CAR_DOOR_RR]) car->m_aCarNodes[CAR_DOOR_RR] = CClumpModelInfo::GetFrameFromName(newClump, "door_rr");
+					}
+					if (!car->m_aCarNodes[CAR_BONNET]) {
+						car->m_aCarNodes[CAR_BONNET] = CClumpModelInfo::GetFrameFromName(newClump, "bonnet_dummy");
+						if (!car->m_aCarNodes[CAR_BONNET]) car->m_aCarNodes[CAR_BONNET] = CClumpModelInfo::GetFrameFromName(newClump, "bonnet");
+						if (!car->m_aCarNodes[CAR_BONNET]) car->m_aCarNodes[CAR_BONNET] = CClumpModelInfo::GetFrameFromName(newClump, "hood");
+					}
+					if (!car->m_aCarNodes[CAR_BOOT]) {
+						car->m_aCarNodes[CAR_BOOT] = CClumpModelInfo::GetFrameFromName(newClump, "boot_dummy");
+						if (!car->m_aCarNodes[CAR_BOOT]) car->m_aCarNodes[CAR_BOOT] = CClumpModelInfo::GetFrameFromName(newClump, "boot");
+						if (!car->m_aCarNodes[CAR_BOOT]) car->m_aCarNodes[CAR_BOOT] = CClumpModelInfo::GetFrameFromName(newClump, "trunk");
+					}
+					if (!car->m_aCarNodes[CAR_BUMP_FRONT]) {
+						car->m_aCarNodes[CAR_BUMP_FRONT] = CClumpModelInfo::GetFrameFromName(newClump, "bump_front_dummy");
+						if (!car->m_aCarNodes[CAR_BUMP_FRONT]) car->m_aCarNodes[CAR_BUMP_FRONT] = CClumpModelInfo::GetFrameFromName(newClump, "bump_front");
+						if (!car->m_aCarNodes[CAR_BUMP_FRONT]) car->m_aCarNodes[CAR_BUMP_FRONT] = CClumpModelInfo::GetFrameFromName(newClump, "front_part");
+						if (!car->m_aCarNodes[CAR_BUMP_FRONT]) car->m_aCarNodes[CAR_BUMP_FRONT] = CClumpModelInfo::GetFrameFromName(newClump, "front_bump");
+					}
+					if (!car->m_aCarNodes[CAR_BUMP_REAR]) {
+						car->m_aCarNodes[CAR_BUMP_REAR] = CClumpModelInfo::GetFrameFromName(newClump, "bump_rear_dummy");
+						if (!car->m_aCarNodes[CAR_BUMP_REAR]) car->m_aCarNodes[CAR_BUMP_REAR] = CClumpModelInfo::GetFrameFromName(newClump, "bump_rear");
+						if (!car->m_aCarNodes[CAR_BUMP_REAR]) car->m_aCarNodes[CAR_BUMP_REAR] = CClumpModelInfo::GetFrameFromName(newClump, "rear_bump");
+						if (!car->m_aCarNodes[CAR_BUMP_REAR]) car->m_aCarNodes[CAR_BUMP_REAR] = CClumpModelInfo::GetFrameFromName(newClump, "rear_part");
+					}
+					if (!car->m_aCarNodes[CAR_WINDSCREEN]) {
+						car->m_aCarNodes[CAR_WINDSCREEN] = CClumpModelInfo::GetFrameFromName(newClump, "windscreen_dummy");
+						if (!car->m_aCarNodes[CAR_WINDSCREEN]) car->m_aCarNodes[CAR_WINDSCREEN] = CClumpModelInfo::GetFrameFromName(newClump, "windscreen");
+					}
+
+					// Reset all 6 doors cleanly
+					static const struct {
+						int nodeIdx;
+						eDoors door;
+					} kDoors[] = {
+						{ CAR_BONNET, BONNET },
+						{ CAR_BOOT, BOOT },
+						{ CAR_DOOR_LF, DOOR_FRONT_LEFT },
+						{ CAR_DOOR_RF, DOOR_FRONT_RIGHT },
+						{ CAR_DOOR_LR, DOOR_REAR_LEFT },
+						{ CAR_DOOR_RR, DOOR_REAR_RIGHT }
+					};
+
+					for (const auto& d : kDoors) {
+						RwFrame* doorFrame = car->m_aCarNodes[d.nodeIdx];
+						if (doorFrame) {
+							car->FixDoor(d.nodeIdx, d.door);
+							if (car->m_doors[d.door].m_fOpenAngle == 0.0f) {
+								if (d.door == DOOR_FRONT_LEFT || d.door == DOOR_REAR_LEFT) {
+									car->m_doors[d.door].m_fOpenAngle = -1.3f;
+									car->m_doors[d.door].m_nAxis = 2;
+								} else if (d.door == DOOR_FRONT_RIGHT || d.door == DOOR_REAR_RIGHT) {
+									car->m_doors[d.door].m_fOpenAngle = 1.3f;
+									car->m_doors[d.door].m_nAxis = 2;
+								} else if (d.door == BONNET) {
+									car->m_doors[d.door].m_fOpenAngle = -0.94f;
+									car->m_doors[d.door].m_nAxis = 0;
+								} else if (d.door == BOOT) {
+									car->m_doors[d.door].m_fOpenAngle = 0.94f;
+									car->m_doors[d.door].m_nAxis = 0;
+								}
+								car->m_doors[d.door].m_fClosedAngle = 0.0f;
+							}
+							car->m_doors[d.door].m_fAngle = car->m_doors[d.door].m_fClosedAngle;
+							car->m_doors[d.door].m_fPrevAngle = car->m_doors[d.door].m_fClosedAngle;
+							car->m_doors[d.door].m_fAngVel = 0.0f;
+							car->m_doors[d.door].m_nDoorState = DOOR_NOTHING;
+							car->SetComponentVisibility(doorFrame, 1);
+						} else {
+							car->m_damageManager.SetDoorStatus(d.door, DAMSTATE_NOTPRESENT);
+							car->m_doors[d.door].m_fAngle = 0.0f;
+							car->m_doors[d.door].m_fPrevAngle = 0.0f;
+							car->m_doors[d.door].m_fAngVel = 0.0f;
+							car->m_doors[d.door].m_nDoorState = DOOR_NOTHING;
+						}
+					}
+
+					// Reset all 5 panels cleanly
+					static const struct {
+						int nodeIdx;
+						ePanels panel;
+					} kPanels[] = {
+						{ CAR_BUMP_FRONT, BUMP_FRONT },
+						{ CAR_BUMP_REAR, BUMP_REAR },
+						{ CAR_WING_LF, WING_FRONT_LEFT },
+						{ CAR_WING_RF, WING_FRONT_RIGHT },
+						{ CAR_WINDSCREEN, WINDSCREEN }
+					};
+
+					for (const auto& p : kPanels) {
+						RwFrame* panelFrame = car->m_aCarNodes[p.nodeIdx];
+						if (panelFrame) {
+							car->FixPanel(p.nodeIdx, p.panel);
+							car->SetComponentVisibility(panelFrame, 1);
+						} else {
+							car->m_damageManager.SetPanelStatus(p.panel, PANEL_STATUS_MISSING);
+						}
+					}
+
+					for (int p = 0; p < 3; ++p) {
+						short frameId = car->m_panels[p].m_nFrameId;
+						if (frameId >= 0 && (frameId >= CAR_NUM_NODES || !car->m_aCarNodes[frameId])) {
+							car->m_panels[p].m_nFrameId = -1;
+							car->m_panels[p].ResetPanel();
 						}
 					}
 					if (car->m_aCarNodes[CAR_CHASSIS]) {

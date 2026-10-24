@@ -90,6 +90,10 @@ private:
 
 	using RemoveTxdSlotFn = void(__cdecl*)(int);
 	static inline safetyhook::InlineHook s_removeTxdSlotHook;
+
+	using RwTextureReadFn = RwTexture*(__cdecl*)(const char*, const char*);
+	static inline safetyhook::InlineHook s_rwTextureReadHook;
+
 	static inline bool s_hooksInstalled = false;
 
 	static void __cdecl Hooked_RemoveTxdSlot(int index)
@@ -103,6 +107,26 @@ private:
 		s_removeTxdSlotHook.original<RemoveTxdSlotFn>()(index);
 	}
 
+	static RwTexture* __cdecl Hooked_RwTextureRead(const char* name, const char* maskName)
+	{
+		RwTexture* tex = s_rwTextureReadHook.original<RwTextureReadFn>()(name, maskName);
+		if (!tex && name && *name) {
+			// Fallback: search in generic vehicle.txd (for vehiclelights128, carpback, carplate, platecharset, etc.)
+			int vehTxdSlot = CTxdStore::FindTxdSlot("vehicle");
+			if (vehTxdSlot >= 0 && CTxdStore::ms_pTxdPool && !CTxdStore::ms_pTxdPool->IsFreeSlotAtIndex(vehTxdSlot)) {
+				TxdDef* def = CTxdStore::ms_pTxdPool->GetAt(vehTxdSlot);
+				if (def && def->m_pRwDictionary) {
+					tex = RwTexDictionaryFindNamedTexture(def->m_pRwDictionary, name);
+					if (tex) {
+						RwTextureAddRef(tex);
+						ClientLog(LogLevel::Debug, std::format("Hooked_RwTextureRead: resolved generic texture '{}' from vehicle.txd", name));
+					}
+				}
+			}
+		}
+		return tex;
+	}
+
 public:
 	static void InstallHooks()
 	{
@@ -111,7 +135,11 @@ public:
 
 		void* addr = reinterpret_cast<void*>(0x731CD0);
 		s_removeTxdSlotHook = safetyhook::create_inline(addr, reinterpret_cast<void*>(&Hooked_RemoveTxdSlot));
-		if (s_removeTxdSlotHook) {
+
+		void* texReadAddr = reinterpret_cast<void*>(0x7F3AC0);
+		s_rwTextureReadHook = safetyhook::create_inline(texReadAddr, reinterpret_cast<void*>(&Hooked_RwTextureRead));
+
+		if (s_removeTxdSlotHook && s_rwTextureReadHook) {
 			s_hooksInstalled = true;
 		}
 	}
@@ -122,6 +150,7 @@ public:
 			return;
 
 		s_removeTxdSlotHook.reset();
+		s_rwTextureReadHook.reset();
 		s_hooksInstalled = false;
 	}
 	static CVehicleModelInfo* CreateCustomModel(const CustomVeh::Protocol::VehicleDefinition& def)
@@ -253,7 +282,7 @@ public:
 			{ 7, { "engine", "engine_dummy" } }, // ENGINE
 			{ 8, { "petrolcap", "petrolcap_dummy", "gascap" } }, // GAS_CAP
 			{ 9, { "trailer_attach", "trailer" } }, // TRAILER_ATTACH
-			{ 10, { "handgrip", "hand_rest", "handrest" } }, // HAND_REST
+			{ 10, { "ped_arm", "pedarm", "handgrip", "hand_rest", "handrest" } }, // HAND_REST / ped_arm
 			{ 11, { "exhaust_2", "exhaust2", "secexhaust", "exhaust_secondary" } }, // EXHAUST_SECONDARY
 		};
 
@@ -347,9 +376,35 @@ public:
 			NormalizeFrameNamesRecursive(rootFrame);
 
 			// Frame sanitation for custom vehicle models:
-			// 1. Ensure a chassis dummy exists.
-			// GTA SA requires "chassis_dummy" or "chassis" for CAR_CHASSIS (m_aCarNodes[CAR_CHASSIS]).
-			// If missing, find a primary body frame (e.g. "body", "carbody") and rename it to "chassis_dummy".
+			// 1. Chassis frame sanitation:
+			// In GTA SA, ms_vehicleDescs maps CAR_CHASSIS (node 1) to "chassis".
+			// Modders frequently place the main body mesh under "chassis_ok" and leave an inner submesh
+			// (e.g. suspension, undercarriage) named "chassis", or place everything under "chassis_dummy".
+			// If "chassis_ok" exists, rename any inner leaf "chassis" to "chassis_submesh",
+			// and rename "chassis_ok" to "chassis" so GTA SA's SetHierarchyId binds CAR_CHASSIS
+			// to the actual car body containing all exterior panels.
+			RwFrame* chassisOk = CClumpModelInfo::GetFrameFromName(pClump, "chassis_ok");
+			RwFrame* innerChassis = CClumpModelInfo::GetFrameFromName(pClump, "chassis");
+			if (chassisOk) {
+				if (innerChassis && innerChassis != chassisOk) {
+					SetFrameNodeName(innerChassis, "chassis_submesh");
+					ClientLog(LogLevel::Info, "Renamed sub-frame 'chassis' to 'chassis_submesh'");
+				}
+				SetFrameNodeName(chassisOk, "chassis");
+				ClientLog(LogLevel::Info, "Renamed 'chassis_ok' to 'chassis' for CAR_CHASSIS binding");
+			} else if (!innerChassis) {
+				const char* bodyNames[] = { "body", "carbody", "bodyshell", "shell" };
+				for (const char* bname : bodyNames) {
+					RwFrame* bf = CClumpModelInfo::GetFrameFromName(pClump, bname);
+					if (bf) {
+						SetFrameNodeName(bf, "chassis");
+						ClientLog(LogLevel::Info, std::format("Renamed frame '{}' to 'chassis'", bname));
+						break;
+					}
+				}
+			}
+
+			// 1b. Ensure a chassis dummy exists.
 			RwFrame* chassis = CClumpModelInfo::GetFrameFromName(pClump, "chassis_dummy");
 			if (!chassis) {
 				chassis = CClumpModelInfo::GetFrameFromName(pClump, "chassis");
@@ -363,6 +418,34 @@ public:
 						ClientLog(LogLevel::Info, std::format("Renamed frame '{}' to 'chassis_dummy'", bname));
 						chassis = bf;
 						break;
+					}
+				}
+			}
+
+			// 1c. Door glass promotion:
+			// Modders frequently nest window/glass frames under door_xx_ok (e.g. door_lf_dummy -> door_lf_ok -> glass_lf_ok).
+			// In GTA SA's door hierarchy, all door components must be direct children of door_xx_dummy so that
+			// door rotation pivots, damage callbacks, and visibility toggles operate on both the door panel and glass in unison.
+			const char* doorDummyNames[] = { "door_lf_dummy", "door_rf_dummy", "door_lr_dummy", "door_rr_dummy" };
+			for (const char* dname : doorDummyNames) {
+				RwFrame* dummy = CClumpModelInfo::GetFrameFromName(pClump, dname);
+				if (!dummy)
+					continue;
+				for (RwFrame* child = dummy->child; child != nullptr; child = child->next) {
+					RwFrame* grandchild = child->child;
+					while (grandchild) {
+						RwFrame* nextGrandchild = grandchild->next;
+						const char* gname = GetFrameNodeName(grandchild);
+						if (gname) {
+							std::string gn = gname;
+							std::transform(gn.begin(), gn.end(), gn.begin(), ::tolower);
+							if (gn.find("glass") != std::string::npos || gn.find("window") != std::string::npos) {
+								RwFrameRemoveChild(grandchild);
+								RwFrameAddChild(dummy, grandchild);
+								ClientLog(LogLevel::Info, std::format("Promoted door glass frame '{}' to be direct child of '{}'", gname, dname));
+							}
+						}
+						grandchild = nextGrandchild;
 					}
 				}
 			}
@@ -756,6 +839,15 @@ public:
 				pInfo->m_pVehicleStruct->m_avDummyPos[3] = CVector(0.0f, 0.0f, 0.0f);
 			}
 
+			// Explicitly zero rear passenger seat (slot 5) if the custom model DFF does not contain rear doors.
+			// Inheriting rear seat dummy positions on a 2-door vehicle causes GTA SA to create passenger entry points
+			// for non-existing rear doors, making peds open invisible/non-existing doors in thin air.
+			bool hasRearDoors = (CClumpModelInfo::GetFrameFromName(pClump, "door_lr_dummy") != nullptr ||
+			                     CClumpModelInfo::GetFrameFromName(pClump, "door_lr") != nullptr);
+			if (!hasRearDoors && CClumpModelInfo::GetFrameFromName(pClump, "ped_backseat") == nullptr) {
+				pInfo->m_pVehicleStruct->m_avDummyPos[5] = CVector(0.0f, 0.0f, 0.0f);
+			}
+
 			if (pBaseInfo && pBaseInfo->m_pVehicleStruct) {
 				// Fallback any (0,0,0) dummy positions from base vehicle
 				for (int i = 0; i < 15; ++i) {
@@ -763,6 +855,10 @@ public:
 					// If the custom model does not have secondary lights in its DFF, inheriting them from the base vehicle
 					// causes phantom/duplicate headlights (e.g. Turismo's secondary driving lights) to render floating!
 					if (i == 2 || i == 3)
+						continue;
+
+					// DO NOT fallback rear passenger seat (slot 5) if the custom vehicle has no rear doors!
+					if (i == 5 && !hasRearDoors)
 						continue;
 
 					if (pInfo->m_pVehicleStruct->m_avDummyPos[i].Magnitude() < 0.001f) {
