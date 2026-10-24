@@ -19,6 +19,7 @@
 #include <game_sa/CVehicle.h>
 #include <game_sa/CVisibilityPlugins.h>
 #include <game_sa/CWaterLevel.h>
+#include <game_sa/CTaskComplexEnterCar.h>
 #include <game_sa/Fx_c.h>
 #include <game_sa/rw/rpworld.h>
 #include <game_sa/rw/skeleton.h>
@@ -993,6 +994,17 @@ static void(__fastcall* g_origCAutomobile_VehicleDamage)(CAutomobile* thisCar, v
 static void(__fastcall* g_origCAutomobile_PopDoor)(CAutomobile* thisCar, void* edx, int nodeIndex, eDoors door, bool showVisualEffect) = nullptr;
 static void(__fastcall* g_origCAutomobile_PopPanel)(CAutomobile* thisCar, void* edx, int nodeIndex, ePanels panel, bool showVisualEffect) = nullptr;
 static bool(__fastcall* g_origCAutomobile_IsDoorMissing)(CAutomobile* thisCar, void* edx, eDoors door) = nullptr;
+static bool(__cdecl* g_origComputeBestPassengerDoor)(
+	CPed* pPed,
+	CVehicle* pVehicle,
+	CVector* pOutDoorPos,
+	int* pOutDoor,
+	bool bCheckSeatOccupied,
+	bool bCheckDoorLocked,
+	bool bCheckDoorMissing
+) = nullptr;
+static bool(__cdecl* g_origCanDoorBeOpened)(CVehicle* vehicle, int targetDoor) = nullptr;
+static CTask*(__fastcall* g_origEnterCar_CreateSubTaskForDoor)(CTaskComplexEnterCar* thisTask, void* edx, CPed* ped) = nullptr;
 static void(__fastcall* g_origCAutomobile_BlowUpCar)(CAutomobile* thisCar, void* edx, CEntity* damager, bool bHideExplosion) = nullptr;
 static void(__fastcall* g_origCVehicle_ProcessDelayedExplosion)(CVehicle* thisVeh, void* edx) = nullptr;
 
@@ -1161,6 +1173,147 @@ static unsigned char __fastcall GetVehicleEffectiveNumDoors(CVehicle* vehicle)
 	}
 
 	return 4;
+}
+
+static bool __cdecl Hooked_ComputeBestPassengerDoor(
+	CPed* pPed,
+	CVehicle* pVehicle,
+	CVector* pOutDoorPos,
+	int* pOutDoor,
+	bool bCheckSeatOccupied,
+	bool bCheckDoorLocked,
+	bool bCheckDoorMissing
+)
+{
+	bool res = false;
+	if (g_origComputeBestPassengerDoor) {
+		res = g_origComputeBestPassengerDoor(pPed, pVehicle, pOutDoorPos, pOutDoor, bCheckSeatOccupied, bCheckDoorLocked, bCheckDoorMissing);
+	}
+
+	if (pVehicle && IsVehiclePointerValid(pVehicle)) {
+		if (pVehicle->m_nVehicleSubClass == VEHICLE_AUTOMOBILE ||
+			pVehicle->m_nVehicleSubClass == VEHICLE_MTRUCK ||
+			pVehicle->m_nVehicleSubClass == VEHICLE_QUAD)
+		{
+			auto* car = reinterpret_cast<CAutomobile*>(pVehicle);
+			unsigned char numDoors = GetVehicleEffectiveNumDoors(car);
+			if (numDoors <= 2) {
+				// On 2-door vehicles, passenger door must ALWAYS be CAR_DOOR_RF (8)
+				if (pOutDoor && *pOutDoor != 8) {
+					ClientLog(LogLevel::Info, std::format("Hooked_ComputeBestPassengerDoor: forcing 2-door passenger door from {} to 8", *pOutDoor));
+					*pOutDoor = 8;
+					if (pOutDoorPos) {
+						auto GetDoorPosFunc = reinterpret_cast<CVector*(__cdecl*)(CVector*, CVehicle*, int)>(0x64E740);
+						GetDoorPosFunc(pOutDoorPos, car, 8);
+					}
+					res = true;
+				}
+			}
+		}
+	}
+
+	return res;
+}
+
+static bool __cdecl Hooked_CanDoorBeOpened(CVehicle* vehicle, int targetDoor)
+{
+	if (vehicle && IsVehiclePointerValid(vehicle)) {
+		if (vehicle->m_nVehicleSubClass == VEHICLE_AUTOMOBILE ||
+			vehicle->m_nVehicleSubClass == VEHICLE_MTRUCK ||
+			vehicle->m_nVehicleSubClass == VEHICLE_QUAD)
+		{
+			auto* car = reinterpret_cast<CAutomobile*>(vehicle);
+			int doorNode = -1;
+			eDoors eDoor = DOOR_FRONT_LEFT;
+			switch (targetDoor) {
+			case 8: doorNode = CAR_DOOR_RF; eDoor = DOOR_FRONT_RIGHT; break;
+			case 9: doorNode = CAR_DOOR_RR; eDoor = DOOR_REAR_RIGHT; break;
+			case 10: doorNode = CAR_DOOR_LF; eDoor = DOOR_FRONT_LEFT; break;
+			case 11: doorNode = CAR_DOOR_LR; eDoor = DOOR_REAR_LEFT; break;
+			default: break;
+			}
+
+			if (doorNode >= 0 && doorNode < CAR_NUM_NODES) {
+				if (car->m_aCarNodes[doorNode]) {
+					// If the door physically exists on the model and is closed, it can and MUST be opened!
+					if (std::fabs(car->m_doors[eDoor].m_fAngle) < 0.1f) {
+						return true;
+					}
+				}
+			}
+		}
+	}
+
+	if (g_origCanDoorBeOpened)
+		return g_origCanDoorBeOpened(vehicle, targetDoor);
+	return false;
+}
+
+static CTask* __fastcall Hooked_EnterCar_CreateSubTaskForDoor(CTaskComplexEnterCar* thisTask, void* edx, CPed* ped)
+{
+	if (thisTask && thisTask->m_pTargetVehicle && IsVehiclePointerValid(thisTask->m_pTargetVehicle)) {
+		CVehicle* veh = thisTask->m_pTargetVehicle;
+		if (veh->m_nVehicleSubClass == VEHICLE_AUTOMOBILE ||
+			veh->m_nVehicleSubClass == VEHICLE_MTRUCK ||
+			veh->m_nVehicleSubClass == VEHICLE_QUAD)
+		{
+			auto* car = reinterpret_cast<CAutomobile*>(veh);
+			unsigned char numDoors = GetVehicleEffectiveNumDoors(car);
+			if (numDoors <= 2 && !thisTask->m_bAsDriver) {
+				if (thisTask->m_nTargetDoor != 8) {
+					ClientLog(LogLevel::Info, std::format("Hooked_EnterCar_CreateSubTaskForDoor: overriding 2-door passenger m_nTargetDoor from {} to 8", thisTask->m_nTargetDoor));
+					thisTask->m_nTargetDoor = 8;
+					thisTask->m_nTargetSeat = 0;
+				}
+			}
+		}
+	}
+
+	CTask* resultTask = nullptr;
+	if (g_origEnterCar_CreateSubTaskForDoor) {
+		resultTask = g_origEnterCar_CreateSubTaskForDoor(thisTask, edx, ped);
+	}
+
+	// Safety check: if GTA SA bypassed opening the door (returned TASK_SIMPLE_CAR_GET_IN = 807 / 0x327),
+	// but the target door is physically present on the model and closed, force TASK_SIMPLE_CAR_OPEN_DOOR_FROM_OUTSIDE (802 / 0x322)
+	if (resultTask && resultTask->GetId() == TASK_SIMPLE_CAR_GET_IN) {
+		if (thisTask && thisTask->m_pTargetVehicle && IsVehiclePointerValid(thisTask->m_pTargetVehicle)) {
+			CVehicle* veh = thisTask->m_pTargetVehicle;
+			if (veh->m_nVehicleSubClass == VEHICLE_AUTOMOBILE ||
+				veh->m_nVehicleSubClass == VEHICLE_MTRUCK ||
+				veh->m_nVehicleSubClass == VEHICLE_QUAD)
+			{
+				auto* car = reinterpret_cast<CAutomobile*>(veh);
+				int doorNode = -1;
+				eDoors eDoor = DOOR_FRONT_LEFT;
+				switch (thisTask->m_nTargetDoor) {
+				case 8: doorNode = CAR_DOOR_RF; eDoor = DOOR_FRONT_RIGHT; break;
+				case 9: doorNode = CAR_DOOR_RR; eDoor = DOOR_REAR_RIGHT; break;
+				case 10: doorNode = CAR_DOOR_LF; eDoor = DOOR_FRONT_LEFT; break;
+				case 11: doorNode = CAR_DOOR_LR; eDoor = DOOR_REAR_LEFT; break;
+				default: break;
+				}
+
+				if (doorNode >= 0 && doorNode < CAR_NUM_NODES && car->m_aCarNodes[doorNode]) {
+					float angle = car->m_doors[eDoor].m_fAngle;
+					if (std::fabs(angle) < 0.1f) {
+						ClientLog(LogLevel::Info, std::format("Hooked_EnterCar_CreateSubTaskForDoor: targetDoor {} (door {}) is closed (angle {:.2f}), forcing 0x322 instead of 0x327",
+							thisTask->m_nTargetDoor, (int)eDoor, angle));
+
+						// Free the 0x327 task via GTA SA's scalar deleting destructor (vtable[0])
+						auto dtor = reinterpret_cast<void(__thiscall*)(CTask*, int)>((*reinterpret_cast<uintptr_t**>(resultTask))[0]);
+						dtor(resultTask, 1);
+
+						// Construct TASK_SIMPLE_CAR_OPEN_DOOR_FROM_OUTSIDE (0x322)
+						auto CreateSubTaskFunc = reinterpret_cast<CTask*(__thiscall*)(CTaskComplexEnterCar*, int, CPed*)>(0x63E040);
+						resultTask = CreateSubTaskFunc(thisTask, 0x322, ped);
+					}
+				}
+			}
+		}
+	}
+
+	return resultTask;
 }
 
 static void __fastcall Hooked_CAutomobile_BlowUpCar(CAutomobile* thisCar, void* edx, CEntity* damager, bool bHideExplosion)
@@ -4323,6 +4476,42 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD dwReason, LPVOID lpReserved)
 			}
 		}
 
+		MH_STATUS bestPassDoorStatus = MH_CreateHook(reinterpret_cast<void*>(0x650BB0), reinterpret_cast<void*>(&Hooked_ComputeBestPassengerDoor), reinterpret_cast<void**>(&g_origComputeBestPassengerDoor));
+		if (bestPassDoorStatus == MH_OK) {
+			MH_STATUS enableStatus = MH_EnableHook(reinterpret_cast<void*>(0x650BB0));
+			if (enableStatus == MH_OK) {
+				ClientLog(LogLevel::Info, "ComputeBestPassengerDoor (0x650BB0) hooked successfully via MinHook");
+			} else {
+				ClientLog(LogLevel::Error, std::format("Failed to enable ComputeBestPassengerDoor hook: {}", MH_StatusToString(enableStatus)));
+			}
+		} else {
+			ClientLog(LogLevel::Error, std::format("Failed to hook ComputeBestPassengerDoor (0x650BB0): {}", MH_StatusToString(bestPassDoorStatus)));
+		}
+
+		MH_STATUS canDoorBeOpenedStatus = MH_CreateHook(reinterpret_cast<void*>(0x64EDD0), reinterpret_cast<void*>(&Hooked_CanDoorBeOpened), reinterpret_cast<void**>(&g_origCanDoorBeOpened));
+		if (canDoorBeOpenedStatus == MH_OK) {
+			MH_STATUS enableStatus = MH_EnableHook(reinterpret_cast<void*>(0x64EDD0));
+			if (enableStatus == MH_OK) {
+				ClientLog(LogLevel::Info, "CanDoorBeOpened (0x64EDD0) hooked successfully via MinHook");
+			} else {
+				ClientLog(LogLevel::Error, std::format("Failed to enable CanDoorBeOpened hook: {}", MH_StatusToString(enableStatus)));
+			}
+		} else {
+			ClientLog(LogLevel::Error, std::format("Failed to hook CanDoorBeOpened (0x64EDD0): {}", MH_StatusToString(canDoorBeOpenedStatus)));
+		}
+
+		MH_STATUS enterCarDoorStatus = MH_CreateHook(reinterpret_cast<void*>(0x63F970), reinterpret_cast<void*>(&Hooked_EnterCar_CreateSubTaskForDoor), reinterpret_cast<void**>(&g_origEnterCar_CreateSubTaskForDoor));
+		if (enterCarDoorStatus == MH_OK) {
+			MH_STATUS enableStatus = MH_EnableHook(reinterpret_cast<void*>(0x63F970));
+			if (enableStatus == MH_OK) {
+				ClientLog(LogLevel::Info, "CTaskComplexEnterCar::CreateSubTaskForDoor (0x63F970) hooked successfully via MinHook");
+			} else {
+				ClientLog(LogLevel::Error, std::format("Failed to enable CTaskComplexEnterCar::CreateSubTaskForDoor hook: {}", MH_StatusToString(enableStatus)));
+			}
+		} else {
+			ClientLog(LogLevel::Error, std::format("Failed to hook CTaskComplexEnterCar::CreateSubTaskForDoor (0x63F970): {}", MH_StatusToString(enterCarDoorStatus)));
+		}
+
 		MH_STATUS blowUpStatus = MH_CreateHook(reinterpret_cast<void*>(0x6B3780), reinterpret_cast<void*>(&Hooked_CAutomobile_BlowUpCar), reinterpret_cast<void**>(&g_origCAutomobile_BlowUpCar));
 		if (blowUpStatus == MH_OK) {
 			MH_STATUS enableStatus = MH_EnableHook(reinterpret_cast<void*>(0x6B3780));
@@ -4637,6 +4826,24 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD dwReason, LPVOID lpReserved)
 			MH_DisableHook(reinterpret_cast<void*>(0x6A2330));
 			MH_RemoveHook(reinterpret_cast<void*>(0x6A2330));
 			g_origCAutomobile_IsDoorMissing = nullptr;
+		}
+
+		if (g_origComputeBestPassengerDoor) {
+			MH_DisableHook(reinterpret_cast<void*>(0x650BB0));
+			MH_RemoveHook(reinterpret_cast<void*>(0x650BB0));
+			g_origComputeBestPassengerDoor = nullptr;
+		}
+
+		if (g_origCanDoorBeOpened) {
+			MH_DisableHook(reinterpret_cast<void*>(0x64EDD0));
+			MH_RemoveHook(reinterpret_cast<void*>(0x64EDD0));
+			g_origCanDoorBeOpened = nullptr;
+		}
+
+		if (g_origEnterCar_CreateSubTaskForDoor) {
+			MH_DisableHook(reinterpret_cast<void*>(0x63F970));
+			MH_RemoveHook(reinterpret_cast<void*>(0x63F970));
+			g_origEnterCar_CreateSubTaskForDoor = nullptr;
 		}
 
 		if (g_origCAutomobile_BlowUpCar) {
