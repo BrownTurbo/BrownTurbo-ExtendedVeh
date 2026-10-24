@@ -337,9 +337,14 @@ endif()
 configure_file("${CMAKE_SOURCE_DIR}/../pluginconfig.h.in" "${CMAKE_SOURCE_DIR}/pluginconfig.h")
 
 if(DEFINED WIN32)
+    if (CMAKE_BUILD_TYPE STREQUAL "Debug" OR CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo" OR BUILD_TESTING)
+        set(DLL_TRGT "${CMAKE_SOURCE_DIR}/vcpkg_installed/x86-windows/debug/bin")
+    else()
+        set(DLL_TRGT "${CMAKE_SOURCE_DIR}/vcpkg_installed/x86-windows/bin")
+    endif()
     add_custom_command(TARGET ${PLUGIN_NAME_LOWERCASE} POST_BUILD
         COMMAND ${CMAKE_COMMAND}
-            "-DTRGT=${CMAKE_SOURCE_DIR}/vcpkg_installed/x86-windows/bin"
+            "-DTRGT=${DLL_TRGT}"
             "-DDEST=${CMAKE_RUNTIME_OUTPUT_DIRECTORY}"
             -P "${CMAKE_SOURCE_DIR}/CopyRuntimeDlls.cmake"
         COMMAND_EXPAND_LISTS
