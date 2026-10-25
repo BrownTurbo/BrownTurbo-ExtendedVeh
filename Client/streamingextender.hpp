@@ -18,12 +18,12 @@
 #include "plugin.h"
 
 #include "CVisibilityPlugins.h"
+#include "VanillaWheelData.h"
 #include "audioextender.hpp"
 #include "defs.h"
 #include "handling_manager.hpp"
 #include "rpworld.h"
 #include "utils.h"
-#include "VanillaWheelData.h"
 
 class StreamingExtender;
 inline CBaseModelInfo* GetEngineModelInfo(int modelId);

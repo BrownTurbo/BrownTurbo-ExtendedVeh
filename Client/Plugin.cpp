@@ -1012,7 +1012,8 @@ static bool(__cdecl* g_origComputeBestDriverDoor)(
 	CPed* pPed,
 	CVehicle* pVehicle,
 	CVector* pOutDoorPos,
-	int* pOutDoor) = nullptr;
+	int* pOutDoor)
+	= nullptr;
 static CTaskComplexLeaveCar*(__fastcall* g_origCTaskComplexLeaveCar)(
 	CTaskComplexLeaveCar* thisTask,
 	void* edx,
@@ -1020,7 +1021,8 @@ static CTaskComplexLeaveCar*(__fastcall* g_origCTaskComplexLeaveCar)(
 	int nTargetDoor,
 	int nDelayTime,
 	bool bSensibleLeaveCar,
-	bool bForceGetOut) = nullptr;
+	bool bForceGetOut)
+	= nullptr;
 static bool(__cdecl* g_origCanDoorBeOpened)(CVehicle* vehicle, int targetDoor) = nullptr;
 static CTask*(__fastcall* g_origEnterCar_CreateSubTaskForDoor)(CTaskComplexEnterCar* thisTask, void* edx, CPed* ped) = nullptr;
 static void(__fastcall* g_origCAutomobile_BlowUpCar)(CAutomobile* thisCar, void* edx, CEntity* damager, bool bHideExplosion) = nullptr;
@@ -1217,8 +1219,10 @@ static bool IsVehicleRightHandDrive(CVehicle* vehicle)
 		for (const char* sName : steerNames) {
 			RwFrame* f = CClumpModelInfo::GetFrameFromName(vehicle->m_pRwClump, sName);
 			if (f) {
-				if (f->modelling.pos.x > 0.15f) return true;
-				if (f->modelling.pos.x < -0.15f) return false;
+				if (f->modelling.pos.x > 0.15f)
+					return true;
+				if (f->modelling.pos.x < -0.15f)
+					return false;
 			}
 		}
 	}
@@ -1238,21 +1242,27 @@ static bool IsVehicleRightHandDrive(CVehicle* vehicle)
 	if (modelInfo) {
 		CVector seatPos(0.0f, 0.0f, 0.0f);
 		if (modelInfo->GetOriginalCompPosition(seatPos, 4)) { // 4 = ped_frontseat (PASSENGER)
-			if (seatPos.x < -0.15f) return true;
-			if (seatPos.x > 0.15f) return false;
+			if (seatPos.x < -0.15f)
+				return true;
+			if (seatPos.x > 0.15f)
+				return false;
 		}
 		if (modelInfo->m_pVehicleStruct) {
 			float x = modelInfo->m_pVehicleStruct->m_avDummyPos[4].x;
-			if (x < -0.15f) return true;
-			if (x > 0.15f) return false;
+			if (x < -0.15f)
+				return true;
+			if (x > 0.15f)
+				return false;
 		}
 	}
 
 	if (vehicle->m_pRwClump) {
 		RwFrame* seatFrame = CClumpModelInfo::GetFrameFromId(vehicle->m_pRwClump, 4);
 		if (seatFrame) {
-			if (seatFrame->modelling.pos.x < -0.15f) return true;
-			if (seatFrame->modelling.pos.x > 0.15f) return false;
+			if (seatFrame->modelling.pos.x < -0.15f)
+				return true;
+			if (seatFrame->modelling.pos.x > 0.15f)
+				return false;
 		}
 	}
 
@@ -1428,10 +1438,14 @@ static bool __cdecl Hooked_CanDoorBeOpened(CVehicle* vehicle, int targetDoor)
 
 	// Normalize targetDoor before passing to original function (GTA SA expects 8..11)
 	int normDoor = targetDoor;
-	if (normDoor == 0) normDoor = 10;
-	else if (normDoor == 1) normDoor = 8;
-	else if (normDoor == 2) normDoor = 11;
-	else if (normDoor == 3) normDoor = 9;
+	if (normDoor == 0)
+		normDoor = 10;
+	else if (normDoor == 1)
+		normDoor = 8;
+	else if (normDoor == 2)
+		normDoor = 11;
+	else if (normDoor == 3)
+		normDoor = 9;
 
 	if (g_origCanDoorBeOpened)
 		return g_origCanDoorBeOpened(vehicle, normDoor);
@@ -1476,9 +1490,12 @@ static CTask* __fastcall Hooked_EnterCar_CreateSubTaskForDoor(CTaskComplexEnterC
 						}
 					} else {
 						// Standard LHD 4-door vehicle
-						if (thisTask->m_nTargetDoor == 1) thisTask->m_nTargetDoor = 8;
-						else if (thisTask->m_nTargetDoor == 2) thisTask->m_nTargetDoor = 11;
-						else if (thisTask->m_nTargetDoor == 3) thisTask->m_nTargetDoor = 9;
+						if (thisTask->m_nTargetDoor == 1)
+							thisTask->m_nTargetDoor = 8;
+						else if (thisTask->m_nTargetDoor == 2)
+							thisTask->m_nTargetDoor = 11;
+						else if (thisTask->m_nTargetDoor == 3)
+							thisTask->m_nTargetDoor = 9;
 
 						if (thisTask->m_nTargetDoor == 8) {
 							thisTask->m_nTargetSeat = 1;
@@ -3280,7 +3297,6 @@ private:
 							}
 						}
 					}
-
 
 				} else {
 					CTxdStore::PopCurrentTxd();

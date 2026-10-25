@@ -8,218 +8,218 @@ namespace ExtendedVeh {
 inline float GetVanillaVehicleWheelZ(int modelId)
 {
 	static const float s_wheelZTable[212] = {
-		-0.6121f  , // 400: landstal.dff
-		-0.3478f  , // 401: bravura.dff
-		-0.3500f  , // 402: buffalo.dff
-		-0.9500f  , // 403: linerun.dff
-		-0.3300f  , // 404: peren.dff
-		-0.4500f  , // 405: sentinel.dff
-		-1.2493f  , // 406: dumper.dff
-		-0.7000f  , // 407: firetruk.dff
-		-0.9700f  , // 408: trash.dff
-		-0.3500f  , // 409: stretch.dff
-		-0.2900f  , // 410: manana.dff
-		-0.3500f  , // 411: infernus.dff
-		-0.3500f  , // 412: voodoo.dff
-		-0.6400f  , // 413: pony.dff
-		-0.6200f  , // 414: mule.dff
-		-0.3595f  , // 415: cheetah.dff
-		-0.6676f  , // 416: ambulan.dff
-		-0.8415f  , // 417: leviathn.dff
-		-0.6825f  , // 418: moonbeam.dff
-		-0.4300f  , // 419: esperant.dff
-		-0.3500f  , // 420: taxi.dff
-		-0.4750f  , // 421: washing.dff
-		-0.5500f  , // 422: bobcat.dff
-		-0.6299f  , // 423: mrwhoop.dff
-		-0.2788f  , // 424: bfinject.dff
-		-0.8445f  , // 425: hunter.dff
-		-0.3500f  , // 426: premier.dff
-		-0.5300f  , // 427: enforcer.dff
-		-0.6428f  , // 428: securica.dff
-		-0.2500f  , // 429: banshee.dff
-		-0.3500f  , // 430: predator.dff
-		-0.5000f  , // 431: bus.dff
-		-0.3493f  , // 432: rhino.dff
-		-0.8000f  , // 433: barracks.dff
-		-0.5424f  , // 434: hotknife.dff
-		-0.9542f  , // 435: artict1.dff
-		-0.3480f  , // 436: previon.dff
-		-0.5000f  , // 437: coach.dff
-		-0.5500f  , // 438: cabbie.dff
-		-0.4500f  , // 439: stallion.dff
-		-0.7528f  , // 440: rumpo.dff
-		0.0300f   , // 441: rcbandit.dff
-		-0.4599f  , // 442: romero.dff
-		-0.9594f  , // 443: packer.dff
-		-0.4463f  , // 444: monster.dff
-		-0.4600f  , // 445: admiral.dff
-		-0.3500f  , // 446: squalo.dff
-		-0.5500f  , // 447: seaspar.dff
-		-0.2757f  , // 448: pizzaboy.dff
-		-1.1919f  , // 449: tram.dff
-		-0.9542f  , // 450: artict2.dff
-		-0.2187f  , // 451: turismo.dff
-		-0.3500f  , // 452: speeder.dff
-		-0.3500f  , // 453: reefer.dff
-		-0.3500f  , // 454: tropic.dff
-		-0.8000f  , // 455: flatbed.dff
-		-0.5800f  , // 456: yankee.dff
-		-0.3493f  , // 457: caddy.dff
-		-0.4402f  , // 458: solair.dff
-		-0.6400f  , // 459: topfun.dff
-		-1.7979f  , // 460: skimmer.dff
-		-0.1795f  , // 461: pcj600.dff
-		-0.2757f  , // 462: faggio.dff
-		-0.1765f  , // 463: freeway.dff
-		-0.1710f  , // 464: rcbaron.dff
-		-0.2500f  , // 465: rcraider.dff
-		-0.3500f  , // 466: glendale.dff
-		-0.3500f  , // 467: oceanic.dff
-		-0.2670f  , // 468: sanchez.dff
-		-0.5500f  , // 469: sparrow.dff
-		-0.3130f  , // 470: patriot.dff
-		-0.1250f  , // 471: quad.dff
-		-0.3500f  , // 472: coastg.dff
-		-0.3500f  , // 473: dinghy.dff
-		-0.3500f  , // 474: hermes.dff
-		-0.3500f  , // 475: sabre.dff
-		-0.9409f  , // 476: rustler.dff
-		-0.3200f  , // 477: zr350.dff
-		-0.5500f  , // 478: walton.dff
-		-0.3846f  , // 479: regina.dff
-		-0.3500f  , // 480: comet.dff
-		-0.2388f  , // 481: bmx.dff
-		-0.6500f  , // 482: burrito.dff
-		-0.6656f  , // 483: camper.dff
-		-0.3500f  , // 484: marquis.dff
-		-0.3000f  , // 485: baggage.dff
-		-0.3500f  , // 486: dozer.dff
-		-0.7150f  , // 487: maverick.dff
-		-0.7150f  , // 488: vcnmav.dff
-		-0.6622f  , // 489: rancher.dff
-		-0.6622f  , // 490: fbiranch.dff
-		-0.4250f  , // 491: virgo.dff
-		-0.3500f  , // 492: greenwoo.dff
-		-0.3500f  , // 493: jetmax.dff
-		-0.4000f  , // 494: hotring.dff
-		-0.7641f  , // 495: sandking.dff
-		-0.3177f  , // 496: blistac.dff
-		-0.7150f  , // 497: polmav.dff
-		-0.5800f  , // 498: boxville.dff
-		-0.5500f  , // 499: benson.dff
-		-0.6200f  , // 500: mesa.dff
-		-0.2500f  , // 501: rcgoblin.dff
-		-0.3995f  , // 502: hotrina.dff
-		-0.3995f  , // 503: hotrinb.dff
-		-0.3500f  , // 504: bloodra.dff
-		-0.6622f  , // 505: rnchlure.dff
-		-0.3421f  , // 506: supergt.dff
-		-0.4500f  , // 507: elegant.dff
-		-0.9000f  , // 508: journey.dff
-		-0.2155f  , // 509: bike.dff
-		-0.2557f  , // 510: mtbike.dff
-		-2.1559f  , // 511: beagle.dff
-		-1.0359f  , // 512: cropdust.dff
-		-1.0707f  , // 513: stunt.dff
-		-0.9467f  , // 514: petro.dff
-		-1.3937f  , // 515: rdtrain.dff
-		-0.4250f  , // 516: nebula.dff
-		-0.4107f  , // 517: majestic.dff
-		-0.2658f  , // 518: buccanee.dff
-		-1.6826f  , // 519: shamal.dff
-		-0.9706f  , // 520: hydra.dff
-		-0.1604f  , // 521: fcr900.dff
-		-0.1602f  , // 522: nrg500.dff
-		-0.1604f  , // 523: copbike.dff
-		-1.2879f  , // 524: cement.dff
-		-0.3800f  , // 525: towtruck.dff
-		-0.4000f  , // 526: fortune.dff
-		-0.3531f  , // 527: cadrona.dff
-		-0.6100f  , // 528: fbitruck.dff
-		-0.2479f  , // 529: willard.dff
-		-0.3965f  , // 530: forklift.dff
-		-0.4586f  , // 531: tractor.dff
-		-1.4882f  , // 532: combine.dff
-		-0.3500f  , // 533: feltzer.dff
-		-0.2729f  , // 534: remingtn.dff
-		-0.3302f  , // 535: slamvan.dff
-		-0.3500f  , // 536: blade.dff
-		-1.9200f  , // 537: freight.dff
-		-1.9242f  , // 538: streak.dff
-		-0.0500f  , // 539: vortex.dff
-		-0.4698f  , // 540: vincent.dff
-		-0.2500f  , // 541: bullet.dff
-		-0.3734f  , // 542: clover.dff
-		-0.4500f  , // 543: sadler.dff
-		-0.7000f  , // 544: firela.dff
-		-0.4500f  , // 545: hustler.dff
-		-0.3418f  , // 546: intruder.dff
-		-0.3500f  , // 547: primo.dff
-		-2.4292f  , // 548: cargobob.dff
-		-0.3595f  , // 549: tampa.dff
-		-0.4228f  , // 550: sunrise.dff
-		-0.4250f  , // 551: merit.dff
-		-0.1769f  , // 552: utility.dff
-		-1.5017f  , // 553: nevada.dff
-		-0.5750f  , // 554: yosemite.dff
-		-0.3304f  , // 555: windsor.dff
-		-0.4500f  , // 556: monstera.dff
-		-0.4500f  , // 557: monsterb.dff
-		-0.2538f  , // 558: uranus.dff
-		-0.2541f  , // 559: jester.dff
-		-0.2550f  , // 560: sultan.dff
-		-0.4140f  , // 561: stratum.dff
-		-0.3131f  , // 562: elegy.dff
-		-1.1122f  , // 563: raindanc.dff
-		0.0300f   , // 564: rctiger.dff
-		-0.2720f  , // 565: flash.dff
-		-0.3500f  , // 566: tahoma.dff
-		-0.4783f  , // 567: savanna.dff
-		-0.4650f  , // 568: bandito.dff
-		-1.9200f  , // 569: freiflat.dff
-		-1.9242f  , // 570: streakc.dff
-		-0.1623f  , // 571: kart.dff
-		-0.3200f  , // 572: mower.dff
-		-0.9303f  , // 573: duneride.dff
-		-0.4439f  , // 574: sweeper.dff
-		-0.2500f  , // 575: broadway.dff
-		-0.2500f  , // 576: tornado.dff
-		-0.3147f  , // 577: at400.dff
-		-1.0000f  , // 578: dft30.dff
-		-0.4386f  , // 579: huntley.dff
-		-0.2975f  , // 580: stafford.dff
-		-0.1581f  , // 581: bf400.dff
-		-0.6200f  , // 582: newsvan.dff
-		-0.1797f  , // 583: tug.dff
-		-1.4494f  , // 584: petrotr.dff
-		-0.2269f  , // 585: emperor.dff
-		-0.1599f  , // 586: wayfarer.dff
-		-0.3600f  , // 587: euros.dff
-		-0.4694f  , // 588: hotdog.dff
-		-0.2269f  , // 589: club.dff
-		-1.9200f  , // 590: freibox.dff
-		-0.9542f  , // 591: artict3.dff
-		-1.6223f  , // 592: androm.dff
-		-1.2202f  , // 593: dodo.dff
-		0.0653f   , // 594: rccam.dff
-		-0.3500f  , // 595: launch.dff
-		-0.3500f  , // 596: copcarla.dff
-		-0.3500f  , // 597: copcarsf.dff
-		-0.3500f  , // 598: copcarvg.dff
-		-0.6622f  , // 599: copcarru.dff
-		-0.3418f  , // 600: picador.dff
-		-0.0672f  , // 601: swatvan.dff
-		-0.4000f  , // 602: alpha.dff
-		-0.4106f  , // 603: phoenix.dff
-		-0.3500f  , // 604: glenshit.dff
-		-0.4500f  , // 605: sadlshit.dff
-		-0.6937f  , // 606: bagboxa.dff
-		-0.7000f  , // 607: bagboxb.dff
-		-1.1730f  , // 608: tugstair.dff
-		-0.5800f  , // 609: boxburg.dff
-		-0.1404f  , // 610: farmtr1.dff
-		-0.2519f   // 611: utiltr1.dff
+		-0.6121f, // 400: landstal.dff
+		-0.3478f, // 401: bravura.dff
+		-0.3500f, // 402: buffalo.dff
+		-0.9500f, // 403: linerun.dff
+		-0.3300f, // 404: peren.dff
+		-0.4500f, // 405: sentinel.dff
+		-1.2493f, // 406: dumper.dff
+		-0.7000f, // 407: firetruk.dff
+		-0.9700f, // 408: trash.dff
+		-0.3500f, // 409: stretch.dff
+		-0.2900f, // 410: manana.dff
+		-0.3500f, // 411: infernus.dff
+		-0.3500f, // 412: voodoo.dff
+		-0.6400f, // 413: pony.dff
+		-0.6200f, // 414: mule.dff
+		-0.3595f, // 415: cheetah.dff
+		-0.6676f, // 416: ambulan.dff
+		-0.8415f, // 417: leviathn.dff
+		-0.6825f, // 418: moonbeam.dff
+		-0.4300f, // 419: esperant.dff
+		-0.3500f, // 420: taxi.dff
+		-0.4750f, // 421: washing.dff
+		-0.5500f, // 422: bobcat.dff
+		-0.6299f, // 423: mrwhoop.dff
+		-0.2788f, // 424: bfinject.dff
+		-0.8445f, // 425: hunter.dff
+		-0.3500f, // 426: premier.dff
+		-0.5300f, // 427: enforcer.dff
+		-0.6428f, // 428: securica.dff
+		-0.2500f, // 429: banshee.dff
+		-0.3500f, // 430: predator.dff
+		-0.5000f, // 431: bus.dff
+		-0.3493f, // 432: rhino.dff
+		-0.8000f, // 433: barracks.dff
+		-0.5424f, // 434: hotknife.dff
+		-0.9542f, // 435: artict1.dff
+		-0.3480f, // 436: previon.dff
+		-0.5000f, // 437: coach.dff
+		-0.5500f, // 438: cabbie.dff
+		-0.4500f, // 439: stallion.dff
+		-0.7528f, // 440: rumpo.dff
+		0.0300f, // 441: rcbandit.dff
+		-0.4599f, // 442: romero.dff
+		-0.9594f, // 443: packer.dff
+		-0.4463f, // 444: monster.dff
+		-0.4600f, // 445: admiral.dff
+		-0.3500f, // 446: squalo.dff
+		-0.5500f, // 447: seaspar.dff
+		-0.2757f, // 448: pizzaboy.dff
+		-1.1919f, // 449: tram.dff
+		-0.9542f, // 450: artict2.dff
+		-0.2187f, // 451: turismo.dff
+		-0.3500f, // 452: speeder.dff
+		-0.3500f, // 453: reefer.dff
+		-0.3500f, // 454: tropic.dff
+		-0.8000f, // 455: flatbed.dff
+		-0.5800f, // 456: yankee.dff
+		-0.3493f, // 457: caddy.dff
+		-0.4402f, // 458: solair.dff
+		-0.6400f, // 459: topfun.dff
+		-1.7979f, // 460: skimmer.dff
+		-0.1795f, // 461: pcj600.dff
+		-0.2757f, // 462: faggio.dff
+		-0.1765f, // 463: freeway.dff
+		-0.1710f, // 464: rcbaron.dff
+		-0.2500f, // 465: rcraider.dff
+		-0.3500f, // 466: glendale.dff
+		-0.3500f, // 467: oceanic.dff
+		-0.2670f, // 468: sanchez.dff
+		-0.5500f, // 469: sparrow.dff
+		-0.3130f, // 470: patriot.dff
+		-0.1250f, // 471: quad.dff
+		-0.3500f, // 472: coastg.dff
+		-0.3500f, // 473: dinghy.dff
+		-0.3500f, // 474: hermes.dff
+		-0.3500f, // 475: sabre.dff
+		-0.9409f, // 476: rustler.dff
+		-0.3200f, // 477: zr350.dff
+		-0.5500f, // 478: walton.dff
+		-0.3846f, // 479: regina.dff
+		-0.3500f, // 480: comet.dff
+		-0.2388f, // 481: bmx.dff
+		-0.6500f, // 482: burrito.dff
+		-0.6656f, // 483: camper.dff
+		-0.3500f, // 484: marquis.dff
+		-0.3000f, // 485: baggage.dff
+		-0.3500f, // 486: dozer.dff
+		-0.7150f, // 487: maverick.dff
+		-0.7150f, // 488: vcnmav.dff
+		-0.6622f, // 489: rancher.dff
+		-0.6622f, // 490: fbiranch.dff
+		-0.4250f, // 491: virgo.dff
+		-0.3500f, // 492: greenwoo.dff
+		-0.3500f, // 493: jetmax.dff
+		-0.4000f, // 494: hotring.dff
+		-0.7641f, // 495: sandking.dff
+		-0.3177f, // 496: blistac.dff
+		-0.7150f, // 497: polmav.dff
+		-0.5800f, // 498: boxville.dff
+		-0.5500f, // 499: benson.dff
+		-0.6200f, // 500: mesa.dff
+		-0.2500f, // 501: rcgoblin.dff
+		-0.3995f, // 502: hotrina.dff
+		-0.3995f, // 503: hotrinb.dff
+		-0.3500f, // 504: bloodra.dff
+		-0.6622f, // 505: rnchlure.dff
+		-0.3421f, // 506: supergt.dff
+		-0.4500f, // 507: elegant.dff
+		-0.9000f, // 508: journey.dff
+		-0.2155f, // 509: bike.dff
+		-0.2557f, // 510: mtbike.dff
+		-2.1559f, // 511: beagle.dff
+		-1.0359f, // 512: cropdust.dff
+		-1.0707f, // 513: stunt.dff
+		-0.9467f, // 514: petro.dff
+		-1.3937f, // 515: rdtrain.dff
+		-0.4250f, // 516: nebula.dff
+		-0.4107f, // 517: majestic.dff
+		-0.2658f, // 518: buccanee.dff
+		-1.6826f, // 519: shamal.dff
+		-0.9706f, // 520: hydra.dff
+		-0.1604f, // 521: fcr900.dff
+		-0.1602f, // 522: nrg500.dff
+		-0.1604f, // 523: copbike.dff
+		-1.2879f, // 524: cement.dff
+		-0.3800f, // 525: towtruck.dff
+		-0.4000f, // 526: fortune.dff
+		-0.3531f, // 527: cadrona.dff
+		-0.6100f, // 528: fbitruck.dff
+		-0.2479f, // 529: willard.dff
+		-0.3965f, // 530: forklift.dff
+		-0.4586f, // 531: tractor.dff
+		-1.4882f, // 532: combine.dff
+		-0.3500f, // 533: feltzer.dff
+		-0.2729f, // 534: remingtn.dff
+		-0.3302f, // 535: slamvan.dff
+		-0.3500f, // 536: blade.dff
+		-1.9200f, // 537: freight.dff
+		-1.9242f, // 538: streak.dff
+		-0.0500f, // 539: vortex.dff
+		-0.4698f, // 540: vincent.dff
+		-0.2500f, // 541: bullet.dff
+		-0.3734f, // 542: clover.dff
+		-0.4500f, // 543: sadler.dff
+		-0.7000f, // 544: firela.dff
+		-0.4500f, // 545: hustler.dff
+		-0.3418f, // 546: intruder.dff
+		-0.3500f, // 547: primo.dff
+		-2.4292f, // 548: cargobob.dff
+		-0.3595f, // 549: tampa.dff
+		-0.4228f, // 550: sunrise.dff
+		-0.4250f, // 551: merit.dff
+		-0.1769f, // 552: utility.dff
+		-1.5017f, // 553: nevada.dff
+		-0.5750f, // 554: yosemite.dff
+		-0.3304f, // 555: windsor.dff
+		-0.4500f, // 556: monstera.dff
+		-0.4500f, // 557: monsterb.dff
+		-0.2538f, // 558: uranus.dff
+		-0.2541f, // 559: jester.dff
+		-0.2550f, // 560: sultan.dff
+		-0.4140f, // 561: stratum.dff
+		-0.3131f, // 562: elegy.dff
+		-1.1122f, // 563: raindanc.dff
+		0.0300f, // 564: rctiger.dff
+		-0.2720f, // 565: flash.dff
+		-0.3500f, // 566: tahoma.dff
+		-0.4783f, // 567: savanna.dff
+		-0.4650f, // 568: bandito.dff
+		-1.9200f, // 569: freiflat.dff
+		-1.9242f, // 570: streakc.dff
+		-0.1623f, // 571: kart.dff
+		-0.3200f, // 572: mower.dff
+		-0.9303f, // 573: duneride.dff
+		-0.4439f, // 574: sweeper.dff
+		-0.2500f, // 575: broadway.dff
+		-0.2500f, // 576: tornado.dff
+		-0.3147f, // 577: at400.dff
+		-1.0000f, // 578: dft30.dff
+		-0.4386f, // 579: huntley.dff
+		-0.2975f, // 580: stafford.dff
+		-0.1581f, // 581: bf400.dff
+		-0.6200f, // 582: newsvan.dff
+		-0.1797f, // 583: tug.dff
+		-1.4494f, // 584: petrotr.dff
+		-0.2269f, // 585: emperor.dff
+		-0.1599f, // 586: wayfarer.dff
+		-0.3600f, // 587: euros.dff
+		-0.4694f, // 588: hotdog.dff
+		-0.2269f, // 589: club.dff
+		-1.9200f, // 590: freibox.dff
+		-0.9542f, // 591: artict3.dff
+		-1.6223f, // 592: androm.dff
+		-1.2202f, // 593: dodo.dff
+		0.0653f, // 594: rccam.dff
+		-0.3500f, // 595: launch.dff
+		-0.3500f, // 596: copcarla.dff
+		-0.3500f, // 597: copcarsf.dff
+		-0.3500f, // 598: copcarvg.dff
+		-0.6622f, // 599: copcarru.dff
+		-0.3418f, // 600: picador.dff
+		-0.0672f, // 601: swatvan.dff
+		-0.4000f, // 602: alpha.dff
+		-0.4106f, // 603: phoenix.dff
+		-0.3500f, // 604: glenshit.dff
+		-0.4500f, // 605: sadlshit.dff
+		-0.6937f, // 606: bagboxa.dff
+		-0.7000f, // 607: bagboxb.dff
+		-1.1730f, // 608: tugstair.dff
+		-0.5800f, // 609: boxburg.dff
+		-0.1404f, // 610: farmtr1.dff
+		-0.2519f // 611: utiltr1.dff
 	};
 	if (modelId >= 400 && modelId <= 611) {
 		return s_wheelZTable[modelId - 400];
