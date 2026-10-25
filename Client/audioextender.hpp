@@ -57,6 +57,7 @@ public:
 		short bankSlotId = -1;
 		short sfxId = -1;
 		std::uint16_t vehicleId {};
+		uint32_t lastModelId = 0;
 	};
 	struct CustomVehicleAudioState {
 		std::uint16_t vehicleId {};
@@ -286,7 +287,23 @@ public:
 				customModelId = static_cast<std::uint32_t>(vehicle.m_nModelIndex);
 			}
 		}
-		const auto definition = GetVehicleAudio(customModelId);
+
+		// Detect model change on an existing audio state: reset runtime and stop sounds
+		if (state.initialized && state.lastModelId != customModelId) {
+			if (state.playing && state.engineSound.m_nIsUsed) {
+				state.engineSound.StopSoundAndForget();
+			}
+			RemoveVehicleBassAudio(state.vehicleId);
+			state.initialized = false;
+			state.playing = false;
+			state.active = false;
+			state.bankSlotId = -1;
+		}
+
+		if (state.initialized)
+			return true;
+
+		const auto* definition = GetVehicleAudio(customModelId);
 		if (!definition) {
 			return false;
 		}
@@ -296,15 +313,13 @@ public:
 			return false;
 		}
 
-		if (state.initialized)
-			return true;
-
 		state.bankSlotId = definition->engineOnSoundBankId;
 		state.sfxId = 0;
 		if (state.bankSlotId < 0)
 			return false;
 
 		state.vehicleId = static_cast<uint16_t>(CPools::GetVehicleRef(&vehicle));
+		state.lastModelId = customModelId;
 
 		state.engineSound.Initialise(
 			state.bankSlotId,
@@ -365,14 +380,14 @@ public:
 		def.sirenType = hasSiren ? sirenType : 0;
 	}
 
-	static std::optional<AudioExtender::CustomVehicleAudioDefinition> GetVehicleAudio(uint32_t customModelId)
+	static const AudioExtender::CustomVehicleAudioDefinition* GetVehicleAudio(uint32_t customModelId)
 	{
 		std::lock_guard<std::mutex> lock(s_audioMutex);
 		auto it = s_customAudioMap.find(customModelId);
-		return (it != s_customAudioMap.end()) ? std::optional<AudioExtender::CustomVehicleAudioDefinition>(it->second) : std::nullopt;
+		return (it != s_customAudioMap.end()) ? &it->second : nullptr;
 	}
 
-	static std::optional<AudioExtender::CustomVehicleAudioDefinition> GetAudioIdForModel(uint32_t modelId)
+	static const AudioExtender::CustomVehicleAudioDefinition* GetAudioIdForModel(uint32_t modelId)
 	{
 		return GetVehicleAudio(modelId);
 	}

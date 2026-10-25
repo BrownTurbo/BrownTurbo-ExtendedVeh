@@ -354,7 +354,12 @@ tHandlingData* HandlingManager::ResolveFallbackHandling(uint16_t vehicleId, int 
 		return modelIt->second.get();
 	}
 
-	return static_cast<tHandlingData*>(&gHandlingDataMgr.m_aVehicleHandling[reinterpret_cast<CVehicleModelInfo*>(GetEngineModelInfo(modelId))->m_nHandlingId]);
+	auto* modelInfo = reinterpret_cast<CVehicleModelInfo*>(GetEngineModelInfo(modelId));
+	if (modelInfo && modelInfo->m_nHandlingId >= 0 && modelInfo->m_nHandlingId < 210) {
+		return static_cast<tHandlingData*>(&gHandlingDataMgr.m_aVehicleHandling[modelInfo->m_nHandlingId]);
+	}
+
+	return static_cast<tHandlingData*>(&gHandlingDataMgr.m_aVehicleHandling[0]);
 }
 
 tHandlingData* HandlingManager::ResolveFallbackHandling(CVehicle* pVehicle, uint16_t vehicleId, int modelId)
@@ -422,25 +427,28 @@ void HandlingManager::CacheVehicleSAMPId(CVehicle* vehicle, uint16_t sampId)
 
 void HandlingManager::RemoveVehicleFromCache(CVehicle* vehicle)
 {
-	if (!IsVehiclePointerValid(vehicle))
+	if (!vehicle)
 		return;
 	{
 		std::lock_guard<std::recursive_mutex> hlock(m_handlingMutex);
 		m_vehicleFlyingByPtr.erase(vehicle);
+		m_customHandlings.erase(vehicle);
 	}
 	std::lock_guard<std::mutex> lock(m_cacheMutex);
 	auto it = m_vehicleToSAMPIdCache.find(vehicle);
 	if (it == m_vehicleToSAMPIdCache.end())
 		return;
-	const uint32_t model = static_cast<uint32_t>(vehicle->m_nModelIndex);
-	m_vehicleToSAMPIdCache.erase(it);
-	auto count = m_modelUseCount.find(model);
-	if (count != m_modelUseCount.end()) {
-		if (count->second > 1)
-			--(count->second);
-		else
-			m_modelUseCount.erase(count);
+	if (IsVehiclePointerValid(vehicle)) {
+		const uint32_t model = static_cast<uint32_t>(vehicle->m_nModelIndex);
+		auto count = m_modelUseCount.find(model);
+		if (count != m_modelUseCount.end()) {
+			if (count->second > 1)
+				--(count->second);
+			else
+				m_modelUseCount.erase(count);
+		}
 	}
+	m_vehicleToSAMPIdCache.erase(it);
 }
 
 void HandlingManager::IncrementModelUse(uint32_t modelId)
@@ -1224,14 +1232,7 @@ void HandlingManager::OnVehicleDestructor(CVehicle* pVehicle)
 
 	if (!pVehicle) {
 		for (auto it = m_customHandlings.begin(); it != m_customHandlings.end();) {
-			if (GetVehicleSAMPId(it->first) == 0xFFFF) {
-				if (it->first && it->first->m_pHandlingData == it->second.get()) {
-					uint32_t modelIdx = it->first->m_nModelIndex;
-					auto* modelInfo = reinterpret_cast<CVehicleModelInfo*>(GetEngineModelInfo(modelIdx));
-					if (modelInfo) {
-						it->first->m_pHandlingData = static_cast<tHandlingData*>(&gHandlingDataMgr.m_aVehicleHandling[modelInfo->m_nHandlingId]);
-					}
-				}
+			if (!IsVehiclePointerValid(it->first)) {
 				it = m_customHandlings.erase(it);
 			} else {
 				++it;
@@ -1240,35 +1241,13 @@ void HandlingManager::OnVehicleDestructor(CVehicle* pVehicle)
 		return;
 	}
 
-	if (!IsVehiclePointerValid(pVehicle))
-		return;
-
-	uint16_t vehicleId = GetVehicleSAMPId(pVehicle);
 	auto cushndleit = m_customHandlings.find(pVehicle);
-	auto plrhndleit = m_playerAppliedHandlings.find(vehicleId);
-	auto vehhndleit = m_vehicleHandlings.find(vehicleId);
-	auto cacheit = m_vehicleToSAMPIdCache.find(pVehicle);
-
-	if (pVehicle->m_pHandlingData) {
-		auto customIt = m_customHandlings.find(pVehicle);
-		if (customIt != m_customHandlings.end() && pVehicle->m_pHandlingData == customIt->second.get()) {
-			uint32_t modelIdx = pVehicle->m_nModelIndex;
-			auto* binding = CustomVehicleBindingManager::Instance().Find(vehicleId);
-			if (binding && binding->customModelId > 0) {
-				modelIdx = binding->customModelId;
-			}
-			auto* modelInfo = reinterpret_cast<CVehicleModelInfo*>(GetEngineModelInfo(modelIdx));
-			if (modelInfo) {
-				pVehicle->m_pHandlingData = static_cast<tHandlingData*>(&gHandlingDataMgr.m_aVehicleHandling[modelInfo->m_nHandlingId]);
-			} else {
-				pVehicle->m_pHandlingData = nullptr;
-			}
-		}
-	}
-
 	if (cushndleit != m_customHandlings.end()) {
 		m_customHandlings.erase(cushndleit);
 	}
+
+	std::lock_guard<std::mutex> clock(m_cacheMutex);
+	auto cacheit = m_vehicleToSAMPIdCache.find(pVehicle);
 	if (cacheit != m_vehicleToSAMPIdCache.end()) {
 		m_vehicleToSAMPIdCache.erase(cacheit);
 	}

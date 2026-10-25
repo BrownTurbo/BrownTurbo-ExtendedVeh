@@ -379,7 +379,7 @@ void CustomVehicleBindingManager::Unbind(uint16_t vehicleId)
 	std::string err_;
 	ExtendedVeh::Collision::CollisionLoader::Instance().Unload(modelId, err_);
 	if (!err_.empty()) {
-		SendMsg(0xFFFFFF, std::format("Error: %s; vehicleId=%d modelId=%d", err_, vehicleId, modelId).c_str());
+		SendMsg(0xFFFFFF, std::format("Error: {}; vehicleId={} modelId={}", err_, vehicleId, modelId).c_str());
 	}
 
 	if (binding.modelApplied && binding.originalModelId >= 0) {
@@ -563,6 +563,7 @@ void CustomVehicleBindingManager::Unbind(uint16_t vehicleId)
 	}
 
 	if (binding.appliedGameVehicle) {
+		m_gameVehicleToSampId.erase(binding.appliedGameVehicle);
 		std::unique_lock colLock(s_fastColMutex);
 		s_fastVehicleColMap.erase(binding.appliedGameVehicle);
 		s_hasCustomCols.store(!s_fastVehicleColMap.empty(), std::memory_order_relaxed);
@@ -582,6 +583,7 @@ void CustomVehicleBindingManager::Clear()
 	for (auto& [vehicleId, binding] : m_bindings) {
 		HandlingManager::DecrementModelUse(binding.customModelId);
 	}
+	m_gameVehicleToSampId.clear();
 	m_bindings.clear();
 	ClientLog(LogLevel::Info, "CustomVehicleBindingManager::Clear: All bindings cleared.");
 }
@@ -597,18 +599,68 @@ CustomVehicleBindingManager::Binding* CustomVehicleBindingManager::FindByVehicle
 {
 	if (!vehicle)
 		return nullptr;
+
 	std::lock_guard lock(m_mutex);
-	for (auto& [id, b] : m_bindings) {
-		if (b.appliedGameVehicle == vehicle)
-			return &b;
+
+	// Rapid index lookup via pointer map
+	auto mapIt = m_gameVehicleToSampId.find(vehicle);
+	if (mapIt != m_gameVehicleToSampId.end()) {
+		auto bindIt = m_bindings.find(mapIt->second);
+		if (bindIt != m_bindings.end()) {
+			return &bindIt->second;
+		}
+		m_gameVehicleToSampId.erase(mapIt);
 	}
-	for (auto& [id, b] : m_bindings) {
-		if (b.modelApplied && GetGameVehicleFromPool(id) == vehicle) {
-			b.appliedGameVehicle = vehicle;
+
+	// Check if this vehicle corresponds to any binding's current pool vehicle
+	// (e.g. newly streamed in or recreated by SA-MP at same vehicleId)
+	uint16_t sampId = HandlingManager::GetVehicleSAMPId(vehicle);
+	if (sampId != 0xFFFF) {
+		auto bindIt = m_bindings.find(sampId);
+		if (bindIt != m_bindings.end()) {
+			auto& b = bindIt->second;
+			if (b.appliedGameVehicle != vehicle) {
+				// SA-MP recreated the vehicle at the same vehicleId (respawn)!
+				if (b.appliedGameVehicle) {
+					m_gameVehicleToSampId.erase(b.appliedGameVehicle);
+				}
+				b.appliedGameVehicle = vehicle;
+				b.modelApplied = false; // Re-apply custom model upon respawn!
+				b.lastPrimaryColor = 0xFF;
+				b.lastSecondaryColor = 0xFF;
+				b.lastTertiaryColor = 0xFF;
+				b.lastQuaternaryColor = 0xFF;
+				b.lastPlateText[0] = '\0';
+				b.resolvedPaintjobIndex = -999;
+			}
+			m_gameVehicleToSampId[vehicle] = sampId;
 			return &b;
 		}
 	}
+
 	return nullptr;
+}
+
+void CustomVehicleBindingManager::OnVehicleDestroyed(CVehicle* vehicle)
+{
+	if (!vehicle)
+		return;
+
+	std::lock_guard lock(m_mutex);
+	auto it = m_gameVehicleToSampId.find(vehicle);
+	if (it != m_gameVehicleToSampId.end()) {
+		uint16_t sampId = it->second;
+		m_gameVehicleToSampId.erase(it);
+		auto bindIt = m_bindings.find(sampId);
+		if (bindIt != m_bindings.end() && bindIt->second.appliedGameVehicle == vehicle) {
+			bindIt->second.appliedGameVehicle = nullptr;
+			bindIt->second.modelApplied = false;
+			bindIt->second.resolvedPaintjobIndex = -999;
+		}
+	}
+	std::unique_lock colLock(s_fastColMutex);
+	s_fastVehicleColMap.erase(vehicle);
+	s_hasCustomCols.store(!s_fastVehicleColMap.empty(), std::memory_order_relaxed);
 }
 
 bool CustomVehicleBindingManager::IsModelInUse(uint32_t customModelId)
@@ -1026,6 +1078,9 @@ void CustomVehicleBindingManager::OnVehicleFixed(CVehicle* vehicle)
 
 void CustomVehicleBindingManager::Process()
 {
+	static uint32_t s_processFrameCounter = 0;
+	++s_processFrameCounter;
+
 	std::lock_guard lock(m_mutex);
 
 	for (auto& [vehicleId, binding] : m_bindings) {
@@ -1048,6 +1103,7 @@ void CustomVehicleBindingManager::Process()
 		auto* vehicle = GetGameVehicleFromPool(vehicleId);
 		if (!vehicle || !IsVehiclePointerValid(vehicle)) {
 			if (binding.appliedGameVehicle) {
+				m_gameVehicleToSampId.erase(binding.appliedGameVehicle);
 				std::unique_lock colLock(s_fastColMutex);
 				s_fastVehicleColMap.erase(binding.appliedGameVehicle);
 				s_hasCustomCols.store(!s_fastVehicleColMap.empty(), std::memory_order_relaxed);
@@ -1068,6 +1124,7 @@ void CustomVehicleBindingManager::Process()
 
 		if (!binding.modelApplied || binding.appliedGameVehicle != vehicle) {
 			if (binding.appliedGameVehicle && binding.appliedGameVehicle != vehicle) {
+				m_gameVehicleToSampId.erase(binding.appliedGameVehicle);
 				std::unique_lock colLock(s_fastColMutex);
 				s_fastVehicleColMap.erase(binding.appliedGameVehicle);
 				s_hasCustomCols.store(!s_fastVehicleColMap.empty(), std::memory_order_relaxed);
@@ -1075,6 +1132,7 @@ void CustomVehicleBindingManager::Process()
 				for (size_t i = 0; i < Binding::MAX_POPUP_FRAMES; ++i)
 					binding.popupFrames[i] = nullptr;
 				binding.hasPopupHeadlights = false;
+				binding.resolvedPaintjobIndex = -999;
 			}
 			ClientLog(LogLevel::Info, std::format("Applying visual model: vehicle={} customModel={} baseModel={} vehiclePtr=0x{:X} sourceClump=0x{:X}", vehicleId, binding.customModelId, binding.baseModelId, reinterpret_cast<std::uintptr_t>(vehicle), reinterpret_cast<std::uintptr_t>(model->m_pRwClump)));
 
@@ -1209,21 +1267,29 @@ void CustomVehicleBindingManager::Process()
 						car->m_aCarNodes[CAR_DOOR_LF] = CClumpModelInfo::GetFrameFromName(newClump, "door_lf_dummy");
 						if (!car->m_aCarNodes[CAR_DOOR_LF])
 							car->m_aCarNodes[CAR_DOOR_LF] = CClumpModelInfo::GetFrameFromName(newClump, "door_lf");
+						if (!car->m_aCarNodes[CAR_DOOR_LF])
+							car->m_aCarNodes[CAR_DOOR_LF] = CClumpModelInfo::GetFrameFromName(newClump, "door_lf_front");
 					}
 					if (!car->m_aCarNodes[CAR_DOOR_RF]) {
 						car->m_aCarNodes[CAR_DOOR_RF] = CClumpModelInfo::GetFrameFromName(newClump, "door_rf_dummy");
 						if (!car->m_aCarNodes[CAR_DOOR_RF])
 							car->m_aCarNodes[CAR_DOOR_RF] = CClumpModelInfo::GetFrameFromName(newClump, "door_rf");
+						if (!car->m_aCarNodes[CAR_DOOR_RF])
+							car->m_aCarNodes[CAR_DOOR_RF] = CClumpModelInfo::GetFrameFromName(newClump, "door_rf_front");
 					}
 					if (!car->m_aCarNodes[CAR_DOOR_LR]) {
 						car->m_aCarNodes[CAR_DOOR_LR] = CClumpModelInfo::GetFrameFromName(newClump, "door_lr_dummy");
 						if (!car->m_aCarNodes[CAR_DOOR_LR])
 							car->m_aCarNodes[CAR_DOOR_LR] = CClumpModelInfo::GetFrameFromName(newClump, "door_lr");
+						if (!car->m_aCarNodes[CAR_DOOR_LR])
+							car->m_aCarNodes[CAR_DOOR_LR] = CClumpModelInfo::GetFrameFromName(newClump, "door_lr_front");
 					}
 					if (!car->m_aCarNodes[CAR_DOOR_RR]) {
 						car->m_aCarNodes[CAR_DOOR_RR] = CClumpModelInfo::GetFrameFromName(newClump, "door_rr_dummy");
 						if (!car->m_aCarNodes[CAR_DOOR_RR])
 							car->m_aCarNodes[CAR_DOOR_RR] = CClumpModelInfo::GetFrameFromName(newClump, "door_rr");
+						if (!car->m_aCarNodes[CAR_DOOR_RR])
+							car->m_aCarNodes[CAR_DOOR_RR] = CClumpModelInfo::GetFrameFromName(newClump, "door_rr_front");
 					}
 					if (!car->m_aCarNodes[CAR_BONNET]) {
 						car->m_aCarNodes[CAR_BONNET] = CClumpModelInfo::GetFrameFromName(newClump, "bonnet_dummy");
@@ -1447,6 +1513,7 @@ void CustomVehicleBindingManager::Process()
 
 				binding.appliedGameVehicle = vehicle;
 				binding.modelApplied = true;
+				m_gameVehicleToSampId[vehicle] = vehicleId;
 				binding.lastPrimaryColor = vehicle->m_nPrimaryColor;
 				binding.lastSecondaryColor = vehicle->m_nSecondaryColor;
 				binding.lastTertiaryColor = vehicle->m_nTertiaryColor;
@@ -1509,141 +1576,144 @@ void CustomVehicleBindingManager::Process()
 				UpdateVehiclePlateVisibility(vehicle);
 			}
 		} else {
-			// Model is already applied - check if vehicle colors changed (e.g. ChangeVehicleColor or Respray)
-			if (vehicle->m_nPrimaryColor != binding.lastPrimaryColor || vehicle->m_nSecondaryColor != binding.lastSecondaryColor || vehicle->m_nTertiaryColor != binding.lastTertiaryColor || vehicle->m_nQuaternaryColor != binding.lastQuaternaryColor) {
-				binding.lastPrimaryColor = vehicle->m_nPrimaryColor;
-				binding.lastSecondaryColor = vehicle->m_nSecondaryColor;
-				binding.lastTertiaryColor = vehicle->m_nTertiaryColor;
-				binding.lastQuaternaryColor = vehicle->m_nQuaternaryColor;
+			// Throttle verification checks for already applied vehicles (colors, plates, wheels, offsets) to once every 8 frames
+			if (((s_processFrameCounter + vehicleId) & 7) == 0) {
+				// Model is already applied - check if vehicle colors changed (e.g. ChangeVehicleColor or Respray)
+				if (vehicle->m_nPrimaryColor != binding.lastPrimaryColor || vehicle->m_nSecondaryColor != binding.lastSecondaryColor || vehicle->m_nTertiaryColor != binding.lastTertiaryColor || vehicle->m_nQuaternaryColor != binding.lastQuaternaryColor) {
+					binding.lastPrimaryColor = vehicle->m_nPrimaryColor;
+					binding.lastSecondaryColor = vehicle->m_nSecondaryColor;
+					binding.lastTertiaryColor = vehicle->m_nTertiaryColor;
+					binding.lastQuaternaryColor = vehicle->m_nQuaternaryColor;
 
-				RpClump* clump = reinterpret_cast<RpClump*>(vehicle->m_pRwObject);
-				if (clump && model) {
-					model->SetVehicleColour(vehicle->m_nPrimaryColor, vehicle->m_nSecondaryColor, vehicle->m_nTertiaryColor, vehicle->m_nQuaternaryColor);
-					model->SetEditableMaterials(clump);
-					ApplyVehicleColors(vehicle, vehicle->m_nPrimaryColor, vehicle->m_nSecondaryColor, vehicle->m_nTertiaryColor, vehicle->m_nQuaternaryColor);
-					if (binding.hasPaintjob) {
-						ApplyPaintjobToVehicle(vehicle, binding.paintjobIndex);
-					}
-					if (binding.hasWindowTint) {
-						ApplyWindowTintToVehicle(vehicle, binding.windowTintAlpha, binding.windowTintR, binding.windowTintG, binding.windowTintB);
-					}
-					if (binding.hasWheelColor) {
-						ApplyWheelColorToVehicle(vehicle, binding.wheelColorR, binding.wheelColorG, binding.wheelColorB);
-					}
-					if (binding.lastPlateText[0] != '\0') {
-						ApplyPlateToVehicle(vehicle, binding.lastPlateText);
+					RpClump* clump = reinterpret_cast<RpClump*>(vehicle->m_pRwObject);
+					if (clump && model) {
+						model->SetVehicleColour(vehicle->m_nPrimaryColor, vehicle->m_nSecondaryColor, vehicle->m_nTertiaryColor, vehicle->m_nQuaternaryColor);
+						model->SetEditableMaterials(clump);
+						ApplyVehicleColors(vehicle, vehicle->m_nPrimaryColor, vehicle->m_nSecondaryColor, vehicle->m_nTertiaryColor, vehicle->m_nQuaternaryColor);
+						if (binding.hasPaintjob) {
+							ApplyPaintjobToVehicle(vehicle, binding.paintjobIndex);
+						}
+						if (binding.hasWindowTint) {
+							ApplyWindowTintToVehicle(vehicle, binding.windowTintAlpha, binding.windowTintR, binding.windowTintG, binding.windowTintB);
+						}
+						if (binding.hasWheelColor) {
+							ApplyWheelColorToVehicle(vehicle, binding.wheelColorR, binding.wheelColorG, binding.wheelColorB);
+						}
+						if (binding.lastPlateText[0] != '\0') {
+							ApplyPlateToVehicle(vehicle, binding.lastPlateText);
+						}
 					}
 				}
-			}
 
-			// Check if license plate text changed in real-time
-			char currentEffectivePlate[32] = {};
-			bool hasPlate = false;
-			if (binding.hasCustomPlateText && binding.customPlateText[0] != '\0') {
-				strncpy_s(currentEffectivePlate, sizeof(currentEffectivePlate), binding.customPlateText, _TRUNCATE);
-				hasPlate = true;
-			} else {
-				char sampPlate[32] = {};
-				bool gotSamp = GetVehiclePlateText(vehicleId, sampPlate, sizeof(sampPlate)) && sampPlate[0] != '\0';
-				if (gotSamp && _stricmp(sampPlate, "SAN ANDREAS") != 0) {
-					strncpy_s(currentEffectivePlate, sizeof(currentEffectivePlate), sampPlate, _TRUNCATE);
+				// Check if license plate text changed in real-time
+				char currentEffectivePlate[32] = {};
+				bool hasPlate = false;
+				if (binding.hasCustomPlateText && binding.customPlateText[0] != '\0') {
+					strncpy_s(currentEffectivePlate, sizeof(currentEffectivePlate), binding.customPlateText, _TRUNCATE);
 					hasPlate = true;
 				} else {
-					auto defIt = s_modelDefaultPlateText.find(binding.customModelId);
-					if (defIt != s_modelDefaultPlateText.end() && !defIt->second.empty()) {
-						strncpy_s(currentEffectivePlate, sizeof(currentEffectivePlate), defIt->second.c_str(), _TRUNCATE);
-						hasPlate = true;
-					} else if (gotSamp) {
+					char sampPlate[32] = {};
+					bool gotSamp = GetVehiclePlateText(vehicleId, sampPlate, sizeof(sampPlate)) && sampPlate[0] != '\0';
+					if (gotSamp && _stricmp(sampPlate, "SAN ANDREAS") != 0) {
 						strncpy_s(currentEffectivePlate, sizeof(currentEffectivePlate), sampPlate, _TRUNCATE);
 						hasPlate = true;
+					} else {
+						auto defIt = s_modelDefaultPlateText.find(binding.customModelId);
+						if (defIt != s_modelDefaultPlateText.end() && !defIt->second.empty()) {
+							strncpy_s(currentEffectivePlate, sizeof(currentEffectivePlate), defIt->second.c_str(), _TRUNCATE);
+							hasPlate = true;
+						} else if (gotSamp) {
+							strncpy_s(currentEffectivePlate, sizeof(currentEffectivePlate), sampPlate, _TRUNCATE);
+							hasPlate = true;
+						}
 					}
 				}
-			}
 
-			if (!hasPlate || currentEffectivePlate[0] == '\0') {
-				strncpy_s(currentEffectivePlate, sizeof(currentEffectivePlate), "SAN ANDREAS", _TRUNCATE);
-				hasPlate = true;
-			}
+				if (!hasPlate || currentEffectivePlate[0] == '\0') {
+					strncpy_s(currentEffectivePlate, sizeof(currentEffectivePlate), "SAN ANDREAS", _TRUNCATE);
+					hasPlate = true;
+				}
 
-			if (hasPlate && std::strncmp(binding.lastPlateText, currentEffectivePlate, sizeof(binding.lastPlateText)) != 0) {
-				ApplyPlateToVehicle(vehicle, currentEffectivePlate);
-			}
+				if (hasPlate && std::strncmp(binding.lastPlateText, currentEffectivePlate, sizeof(binding.lastPlateText)) != 0) {
+					ApplyPlateToVehicle(vehicle, currentEffectivePlate);
+				}
 
-			UpdateVehiclePlateVisibility(vehicle);
+				UpdateVehiclePlateVisibility(vehicle);
 
-			// Synchronize custom wheels & fallback offsets for active / remote vehicle on main thread
-			if (vehicle && IsVehiclePointerValid(vehicle)) {
-				if (binding.hasCustomWheel) {
-					if (binding.customWheelModelId > 0) {
-						bool hasTargetWheel = false;
-						for (int i = 0; i < 15; ++i) {
-							if (vehicle->m_anUpgrades[i] == binding.customWheelModelId) {
-								hasTargetWheel = true;
-								break;
+				// Synchronize custom wheels & fallback offsets for active / remote vehicle on main thread
+				if (vehicle && IsVehiclePointerValid(vehicle)) {
+					if (binding.hasCustomWheel) {
+						if (binding.customWheelModelId > 0) {
+							bool hasTargetWheel = false;
+							for (int i = 0; i < 15; ++i) {
+								if (vehicle->m_anUpgrades[i] == binding.customWheelModelId) {
+									hasTargetWheel = true;
+									break;
+								}
+							}
+							if (!hasTargetWheel) {
+								ApplyWheelToVehicle(vehicle, binding.customWheelModelId);
+							}
+						} else {
+							// Custom stock DFF wheels (wheelModelId <= 0): remove any unwanted wheel upgrades
+							for (int i = 0; i < 15; ++i) {
+								short upg = vehicle->m_anUpgrades[i];
+								if (upg == 1025 || (upg >= 1073 && upg <= 1098)) {
+									ApplyWheelToVehicle(vehicle, -1);
+									break;
+								}
 							}
 						}
-						if (!hasTargetWheel) {
-							ApplyWheelToVehicle(vehicle, binding.customWheelModelId);
-						}
-					} else {
-						// Custom stock DFF wheels (wheelModelId <= 0): remove any unwanted wheel upgrades
+					} else if (model && model->m_nWheelModelIndex > 0) {
+						bool hasAnyWheelUpgrade = false;
 						for (int i = 0; i < 15; ++i) {
 							short upg = vehicle->m_anUpgrades[i];
 							if (upg == 1025 || (upg >= 1073 && upg <= 1098)) {
-								ApplyWheelToVehicle(vehicle, -1);
+								hasAnyWheelUpgrade = true;
 								break;
 							}
 						}
-					}
-				} else if (model && model->m_nWheelModelIndex > 0) {
-					bool hasAnyWheelUpgrade = false;
-					for (int i = 0; i < 15; ++i) {
-						short upg = vehicle->m_anUpgrades[i];
-						if (upg == 1025 || (upg >= 1073 && upg <= 1098)) {
-							hasAnyWheelUpgrade = true;
-							break;
+						if (!hasAnyWheelUpgrade) {
+							ApplyWheelToVehicle(vehicle, static_cast<int16_t>(model->m_nWheelModelIndex));
 						}
 					}
-					if (!hasAnyWheelUpgrade) {
-						ApplyWheelToVehicle(vehicle, static_cast<int16_t>(model->m_nWheelModelIndex));
+
+					if (!binding.hasOffsets) {
+						auto it = s_modelOffsets.find(binding.customModelId);
+						if (it != s_modelOffsets.end()) {
+							ApplyModelOffsetsToBinding(binding, it->second);
+						}
+					}
+				}
+			}
+
+			if (vehicle->m_nVehicleSubClass == VEHICLE_AUTOMOBILE || vehicle->m_nVehicleSubClass == VEHICLE_MTRUCK || vehicle->m_nVehicleSubClass == VEHICLE_QUAD) {
+				auto* car = reinterpret_cast<CAutomobile*>(vehicle);
+				if (!car->m_aCarNodes[CAR_DOOR_LR] && !car->m_aCarNodes[CAR_DOOR_RR]) {
+					if (vehicle->m_nMaxPassengers > 1) {
+						vehicle->m_nMaxPassengers = 1;
+					}
+				} else if (model && model->m_nNumDoors <= 2) {
+					if (vehicle->m_nMaxPassengers > 1) {
+						vehicle->m_nMaxPassengers = 1;
 					}
 				}
 
-				if (!binding.hasOffsets) {
-					auto it = s_modelOffsets.find(binding.customModelId);
-					if (it != s_modelOffsets.end()) {
-						ApplyModelOffsetsToBinding(binding, it->second);
-					}
-				}
-
-				if (vehicle->m_nVehicleSubClass == VEHICLE_AUTOMOBILE || vehicle->m_nVehicleSubClass == VEHICLE_MTRUCK || vehicle->m_nVehicleSubClass == VEHICLE_QUAD) {
-					auto* car = reinterpret_cast<CAutomobile*>(vehicle);
-					if (!car->m_aCarNodes[CAR_DOOR_LR] && !car->m_aCarNodes[CAR_DOOR_RR]) {
-						if (vehicle->m_nMaxPassengers > 1) {
-							vehicle->m_nMaxPassengers = 1;
-						}
-					} else if (model && model->m_nNumDoors <= 2) {
-						if (vehicle->m_nMaxPassengers > 1) {
-							vehicle->m_nMaxPassengers = 1;
-						}
-					}
-
-					static const struct {
-						int nodeIdx;
-						eDoors door;
-					} kDoors[] = {
-						{ CAR_BONNET, BONNET },
-						{ CAR_BOOT, BOOT },
-						{ CAR_DOOR_LF, DOOR_FRONT_LEFT },
-						{ CAR_DOOR_RF, DOOR_FRONT_RIGHT },
-						{ CAR_DOOR_LR, DOOR_REAR_LEFT },
-						{ CAR_DOOR_RR, DOOR_REAR_RIGHT }
-					};
-					for (const auto& d : kDoors) {
-						if (!car->m_aCarNodes[d.nodeIdx]) {
-							if (car->m_damageManager.GetDoorStatus(d.door) != DAMSTATE_NOTPRESENT) {
-								car->m_damageManager.SetDoorStatus(d.door, DAMSTATE_NOTPRESENT);
-							}
+				static const struct {
+					int nodeIdx;
+					eDoors door;
+				} kDoors[] = {
+					{ CAR_BONNET, BONNET },
+					{ CAR_BOOT, BOOT },
+					{ CAR_DOOR_LF, DOOR_FRONT_LEFT },
+					{ CAR_DOOR_RF, DOOR_FRONT_RIGHT },
+					{ CAR_DOOR_LR, DOOR_REAR_LEFT },
+					{ CAR_DOOR_RR, DOOR_REAR_RIGHT }
+				};
+				for (const auto& d : kDoors) {
+					if (!car->m_aCarNodes[d.nodeIdx]) {
+						if (car->m_damageManager.GetDoorStatus(d.door) != DAMSTATE_NOTPRESENT) {
+							car->m_damageManager.SetDoorStatus(d.door, DAMSTATE_NOTPRESENT);
 						}
 					}
 				}
@@ -1816,7 +1886,7 @@ void CustomVehicleBindingManager::ApplyAudioSettingsToVehicle(CVehicle* vehicle)
 	if (!pAudio)
 		return;
 
-	auto audioDef = AudioExtender::GetVehicleAudio(binding->customModelId);
+	const auto* audioDef = AudioExtender::GetVehicleAudio(binding->customModelId);
 	if (audioDef) {
 		AudioExtender::ApplyCustomVehicleAudio(*vehicle, *audioDef);
 	}
@@ -2877,6 +2947,8 @@ void CustomVehicleBindingManager::ApplyVehicleColors(CVehicle* vehicle, uint8_t 
 
 	CRGBA primCol = colorTable[prim & 127];
 	CRGBA secCol = colorTable[sec & 127];
+	CRGBA tertCol = colorTable[tert & 127];
+	CRGBA quatCol = colorTable[quat & 127];
 
 	bool isAutomobile = (vehicle->m_nVehicleSubClass == VEHICLE_AUTOMOBILE || vehicle->m_nVehicleSubClass == VEHICLE_MTRUCK || vehicle->m_nVehicleSubClass == VEHICLE_QUAD);
 	CAutomobile* car = isAutomobile ? reinterpret_cast<CAutomobile*>(vehicle) : nullptr;
@@ -2884,12 +2956,21 @@ void CustomVehicleBindingManager::ApplyVehicleColors(CVehicle* vehicle, uint8_t 
 	struct ColorContext {
 		RwRGBA prim;
 		RwRGBA sec;
+		RwRGBA tert;
+		RwRGBA quat;
 		CAutomobile* car;
 		bool hasTexturedBody {};
+		bool hasMarkerMaterials {};
+		std::vector<RpMaterial*> primaryMarkerMaterials;
+		std::vector<RpMaterial*> secondaryMarkerMaterials;
+		std::vector<RpMaterial*> tertiaryMarkerMaterials;
+		std::vector<RpMaterial*> quaternaryMarkerMaterials;
 		std::vector<RpMaterial*> untexturedOpaqueMaterials;
 	} ctx {
 		{ primCol.r, primCol.g, primCol.b, 255 },
 		{ secCol.r, secCol.g, secCol.b, 255 },
+		{ tertCol.r, tertCol.g, tertCol.b, 255 },
+		{ quatCol.r, quatCol.g, quatCol.b, 255 },
 		car
 	};
 
@@ -2945,6 +3026,35 @@ void CustomVehicleBindingManager::ApplyVehicleColors(CVehicle* vehicle, uint8_t 
 				return mat;
 			}
 
+			// Check standard GTA SA carcols color markers on materials
+			const RwRGBA* curCol = RpMaterialGetColor(mat);
+			if (curCol) {
+				// Primary marker: (60, 255, 0)
+				if (std::abs(static_cast<int>(curCol->red) - 60) <= 15 && std::abs(static_cast<int>(curCol->green) - 255) <= 15 && std::abs(static_cast<int>(curCol->blue) - 0) <= 15) {
+					c->hasMarkerMaterials = true;
+					c->primaryMarkerMaterials.push_back(mat);
+					return mat;
+				}
+				// Secondary marker: (255, 0, 175)
+				if (std::abs(static_cast<int>(curCol->red) - 255) <= 15 && std::abs(static_cast<int>(curCol->green) - 0) <= 15 && std::abs(static_cast<int>(curCol->blue) - 175) <= 15) {
+					c->hasMarkerMaterials = true;
+					c->secondaryMarkerMaterials.push_back(mat);
+					return mat;
+				}
+				// Tertiary marker: (0, 255, 255) or (0, 255, 0)
+				if ((std::abs(static_cast<int>(curCol->red) - 0) <= 15 && std::abs(static_cast<int>(curCol->green) - 255) <= 15 && std::abs(static_cast<int>(curCol->blue) - 255) <= 15) || (std::abs(static_cast<int>(curCol->red) - 0) <= 15 && std::abs(static_cast<int>(curCol->green) - 255) <= 15 && std::abs(static_cast<int>(curCol->blue) - 0) <= 15)) {
+					c->hasMarkerMaterials = true;
+					c->tertiaryMarkerMaterials.push_back(mat);
+					return mat;
+				}
+				// Quaternary marker: (255, 255, 0)
+				if (std::abs(static_cast<int>(curCol->red) - 255) <= 15 && std::abs(static_cast<int>(curCol->green) - 255) <= 15 && std::abs(static_cast<int>(curCol->blue) - 0) <= 15) {
+					c->hasMarkerMaterials = true;
+					c->quaternaryMarkerMaterials.push_back(mat);
+					return mat;
+				}
+			}
+
 			bool isBody = false;
 			bool isSecondary = false;
 
@@ -2960,8 +3070,13 @@ void CustomVehicleBindingManager::ApplyVehicleColors(CVehicle* vehicle, uint8_t 
 			if (isBody) {
 				c->hasTexturedBody = true;
 				RpMaterialSetColor(mat, isSecondary ? &c->sec : &c->prim);
+				if (mat->surfaceProps.specular > 0.20f)
+					mat->surfaceProps.specular = 0.20f;
+				if (mat->surfaceProps.ambient < 0.35f)
+					mat->surfaceProps.ambient = 0.45f;
+				if (mat->surfaceProps.diffuse > 0.85f)
+					mat->surfaceProps.diffuse = 0.80f;
 			} else if (texLower.empty()) {
-				const RwRGBA* curCol = RpMaterialGetColor(mat);
 				if (curCol && curCol->alpha >= 240) {
 					c->untexturedOpaqueMaterials.push_back(mat);
 				}
@@ -2975,9 +3090,36 @@ void CustomVehicleBindingManager::ApplyVehicleColors(CVehicle* vehicle, uint8_t 
 	},
 		&ctx);
 
-	if (!ctx.hasTexturedBody) {
+	auto applyMatProps = [](RpMaterial* m, const RwRGBA* col) {
+		RpMaterialSetColor(m, col);
+		if (m->surfaceProps.specular > 0.20f)
+			m->surfaceProps.specular = 0.20f;
+		if (m->surfaceProps.ambient < 0.35f)
+			m->surfaceProps.ambient = 0.45f;
+		if (m->surfaceProps.diffuse > 0.85f)
+			m->surfaceProps.diffuse = 0.80f;
+	};
+
+	if (ctx.hasMarkerMaterials) {
+		for (RpMaterial* m : ctx.primaryMarkerMaterials)
+			applyMatProps(m, &ctx.prim);
+		for (RpMaterial* m : ctx.secondaryMarkerMaterials)
+			applyMatProps(m, &ctx.sec);
+		for (RpMaterial* m : ctx.tertiaryMarkerMaterials)
+			applyMatProps(m, &ctx.tert);
+		for (RpMaterial* m : ctx.quaternaryMarkerMaterials)
+			applyMatProps(m, &ctx.quat);
+	} else if (!ctx.hasTexturedBody) {
+		// Fallback for models without markers: ONLY color white/neutral light body panels,
+		// NEVER touch dark materials (rubber, plastic, trim) or metal/chrome
 		for (RpMaterial* mat : ctx.untexturedOpaqueMaterials) {
-			RpMaterialSetColor(mat, &ctx.prim);
+			const RwRGBA* c = RpMaterialGetColor(mat);
+			if (c) {
+				bool isNeutral = std::abs(static_cast<int>(c->red) - static_cast<int>(c->green)) <= 10 && std::abs(static_cast<int>(c->green) - static_cast<int>(c->blue)) <= 10;
+				if (isNeutral && c->red >= 200) {
+					applyMatProps(mat, &ctx.prim);
+				}
+			}
 		}
 	}
 }
@@ -3099,7 +3241,7 @@ void CustomVehicleBindingManager::ApplyPaintjobToVehicle(CVehicle* vehicle, int 
 	}
 
 	RwTexture* liveryTex = nullptr;
-	if (binding->resolvedPaintjobIndex == paintjobIndex && binding->paintjobTexture) {
+	if (binding->resolvedPaintjobIndex == paintjobIndex) {
 		liveryTex = binding->paintjobTexture;
 	} else {
 
@@ -3314,6 +3456,9 @@ void CustomVehicleBindingManager::ApplyPaintjobToVehicle(CVehicle* vehicle, int 
 
 		customModel->SetVehicleColour(vehicle->m_nPrimaryColor, vehicle->m_nSecondaryColor, vehicle->m_nTertiaryColor, vehicle->m_nQuaternaryColor);
 		customModel->SetEditableMaterials(clump); // non-static: call on model instance
+	} else {
+		// Paintjob texture not found: restore original materials and avoid repeated searches
+		RestoreOriginalMaterials(vehicle);
 	}
 }
 
@@ -3480,6 +3625,14 @@ void CustomVehicleBindingManager::ApplyModelOffsetsToBinding(Binding& binding, c
 	binding.chassisOffsetX = cfg.chassisOffsetX;
 	binding.chassisOffsetY = cfg.chassisOffsetY;
 	binding.chassisOffsetZ = cfg.chassisOffsetZ;
+	binding.exhaustX = cfg.exhaustX;
+	binding.exhaustY = cfg.exhaustY;
+	binding.exhaustZ = cfg.exhaustZ;
+	binding.secondExhaustX = cfg.secondExhaustX;
+	binding.secondExhaustY = cfg.secondExhaustY;
+	binding.secondExhaustZ = cfg.secondExhaustZ;
+	binding.hasCustomExhaust = cfg.hasCustomExhaust;
+	binding.forceDoubleExhaust = cfg.forceDoubleExhaust;
 	binding.hasOffsets = true;
 
 	if (cfg.frontTrackWidth != 0.0f || cfg.rearTrackWidth != 0.0f || cfg.frontCamber != 0.0f || cfg.rearCamber != 0.0f || (cfg.frontWheelScale != 1.0f && cfg.frontWheelScale > 0.01f) || (cfg.rearWheelScale != 1.0f && cfg.rearWheelScale > 0.01f)) {

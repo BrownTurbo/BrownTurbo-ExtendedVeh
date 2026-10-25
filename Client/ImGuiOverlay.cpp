@@ -423,7 +423,7 @@ HRESULT __stdcall hkEndScene(IDirect3DDevice9* pDevice)
 			g_bwasInitialized = false;
 
 			LogImGuiStage("initialization failed; all ImGui state rolled back.", LogLevel::Error);
-			return false;
+			return oEndScene ? oEndScene(pDevice) : D3DERR_INVALIDCALL;
 		}
 
 		LogImGuiStage("adding tahoma font.");
@@ -464,7 +464,7 @@ HRESULT __stdcall hkEndScene(IDirect3DDevice9* pDevice)
 				g_bwasInitialized = false;
 
 				LogImGuiStage("initialization failed; all ImGui state rolled back.", LogLevel::Error);
-				return false;
+				return oEndScene ? oEndScene(pDevice) : D3DERR_INVALIDCALL;
 			}
 
 			SetLastError(ERROR_SUCCESS);
@@ -491,7 +491,7 @@ HRESULT __stdcall hkEndScene(IDirect3DDevice9* pDevice)
 				} else {
 					LogImGuiStage("Original WndProc restored.", LogLevel::Info);
 				}
-				return false;
+				return oEndScene ? oEndScene(pDevice) : D3DERR_INVALIDCALL;
 			} else {
 				const LONG_PTR installedWndProc = GetWindowLongPtrA(hWnd, GWLP_WNDPROC);
 				LogImGuiStage(std::format("WndProc hooked successfully. HWND=0x{:X}, oldWndProc=0x{:X}, newWndProc=0x{:X}", reinterpret_cast<std::uintptr_t>(hWnd), static_cast<std::uintptr_t>(reinterpret_cast<uintptr_t>(oWndProc)), static_cast<uintptr_t>(installedWndProc)).c_str(), LogLevel::Info);

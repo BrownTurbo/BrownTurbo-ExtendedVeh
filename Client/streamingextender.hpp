@@ -278,12 +278,12 @@ public:
 			{ 3, { "taillights2", "taillights2_dummy", "taillight2", "taillights_2", "taillight_2" } }, // LIGHT_REAR_SECONDARY
 			{ 4, { "ped_frontseat", "seat_f", "seat_front" } }, // SEAT_FRONT (driver!)
 			{ 5, { "ped_backseat", "seat_r", "seat_rear" } }, // SEAT_REAR
-			{ 6, { "exhaust", "exhaust_dummy" } }, // EXHAUST
+			{ 6, { "exhaust", "exhaust_dummy", "exhaust_ok", "exhaust_okk" } }, // EXHAUST
 			{ 7, { "engine", "engine_dummy" } }, // ENGINE
 			{ 8, { "petrolcap", "petrolcap_dummy", "gascap" } }, // GAS_CAP
 			{ 9, { "trailer_attach", "trailer" } }, // TRAILER_ATTACH
 			{ 10, { "ped_arm", "pedarm", "handgrip", "hand_rest", "handrest" } }, // HAND_REST / ped_arm
-			{ 11, { "exhaust_2", "exhaust2", "secexhaust", "exhaust_secondary" } }, // EXHAUST_SECONDARY
+			{ 11, { "exhaust_2", "exhaust2", "secexhaust", "exhaust_secondary", "exhaust2_dummy" } }, // EXHAUST_SECONDARY
 		};
 
 		RwFrame* rootFrame = RpClumpGetFrame(pClump);
@@ -385,6 +385,18 @@ public:
 			// to the actual car body containing all exterior panels.
 			RwFrame* chassisOk = CClumpModelInfo::GetFrameFromName(pClump, "chassis_ok");
 			RwFrame* innerChassis = CClumpModelInfo::GetFrameFromName(pClump, "chassis");
+			if (!innerChassis && !chassisOk) {
+				const char* chassisMisspellings[] = { "chasiss", "chassi", "chassiss" };
+				for (const char* ms : chassisMisspellings) {
+					RwFrame* mf = CClumpModelInfo::GetFrameFromName(pClump, ms);
+					if (mf) {
+						SetFrameNodeName(mf, "chassis");
+						innerChassis = mf;
+						ClientLog(LogLevel::Info, std::format("Renamed misspelled frame '{}' to 'chassis'", ms));
+						break;
+					}
+				}
+			}
 			if (chassisOk) {
 				if (innerChassis && innerChassis != chassisOk) {
 					SetFrameNodeName(innerChassis, "chassis_submesh");
@@ -446,6 +458,39 @@ public:
 							}
 						}
 						grandchild = nextGrandchild;
+					}
+				}
+			}
+
+			// 1d. Exhaust frame normalization:
+			// Modded models occasionally contain frame "exhaust_okk" or other typos.
+			// GTA SA's PreprocessHierarchy and tuning upgrades expect "exhaust_ok" for CAR_EXHAUST.
+			RwFrame* exhaustOkk = CClumpModelInfo::GetFrameFromName(pClump, "exhaust_okk");
+			if (exhaustOkk) {
+				SetFrameNodeName(exhaustOkk, "exhaust_ok");
+				ClientLog(LogLevel::Info, "Renamed frame 'exhaust_okk' to 'exhaust_ok'");
+			}
+
+			// 1e. Door frame naming normalization:
+			// GTA SA expects "door_rf_ok", "door_lf_ok", "door_rr_ok", "door_lr_ok" under their dummy frames.
+			// Some models name the door "door_lf_front", "door_rf_front", etc.
+			const char* doorOkPairs[][2] = {
+				{ "door_lf_dummy", "door_lf_front" },
+				{ "door_rf_dummy", "door_rf_front" },
+				{ "door_lr_dummy", "door_lr_front" },
+				{ "door_rr_dummy", "door_rr_front" }
+			};
+			for (auto& pair : doorOkPairs) {
+				RwFrame* dummy = CClumpModelInfo::GetFrameFromName(pClump, pair[0]);
+				if (dummy) {
+					std::string expectedOk = std::string(pair[0]).substr(0, 7) + "_ok";
+					RwFrame* okFrame = CClumpModelInfo::GetFrameFromName(pClump, expectedOk.c_str());
+					if (!okFrame) {
+						RwFrame* altFrame = CClumpModelInfo::GetFrameFromName(pClump, pair[1]);
+						if (altFrame) {
+							SetFrameNodeName(altFrame, expectedOk.c_str());
+							ClientLog(LogLevel::Info, std::format("Renamed door frame '{}' to '{}'", pair[1], expectedOk));
+						}
 					}
 				}
 			}
@@ -670,6 +715,56 @@ public:
 		ClientLog(LogLevel::Debug, "FinalizeClump -> BEFORE SetAtomicRenderCallbacks");
 		pInfo->SetAtomicRenderCallbacks();
 		ClientLog(LogLevel::Debug, "FinalizeClump -> AFTER SetAtomicRenderCallbacks");
+
+		// Hide non-stock tuning and accessory variations bundled in custom model clumps
+		// (e.g. FrontBump1..N, RearBump1..N, Diffuzor1..N, Deflector1..N, Acces0..N, Bonnets1..N, Spoilers1..N, SideSkirts1..N, FrontFends1..N, RearFends1..N)
+		// By default in RenderWare, every atomic is rendered, causing all variations to overlap simultaneously and glitch exhaust/body cutouts.
+		RpClumpForAllAtomics(pClump, [](RpAtomic* atomic, void* data) -> RpAtomic* {
+			RwFrame* f = RpAtomicGetFrame(atomic);
+			if (!f)
+				return atomic;
+			const char* fn = GetFrameNodeName(f);
+			if (!fn || !*fn)
+				return atomic;
+
+			std::string nameLower = fn;
+			std::transform(nameLower.begin(), nameLower.end(), nameLower.begin(), ::tolower);
+
+			while (!nameLower.empty() && (nameLower.back() == ' ' || nameLower.back() == '\t'))
+				nameLower.pop_back();
+
+			// Accessories and deflectors: hide by default so only stock vehicle body renders
+			if (nameLower.rfind("deflector", 0) == 0 || nameLower.rfind("acces", 0) == 0) {
+				RpAtomicSetFlags(atomic, 0);
+				ClientLog(LogLevel::Info, std::format("Hidden accessory tuning atomic '{}' by default", fn));
+				return atomic;
+			}
+
+			// Numbered tuning component families (0 = stock, 1..N = aftermarket upgrade)
+			static const char* tuningPrefixes[] = {
+				"frontbump", "rearbump", "diffuzor", "diffuser", "bonnet", "hood",
+				"sideskirt", "skirt", "spoiler", "frontfend", "rearfend", "fender"
+			};
+
+			for (const char* pfx : tuningPrefixes) {
+				size_t pfxLen = strlen(pfx);
+				if (nameLower.rfind(pfx, 0) == 0 && nameLower.length() > pfxLen) {
+					std::string suffix = nameLower.substr(pfxLen);
+					while (!suffix.empty() && (suffix[0] == 's' || suffix[0] == '_' || suffix[0] == ' '))
+						suffix = suffix.substr(1);
+					if (!suffix.empty() && std::isdigit(static_cast<unsigned char>(suffix[0]))) {
+						int idx = std::atoi(suffix.c_str());
+						if (idx > 0) {
+							RpAtomicSetFlags(atomic, 0);
+							ClientLog(LogLevel::Info, std::format("Hidden aftermarket tuning atomic '{}' (index {}) by default", fn, idx));
+							break;
+						}
+					}
+				}
+			}
+			return atomic;
+		},
+			nullptr);
 
 		// Auto-detect wheel sizes if model has wheel atomics under wheel dummies
 		if (pInfo->m_fWheelSizeFront < 0.1f || (pBaseInfo && fabsf(pInfo->m_fWheelSizeFront - pBaseInfo->m_fWheelSizeFront) < 0.001f) || fabsf(pInfo->m_fWheelSizeFront - 0.7f) < 0.01f) {

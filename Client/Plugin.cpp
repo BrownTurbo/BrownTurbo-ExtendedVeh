@@ -207,7 +207,9 @@ static void __fastcall Hooked_UpdateWheelMatrix(CAutomobile* thisCar, void* edx,
 					}
 
 					if (camber != 0.0f) {
-						float angle = isRight ? camber : -camber;
+						// Convert radians to degrees if camber was provided in radians (|rad| <= 0.6)
+						float camberDeg = (std::abs(camber) <= 0.6f) ? (camber * 57.2957795f) : camber;
+						float angle = isRight ? camberDeg : -camberDeg;
 						RwV3d yAxis = { 0.0f, 1.0f, 0.0f };
 						RwMatrixRotate(&wheelFrame->modelling, &yAxis, angle, rwCOMBINEPRECONCAT);
 						modified = true;
@@ -1603,21 +1605,42 @@ static void __fastcall Hooked_AddExhaustParticles(CVehicle* thisVehicle, void* e
 		bool savedDouble = false;
 		bool modifiedHandling = false;
 		bool isDoubleExhaust = false;
+		CVector origDummy6(0.0f, 0.0f, 0.0f);
+		bool restoredDummy6 = false;
+
 		if (thisVehicle->m_pHandlingData) {
 			savedDouble = thisVehicle->m_pHandlingData->m_bDoubleExhaust;
 			bool hasDoubleFlag = (thisVehicle->m_pHandlingData->m_nModelFlags & 0x2000) != 0;
 			bool hasSecDummy = (customModel && customModel->m_pVehicleStruct && customModel->m_pVehicleStruct->m_avDummyPos[11].Magnitude() > 0.001f);
 			bool hasOffsetExhaust = (customModel && customModel->m_pVehicleStruct && fabsf(customModel->m_pVehicleStruct->m_avDummyPos[6].x) > 0.15f);
 
-			if (hasDoubleFlag || hasSecDummy || hasOffsetExhaust) {
+			if (hasDoubleFlag || hasSecDummy || hasOffsetExhaust || binding->forceDoubleExhaust) {
 				thisVehicle->m_pHandlingData->m_bDoubleExhaust = 1;
 				modifiedHandling = true;
 				isDoubleExhaust = true;
 			}
 		}
 
+		if (customModel && customModel->m_pVehicleStruct) {
+			origDummy6 = customModel->m_pVehicleStruct->m_avDummyPos[6];
+			restoredDummy6 = true;
+
+			if (binding->hasCustomExhaust) {
+				customModel->m_pVehicleStruct->m_avDummyPos[6] = CVector(binding->exhaustX, binding->exhaustY, binding->exhaustZ);
+			} else if (binding->hasOffsets && (binding->frontWheelOffsetZ != 0.0f || binding->rearWheelOffsetZ != 0.0f)) {
+				float avgWheelOffsetZ = (binding->frontWheelOffsetZ + binding->rearWheelOffsetZ) * 0.5f;
+				if (avgWheelOffsetZ < -0.15f && customModel->m_pVehicleStruct->m_avDummyPos[6].z > 0.05f) {
+					customModel->m_pVehicleStruct->m_avDummyPos[6].z += avgWheelOffsetZ;
+				}
+			}
+		}
+
 		if (g_origAddExhaustParticles)
 			g_origAddExhaustParticles(thisVehicle, edx);
+
+		if (restoredDummy6 && customModel && customModel->m_pVehicleStruct) {
+			customModel->m_pVehicleStruct->m_avDummyPos[6] = origDummy6;
+		}
 
 		if (modifiedHandling && thisVehicle->m_pHandlingData) {
 			thisVehicle->m_pHandlingData->m_bDoubleExhaust = savedDouble;
@@ -1725,19 +1748,40 @@ static void __fastcall Hooked_DoNitroEffect(CAutomobile* thisCar, void* edx, flo
 
 		bool savedDouble = false;
 		bool modifiedHandling = false;
+		CVector origDummy6(0.0f, 0.0f, 0.0f);
+		bool restoredDummy6 = false;
+
 		if (thisCar->m_pHandlingData) {
 			savedDouble = thisCar->m_pHandlingData->m_bDoubleExhaust;
 			bool hasDoubleFlag = (thisCar->m_pHandlingData->m_nModelFlags & 0x2000) != 0;
 			bool hasSecDummy = (customModel && customModel->m_pVehicleStruct && customModel->m_pVehicleStruct->m_avDummyPos[11].Magnitude() > 0.001f);
 			bool hasOffsetExhaust = (customModel && customModel->m_pVehicleStruct && fabsf(customModel->m_pVehicleStruct->m_avDummyPos[6].x) > 0.15f);
-			if (hasDoubleFlag || hasSecDummy || hasOffsetExhaust) {
+			if (hasDoubleFlag || hasSecDummy || hasOffsetExhaust || binding->forceDoubleExhaust) {
 				thisCar->m_pHandlingData->m_bDoubleExhaust = 1;
 				modifiedHandling = true;
 			}
 		}
 
+		if (customModel && customModel->m_pVehicleStruct) {
+			origDummy6 = customModel->m_pVehicleStruct->m_avDummyPos[6];
+			restoredDummy6 = true;
+
+			if (binding->hasCustomExhaust) {
+				customModel->m_pVehicleStruct->m_avDummyPos[6] = CVector(binding->exhaustX, binding->exhaustY, binding->exhaustZ);
+			} else if (binding->hasOffsets && (binding->frontWheelOffsetZ != 0.0f || binding->rearWheelOffsetZ != 0.0f)) {
+				float avgWheelOffsetZ = (binding->frontWheelOffsetZ + binding->rearWheelOffsetZ) * 0.5f;
+				if (avgWheelOffsetZ < -0.15f && customModel->m_pVehicleStruct->m_avDummyPos[6].z > 0.05f) {
+					customModel->m_pVehicleStruct->m_avDummyPos[6].z += avgWheelOffsetZ;
+				}
+			}
+		}
+
 		if (g_origDoNitroEffect)
 			g_origDoNitroEffect(thisCar, edx, state);
+
+		if (restoredDummy6 && customModel && customModel->m_pVehicleStruct) {
+			customModel->m_pVehicleStruct->m_avDummyPos[6] = origDummy6;
+		}
 
 		if (modifiedHandling && thisCar->m_pHandlingData)
 			thisCar->m_pHandlingData->m_bDoubleExhaust = savedDouble;
@@ -1954,7 +1998,7 @@ static bool __fastcall Hooked_DoesVehicleUseSiren(CVehicle* thisVehicle, void* e
 	}
 
 	uint32_t modelIdForAudio = (binding && binding->customModelId > 0) ? binding->customModelId : static_cast<uint32_t>(thisVehicle->m_nModelIndex);
-	auto audioDef = AudioExtender::GetVehicleAudio(modelIdForAudio);
+	const auto* audioDef = AudioExtender::GetVehicleAudio(modelIdForAudio);
 	if (audioDef && audioDef->sirenType >= 0) {
 		return (audioDef->sirenType > 0);
 	}
@@ -2003,7 +2047,7 @@ static void __fastcall Hooked_GetVehicleSirenType(CAEVehicleAudioEntity* thisEnt
 	}
 
 	uint32_t modelIdForAudio = (binding && binding->customModelId > 0) ? binding->customModelId : static_cast<uint32_t>(pVehicle->m_nModelIndex);
-	auto audioDef = AudioExtender::GetVehicleAudio(modelIdForAudio);
+	const auto* audioDef = AudioExtender::GetVehicleAudio(modelIdForAudio);
 	if (audioDef && audioDef->sirenType >= 0) {
 		if (audioDef->sirenType == 0 || !pVehicle->bSirenOrAlarm) {
 			if (pSirenActive)
@@ -3181,7 +3225,24 @@ public:
 		ClientLog(LogLevel::Info, std::format("Received definition for model {} (DFF='{}', TXD='{}', COL='{}').", def.customModelId, def.dff.filename, def.txd.filename, def.col.filename));
 		CustomVehicleBindingManager::SetBaseModelId(def.customModelId, def.visualBaseModel);
 		AudioExtender::RegisterVehicleAudio(def.customModelId, def.audioBaseModel, def.engineSoundId.OnSound, def.engineSoundId.OffSound, def.celerateSoundId.accelerateSound, def.celerateSoundId.decelerateSound);
-		CustomVehicleBindingManager::Instance().SetModelOffsets(def.customModelId, { def.offsets.frontWheelOffsetZ, def.offsets.rearWheelOffsetZ, def.offsets.frontWheelOffsetY, def.offsets.rearWheelOffsetY, def.offsets.chassisOffsetX, def.offsets.chassisOffsetY, def.offsets.chassisOffsetZ, def.offsets.frontTrackWidth, def.offsets.rearTrackWidth, def.offsets.frontWheelScale, def.offsets.rearWheelScale, def.offsets.frontCamber, def.offsets.rearCamber, true });
+		{
+			CustomVehicleBindingManager::ModelOffsetConfig offsetCfg;
+			offsetCfg.frontWheelOffsetZ = def.offsets.frontWheelOffsetZ;
+			offsetCfg.rearWheelOffsetZ = def.offsets.rearWheelOffsetZ;
+			offsetCfg.frontWheelOffsetY = def.offsets.frontWheelOffsetY;
+			offsetCfg.rearWheelOffsetY = def.offsets.rearWheelOffsetY;
+			offsetCfg.chassisOffsetX = def.offsets.chassisOffsetX;
+			offsetCfg.chassisOffsetY = def.offsets.chassisOffsetY;
+			offsetCfg.chassisOffsetZ = def.offsets.chassisOffsetZ;
+			offsetCfg.frontTrackWidth = def.offsets.frontTrackWidth;
+			offsetCfg.rearTrackWidth = def.offsets.rearTrackWidth;
+			offsetCfg.frontWheelScale = def.offsets.frontWheelScale;
+			offsetCfg.rearWheelScale = def.offsets.rearWheelScale;
+			offsetCfg.frontCamber = def.offsets.frontCamber;
+			offsetCfg.rearCamber = def.offsets.rearCamber;
+			offsetCfg.hasConfig = true;
+			CustomVehicleBindingManager::Instance().SetModelOffsets(def.customModelId, offsetCfg);
+		}
 
 		if (def.defaultPlateText[0] != '\0') {
 			CustomVehicleBindingManager::SetModelDefaultPlateText(def.customModelId, def.defaultPlateText);
@@ -3862,16 +3923,23 @@ static void OnGameProcess()
 		CPed* localPed = FindPlayerPed();
 		bool anyBoatVehicleNeedsWaterDrive = false;
 
+		// Build fast lookup set of previous vehicles
+		std::unordered_set<CVehicle*> prevSet;
+		prevSet.reserve(previousVehicles.size());
+		for (const auto& old : previousVehicles) {
+			prevSet.insert(old.gameVeh);
+		}
+
+		// Build fast lookup set of current vehicles
+		std::unordered_set<CVehicle*> curSet;
+		curSet.reserve(currentVehicles.size());
+		for (const auto& cur : currentVehicles) {
+			curSet.insert(cur.gameVeh);
+		}
+
 		// Detect new vehicles and synchronize state for all streamed vehicles
 		for (const auto& cur : currentVehicles) {
-			bool found = false;
-			for (const auto& old : previousVehicles) {
-				if (old.gameVeh == cur.gameVeh) {
-					found = true;
-					break;
-				}
-			}
-			if (!found) {
+			if (prevSet.find(cur.gameVeh) == prevSet.end()) {
 				HandlingManager::CacheVehicleSAMPId(cur.gameVeh, cur.sampId);
 				HandlingManager::OnVehicleStreamIn(cur.gameVeh, cur.sampId);
 			}
@@ -3967,7 +4035,23 @@ static void OnGameProcess()
 					audioModelId = curBinding->customModelId;
 				}
 
-				if (AudioExtender::GetVehicleAudio(audioModelId).has_value()) {
+				// Check if vehicle model changed and reset audio state so correct engine sound loads
+				auto audioStateOpt = AudioExtender::GetAudioState(*cur.gameVeh);
+				if (audioStateOpt && audioStateOpt.value()) {
+					auto* audioState = audioStateOpt.value();
+					if (audioState->engine.initialized && audioState->engine.lastModelId != audioModelId) {
+						if (audioState->engine.playing && audioState->engine.engineSound.m_nIsUsed) {
+							audioState->engine.engineSound.StopSoundAndForget();
+						}
+						AudioExtender::RemoveVehicleBassAudio(cur.gtaRef);
+						audioState->engine.initialized = false;
+						audioState->engine.playing = false;
+						audioState->engine.active = false;
+						audioState->engine.lastModelId = audioModelId;
+					}
+				}
+
+				if (AudioExtender::GetVehicleAudio(audioModelId) != nullptr) {
 					std::optional<AudioExtender::CustomVehicleAudioState*> audioState = AudioExtender::GetOrCreateAudioState(*cur.gameVeh);
 					if (audioState) {
 						if (!AudioExtender::InitialiseCustomVehicleAudio(audioState.value()->engine, *cur.gameVeh, audioModelId)) {
@@ -3980,15 +4064,9 @@ static void OnGameProcess()
 
 		// Detect vehicles that disappeared
 		for (const auto& old : previousVehicles) {
-			bool stillExists = false;
-			for (const auto& cur : currentVehicles) {
-				if (cur.gameVeh == old.gameVeh) {
-					stillExists = true;
-					break;
-				}
-			}
-			if (!stillExists) {
+			if (curSet.find(old.gameVeh) == curSet.end()) {
 				HandlingManager::RemoveVehicleFromCache(old.gameVeh);
+				CustomVehicleBindingManager::Instance().OnVehicleDestroyed(old.gameVeh);
 				AudioExtender::RemoveVehicleAudioState(old.gtaRef);
 				AudioExtender::RemoveVehicleBassAudio(old.gtaRef);
 				g_lastVehicleHealth.erase(old.gameVeh);
@@ -4275,10 +4353,7 @@ static void OnGameProcess()
 static void __cdecl hooked_game_loop()
 {
 	CPed* localPed = FindPlayerPed();
-	if (!localPed)
-		return;
-
-	if (CPools::ms_pVehiclePool) {
+	if (localPed && CPools::ms_pVehiclePool) {
 		for (int i = 0; i < CPools::ms_pVehiclePool->m_nSize; ++i) {
 			CVehicle* veh = CPools::ms_pVehiclePool->GetAt(i);
 			if (veh && IsVehiclePointerValid(veh)) {

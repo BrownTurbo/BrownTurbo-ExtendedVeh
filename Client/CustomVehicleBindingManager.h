@@ -33,6 +33,14 @@ public:
 		float rearWheelScale { 1.0f };
 		float frontCamber { 0.0f };
 		float rearCamber { 0.0f };
+		float exhaustX { 0.0f };
+		float exhaustY { 0.0f };
+		float exhaustZ { 0.0f };
+		float secondExhaustX { 0.0f };
+		float secondExhaustY { 0.0f };
+		float secondExhaustZ { 0.0f };
+		bool hasCustomExhaust { false };
+		bool forceDoubleExhaust { false };
 		bool hasConfig { false };
 	};
 
@@ -69,6 +77,14 @@ public:
 		float chassisOffsetX { 0.0f };
 		float chassisOffsetY { 0.0f };
 		float chassisOffsetZ { 0.0f };
+		float exhaustX { 0.0f };
+		float exhaustY { 0.0f };
+		float exhaustZ { 0.0f };
+		float secondExhaustX { 0.0f };
+		float secondExhaustY { 0.0f };
+		float secondExhaustZ { 0.0f };
+		bool hasCustomExhaust { false };
+		bool forceDoubleExhaust { false };
 		bool hasOffsets { false };
 		RwV3d chassisBasePos { 0.0f, 0.0f, 0.0f };
 		bool hasChassisBasePos { false };
@@ -172,6 +188,8 @@ public:
 
 	Binding* FindByVehicle(CVehicle* vehicle);
 
+	void OnVehicleDestroyed(CVehicle* vehicle);
+
 	bool IsModelInUse(uint32_t customModelId);
 
 	void SetVehicleStance(uint16_t vehicleId, float frontScale, float rearScale, float frontCamber, float rearCamber, float frontTrackWidth, float rearTrackWidth);
@@ -264,6 +282,8 @@ private:
 		uint16_t,
 		Binding>
 		m_bindings;
+
+	static inline std::unordered_map<CVehicle*, uint16_t> m_gameVehicleToSampId;
 
 	static inline std::mutex s_baseModelMutex;
 	static inline std::unordered_map<uint32_t, uint32_t> s_baseModelIds;
