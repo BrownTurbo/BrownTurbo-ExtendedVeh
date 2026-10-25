@@ -23,6 +23,7 @@
 #include "handling_manager.hpp"
 #include "rpworld.h"
 #include "utils.h"
+#include "VanillaWheelData.h"
 
 class StreamingExtender;
 inline CBaseModelInfo* GetEngineModelInfo(int modelId);
@@ -343,7 +344,7 @@ public:
 		}
 	}
 
-	static bool FinalizeClump(CVehicleModelInfo* pInfo, RpClump* pClump, CVehicleModelInfo* pBaseInfo = nullptr)
+	static bool FinalizeClump(CVehicleModelInfo* pInfo, RpClump* pClump, CVehicleModelInfo* pBaseInfo = nullptr, int baseModelId = -1)
 	{
 		if (!pInfo || !pClump)
 			return false;
@@ -544,6 +545,57 @@ public:
 						ClientLog(LogLevel::Info, std::format("Renamed wheel frame '{}' to '{}'", pair[0], pair[1]));
 					}
 				}
+			}
+
+			// 3.5 Auto-normalize ground-origin models.
+			// Standard GTA SA vehicles are modeled with origin (0, 0, 0) at the center of mass of the chassis.
+			// Wheel dummy positions are always negative (Z < 0, typically -0.20m to -0.60m).
+			// Many 3D models from Assetto Corsa, Forza, or NFS are exported with (0, 0, 0) on the ground contact plane,
+			// causing wheel dummy Z to be positive (+0.25m to +0.40m, the tire radius).
+			// If not corrected, GTA SA's suspension lines place wheels on the road, while the car body floats
+			// 50-60cm above the wheels in thin air, and exhaust/lighting/seat dummies float half a meter too high.
+			// We detect this and shift all direct children of rootFrame by deltaZ = (targetBaseWheelZ - customWheelZ).
+			RwFrameUpdateObjects(rootFrame);
+			float customWheelZ = 0.0f;
+			int customWheelCount = 0;
+			const char* checkWheelDummies[] = { "wheel_rf_dummy", "wheel_lf_dummy", "wheel_rb_dummy", "wheel_lb_dummy" };
+			for (const char* dname : checkWheelDummies) {
+				RwFrame* f = CClumpModelInfo::GetFrameFromName(pClump, dname);
+				if (f) {
+					customWheelZ += f->modelling.pos.z;
+					customWheelCount++;
+				}
+			}
+			if (customWheelCount > 0) {
+				customWheelZ /= static_cast<float>(customWheelCount);
+			}
+
+			if (customWheelCount > 0 && customWheelZ > 0.05f) {
+				float targetBaseWheelZ = -0.35f;
+				if (baseModelId >= 400 && baseModelId <= 611) {
+					targetBaseWheelZ = ExtendedVeh::GetVanillaVehicleWheelZ(baseModelId);
+				} else if (pBaseInfo && pBaseInfo->m_pRwClump) {
+					float bwz = 0.0f;
+					int bwc = 0;
+					for (const char* dname : checkWheelDummies) {
+						RwFrame* bf = CClumpModelInfo::GetFrameFromName(pBaseInfo->m_pRwClump, dname);
+						if (bf) {
+							bwz += bf->modelling.pos.z;
+							bwc++;
+						}
+					}
+					if (bwc > 0) {
+						targetBaseWheelZ = bwz / static_cast<float>(bwc);
+					}
+				}
+
+				float deltaZ = targetBaseWheelZ - customWheelZ;
+				for (RwFrame* child = rootFrame->child; child != nullptr; child = child->next) {
+					child->modelling.pos.z += deltaZ;
+					RwFrameUpdateObjects(child);
+				}
+				RwFrameUpdateObjects(rootFrame);
+				ClientLog(LogLevel::Info, std::format("Detected ground-origin custom model (avg wheel Z={:.3f}): normalized clump by deltaZ={:.3f} (target wheel Z={:.3f}, baseModel={})", customWheelZ, deltaZ, targetBaseWheelZ, baseModelId));
 			}
 
 			// 4. Custom wheel atomic discovery and promotion.

@@ -1505,7 +1505,7 @@ void CustomVehicleBindingManager::Process()
 
 				{
 					std::unique_lock colLock(s_fastColMutex);
-					if (model && model->m_pColModel && model->m_pColModel->m_pColData && model->m_pColModel->m_pColData->m_pLines && model->m_pColModel->m_pColData->m_nNumLines >= 4) {
+					if (model && model->bDoWeOwnTheColModel && model->m_pColModel && model->m_pColModel->m_pColData && model->m_pColModel->m_pColData->m_pLines && model->m_pColModel->m_pColData->m_nNumLines >= 4) {
 						s_fastVehicleColMap[vehicle] = model->m_pColModel;
 						s_hasCustomCols.store(true, std::memory_order_relaxed);
 					}

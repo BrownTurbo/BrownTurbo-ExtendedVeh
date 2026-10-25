@@ -1598,11 +1598,12 @@ static void __fastcall Hooked_AddExhaustParticles(CVehicle* thisVehicle, void* e
 		auto* baseModel = reinterpret_cast<CVehicleModelInfo*>(CModelInfo::GetModelInfo(thisVehicle->m_nModelIndex));
 		DummySwapGuard guard(baseModel, customModel);
 
-		// Double exhaust support for custom vehicles (e.g. BMW M5 quad exhaust):
-		// GTA SA's CVehicle::AddExhaustParticles checks thisVehicle->m_pHandlingData->m_bDoubleExhaust.
-		// If the custom model has 0x2000 in modelFlags, a secondary exhaust dummy, or an offset exhaust dummy (|x| > 0.15f),
-		// ensure m_bDoubleExhaust is enabled so exhaust smoke emits from BOTH sides.
+		// Double exhaust support for custom vehicles (e.g. BMW M5 quad exhaust, Ford GT center dual exhaust):
+		// GTA SA's CVehicle::AddExhaustParticles checks bit 13 (0x2000) of m_pHandlingData->m_nModelFlags.
+		// If the custom model has 0x2000 in modelFlags, a secondary exhaust dummy, or an offset exhaust dummy (|x| > 0.05f),
+		// ensure BOTH m_bDoubleExhaust and m_nModelFlags 0x2000 are enabled so exhaust smoke emits from BOTH sides.
 		bool savedDouble = false;
+		eVehicleHandlingModelFlags savedModelFlags = static_cast<eVehicleHandlingModelFlags>(0);
 		bool modifiedHandling = false;
 		bool isDoubleExhaust = false;
 		CVector origDummy6(0.0f, 0.0f, 0.0f);
@@ -1610,12 +1611,14 @@ static void __fastcall Hooked_AddExhaustParticles(CVehicle* thisVehicle, void* e
 
 		if (thisVehicle->m_pHandlingData) {
 			savedDouble = thisVehicle->m_pHandlingData->m_bDoubleExhaust;
-			bool hasDoubleFlag = (thisVehicle->m_pHandlingData->m_nModelFlags & 0x2000) != 0;
+			savedModelFlags = thisVehicle->m_pHandlingData->m_nModelFlags;
+			bool hasDoubleFlag = (static_cast<uint32_t>(thisVehicle->m_pHandlingData->m_nModelFlags) & 0x2000) != 0;
 			bool hasSecDummy = (customModel && customModel->m_pVehicleStruct && customModel->m_pVehicleStruct->m_avDummyPos[11].Magnitude() > 0.001f);
-			bool hasOffsetExhaust = (customModel && customModel->m_pVehicleStruct && fabsf(customModel->m_pVehicleStruct->m_avDummyPos[6].x) > 0.15f);
+			bool hasOffsetExhaust = (customModel && customModel->m_pVehicleStruct && fabsf(customModel->m_pVehicleStruct->m_avDummyPos[6].x) > 0.05f);
 
 			if (hasDoubleFlag || hasSecDummy || hasOffsetExhaust || binding->forceDoubleExhaust) {
 				thisVehicle->m_pHandlingData->m_bDoubleExhaust = 1;
+				thisVehicle->m_pHandlingData->m_nModelFlags = static_cast<eVehicleHandlingModelFlags>(static_cast<uint32_t>(thisVehicle->m_pHandlingData->m_nModelFlags) | 0x2000);
 				modifiedHandling = true;
 				isDoubleExhaust = true;
 			}
@@ -1627,11 +1630,6 @@ static void __fastcall Hooked_AddExhaustParticles(CVehicle* thisVehicle, void* e
 
 			if (binding->hasCustomExhaust) {
 				customModel->m_pVehicleStruct->m_avDummyPos[6] = CVector(binding->exhaustX, binding->exhaustY, binding->exhaustZ);
-			} else if (binding->hasOffsets && (binding->frontWheelOffsetZ != 0.0f || binding->rearWheelOffsetZ != 0.0f)) {
-				float avgWheelOffsetZ = (binding->frontWheelOffsetZ + binding->rearWheelOffsetZ) * 0.5f;
-				if (avgWheelOffsetZ < -0.15f && customModel->m_pVehicleStruct->m_avDummyPos[6].z > 0.05f) {
-					customModel->m_pVehicleStruct->m_avDummyPos[6].z += avgWheelOffsetZ;
-				}
 			}
 		}
 
@@ -1644,6 +1642,7 @@ static void __fastcall Hooked_AddExhaustParticles(CVehicle* thisVehicle, void* e
 
 		if (modifiedHandling && thisVehicle->m_pHandlingData) {
 			thisVehicle->m_pHandlingData->m_bDoubleExhaust = savedDouble;
+			thisVehicle->m_pHandlingData->m_nModelFlags = savedModelFlags;
 		}
 
 		if (binding->backfireEnabled && thisVehicle->m_nVehicleSubClass == VEHICLE_AUTOMOBILE) {
@@ -1747,17 +1746,20 @@ static void __fastcall Hooked_DoNitroEffect(CAutomobile* thisCar, void* edx, flo
 		DummySwapGuard guard(baseModel, customModel);
 
 		bool savedDouble = false;
+		eVehicleHandlingModelFlags savedModelFlags = static_cast<eVehicleHandlingModelFlags>(0);
 		bool modifiedHandling = false;
 		CVector origDummy6(0.0f, 0.0f, 0.0f);
 		bool restoredDummy6 = false;
 
 		if (thisCar->m_pHandlingData) {
 			savedDouble = thisCar->m_pHandlingData->m_bDoubleExhaust;
-			bool hasDoubleFlag = (thisCar->m_pHandlingData->m_nModelFlags & 0x2000) != 0;
+			savedModelFlags = thisCar->m_pHandlingData->m_nModelFlags;
+			bool hasDoubleFlag = (static_cast<uint32_t>(thisCar->m_pHandlingData->m_nModelFlags) & 0x2000) != 0;
 			bool hasSecDummy = (customModel && customModel->m_pVehicleStruct && customModel->m_pVehicleStruct->m_avDummyPos[11].Magnitude() > 0.001f);
-			bool hasOffsetExhaust = (customModel && customModel->m_pVehicleStruct && fabsf(customModel->m_pVehicleStruct->m_avDummyPos[6].x) > 0.15f);
+			bool hasOffsetExhaust = (customModel && customModel->m_pVehicleStruct && fabsf(customModel->m_pVehicleStruct->m_avDummyPos[6].x) > 0.05f);
 			if (hasDoubleFlag || hasSecDummy || hasOffsetExhaust || binding->forceDoubleExhaust) {
 				thisCar->m_pHandlingData->m_bDoubleExhaust = 1;
+				thisCar->m_pHandlingData->m_nModelFlags = static_cast<eVehicleHandlingModelFlags>(static_cast<uint32_t>(thisCar->m_pHandlingData->m_nModelFlags) | 0x2000);
 				modifiedHandling = true;
 			}
 		}
@@ -1768,11 +1770,6 @@ static void __fastcall Hooked_DoNitroEffect(CAutomobile* thisCar, void* edx, flo
 
 			if (binding->hasCustomExhaust) {
 				customModel->m_pVehicleStruct->m_avDummyPos[6] = CVector(binding->exhaustX, binding->exhaustY, binding->exhaustZ);
-			} else if (binding->hasOffsets && (binding->frontWheelOffsetZ != 0.0f || binding->rearWheelOffsetZ != 0.0f)) {
-				float avgWheelOffsetZ = (binding->frontWheelOffsetZ + binding->rearWheelOffsetZ) * 0.5f;
-				if (avgWheelOffsetZ < -0.15f && customModel->m_pVehicleStruct->m_avDummyPos[6].z > 0.05f) {
-					customModel->m_pVehicleStruct->m_avDummyPos[6].z += avgWheelOffsetZ;
-				}
 			}
 		}
 
@@ -1783,8 +1780,10 @@ static void __fastcall Hooked_DoNitroEffect(CAutomobile* thisCar, void* edx, flo
 			customModel->m_pVehicleStruct->m_avDummyPos[6] = origDummy6;
 		}
 
-		if (modifiedHandling && thisCar->m_pHandlingData)
+		if (modifiedHandling && thisCar->m_pHandlingData) {
 			thisCar->m_pHandlingData->m_bDoubleExhaust = savedDouble;
+			thisCar->m_pHandlingData->m_nModelFlags = savedModelFlags;
+		}
 		return;
 	}
 
@@ -2993,7 +2992,7 @@ private:
 				RwStreamClose(dffStream, nullptr);
 				if (pClump) {
 					auto* baseModelInfo = reinterpret_cast<CVehicleModelInfo*>(GetEngineModelInfo(static_cast<int>(pending->def.visualBaseModel)));
-					bool FinalizeRet = StreamingExtender::FinalizeClump(newModel, pClump, baseModelInfo);
+					bool FinalizeRet = StreamingExtender::FinalizeClump(newModel, pClump, baseModelInfo, static_cast<int>(pending->def.visualBaseModel));
 					ClientLog(LogLevel::Debug, std::format("StreamingExtender::FinalizeClump returned model={} result={} m_pRwClump=0x{:08X} m_pVehicleStruct=0x{:08X}", pending->def.customModelId, FinalizeRet, reinterpret_cast<std::uintptr_t>(newModel->m_pRwClump), reinterpret_cast<std::uintptr_t>(newModel->m_pVehicleStruct)));
 					if (!FinalizeRet) {
 						CTxdStore::PopCurrentTxd();
@@ -3052,69 +3051,14 @@ private:
 							}
 						}
 					}
-					// Fallback & Adaptation: Ensure the vehicle model info has a dedicated collision model with custom suspension lines
+					// Fallback: If no dedicated collision file (.col) was loaded for this custom model,
+					// share the base model's collision model. In GTA SA, base vehicles possess validated
+					// bounding boxes, collision spheres, and 4 functional suspension raycast lines.
 					CBaseModelInfo* visualBase = GetEngineModelInfo(static_cast<int>(pending->def.visualBaseModel));
-					if (!newModel->m_pColModel) {
-						if (visualBase && visualBase->m_pColModel) {
-							CColModel* clonedCol = new CColModel();
-							*clonedCol = *visualBase->m_pColModel;
-							newModel->m_pColModel = clonedCol;
-							newModel->bDoWeOwnTheColModel = 1;
-							*reinterpret_cast<uint8_t*>(reinterpret_cast<uintptr_t>(newModel) + 0x12) &= ~0x80;
-							*reinterpret_cast<uint8_t*>(reinterpret_cast<uintptr_t>(newModel) + 0x13) &= ~0x08;
-							ClientLog(LogLevel::Info, std::format("Model {} using cloned collision model from base {}", pending->def.customModelId, pending->def.visualBaseModel));
-						}
-					}
-
-					if (newModel->m_pColModel && newModel->m_pColModel->m_pColData) {
-						auto* colData = newModel->m_pColModel->m_pColData;
-						if (!colData->m_pLines || colData->m_nNumLines < 4) {
-							auto pMalloc = reinterpret_cast<void*(__cdecl*)(size_t)>(0x72F420);
-							void* lineMem = pMalloc(sizeof(CColLine) * 4);
-							if (lineMem) {
-								colData->m_pLines = reinterpret_cast<CColLine*>(lineMem);
-								colData->m_nNumLines = 4;
-							}
-						}
-
-						if (colData->m_pLines && colData->m_nNumLines >= 4) {
-							tHandlingData* handling = nullptr;
-							auto modelIt = HandlingManager::m_modelHandlings.find(pending->def.customModelId);
-							if (modelIt != HandlingManager::m_modelHandlings.end()) {
-								handling = modelIt->second.get();
-							} else if (visualBase) {
-								auto* vBase = reinterpret_cast<CVehicleModelInfo*>(visualBase);
-								if (vBase->m_nHandlingId < 210) {
-									handling = static_cast<tHandlingData*>(&gHandlingDataMgr.m_aVehicleHandling[vBase->m_nHandlingId]);
-								}
-							}
-							float upper = handling ? handling->m_fSuspensionUpperLimit : 0.28f;
-							float lower = handling ? handling->m_fSuspensionLowerLimit : -0.16f;
-
-							for (int w = 0; w < 4; ++w) {
-								CVector wheelPos(0.0f, 0.0f, 0.0f);
-								newModel->GetWheelPosn(w, wheelPos, false);
-								if (wheelPos.Magnitude() < 0.01f && visualBase) {
-									reinterpret_cast<CVehicleModelInfo*>(visualBase)->GetWheelPosn(w, wheelPos, false);
-								}
-
-								float wheelRadius = (w == CAR_WHEEL_LF || w == CAR_WHEEL_RF) ? (newModel->m_fWheelSizeFront * 0.5f) : (newModel->m_fWheelSizeRear * 0.5f);
-								if (wheelRadius < 0.1f)
-									wheelRadius = 0.35f;
-
-								CColLine& line = colData->m_pLines[w];
-								line.m_vecStart = CVector(wheelPos.x, wheelPos.y, wheelPos.z + upper);
-								line.m_vecEnd = CVector(wheelPos.x, wheelPos.y, wheelPos.z + lower - wheelRadius);
-
-								// Ensure bounding box encloses wheels
-								newModel->m_pColModel->m_boundBox.m_vecMin.x = std::min(newModel->m_pColModel->m_boundBox.m_vecMin.x, wheelPos.x - wheelRadius);
-								newModel->m_pColModel->m_boundBox.m_vecMax.x = std::max(newModel->m_pColModel->m_boundBox.m_vecMax.x, wheelPos.x + wheelRadius);
-								newModel->m_pColModel->m_boundBox.m_vecMin.y = std::min(newModel->m_pColModel->m_boundBox.m_vecMin.y, wheelPos.y - wheelRadius);
-								newModel->m_pColModel->m_boundBox.m_vecMax.y = std::max(newModel->m_pColModel->m_boundBox.m_vecMax.y, wheelPos.y + wheelRadius);
-								newModel->m_pColModel->m_boundBox.m_vecMin.z = std::min(newModel->m_pColModel->m_boundBox.m_vecMin.z, wheelPos.z - wheelRadius);
-							}
-							ClientLog(LogLevel::Info, std::format("Model {}: Calculated 4 suspension lines from actual wheel dummies", pending->def.customModelId));
-						}
+					if (!newModel->m_pColModel && visualBase && visualBase->m_pColModel) {
+						newModel->m_pColModel = visualBase->m_pColModel;
+						newModel->bDoWeOwnTheColModel = 0;
+						ClientLog(LogLevel::Info, std::format("Model {} using shared collision model from base {}", pending->def.customModelId, pending->def.visualBaseModel));
 					}
 				} else {
 					CTxdStore::PopCurrentTxd();
