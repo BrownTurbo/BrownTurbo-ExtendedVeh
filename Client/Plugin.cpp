@@ -15,6 +15,7 @@
 #include <game_sa/CPlayerPed.h>
 #include <game_sa/CShadows.h>
 #include <game_sa/CTaskComplexEnterCar.h>
+#include <game_sa/CTaskComplexLeaveCar.h>
 #include <game_sa/CTimer.h>
 #include <game_sa/CTxdStore.h>
 #include <game_sa/CVehicle.h>
@@ -1007,6 +1008,19 @@ static bool(__cdecl* g_origComputeBestPassengerDoor)(
 	bool bCheckDoorLocked,
 	bool bCheckDoorMissing)
 	= nullptr;
+static bool(__cdecl* g_origComputeBestDriverDoor)(
+	CPed* pPed,
+	CVehicle* pVehicle,
+	CVector* pOutDoorPos,
+	int* pOutDoor) = nullptr;
+static CTaskComplexLeaveCar*(__fastcall* g_origCTaskComplexLeaveCar)(
+	CTaskComplexLeaveCar* thisTask,
+	void* edx,
+	CVehicle* pTargetVehicle,
+	int nTargetDoor,
+	int nDelayTime,
+	bool bSensibleLeaveCar,
+	bool bForceGetOut) = nullptr;
 static bool(__cdecl* g_origCanDoorBeOpened)(CVehicle* vehicle, int targetDoor) = nullptr;
 static CTask*(__fastcall* g_origEnterCar_CreateSubTaskForDoor)(CTaskComplexEnterCar* thisTask, void* edx, CPed* ped) = nullptr;
 static void(__fastcall* g_origCAutomobile_BlowUpCar)(CAutomobile* thisCar, void* edx, CEntity* damager, bool bHideExplosion) = nullptr;
@@ -1189,6 +1203,88 @@ static unsigned char __fastcall GetVehicleEffectiveNumDoors(CVehicle* vehicle)
 	return 4;
 }
 
+static bool IsVehicleRightHandDrive(CVehicle* vehicle)
+{
+	if (!vehicle || !IsVehiclePointerValid(vehicle))
+		return false;
+
+	// 1. Check steering wheel / driver arm dummy in clump frames:
+	// In GTA SA coordinate system: Left is -X, Right is +X.
+	// On standard LHD: steering wheel and driver window arm are on the LEFT (x < -0.15f).
+	// On RHD: steering wheel and driver window arm are on the RIGHT (x > +0.15f).
+	if (vehicle->m_pRwClump) {
+		const char* steerNames[] = { "steer", "steering_dummy", "movsteer", "steeringwheel", "volante", "ped_arm" };
+		for (const char* sName : steerNames) {
+			RwFrame* f = CClumpModelInfo::GetFrameFromName(vehicle->m_pRwClump, sName);
+			if (f) {
+				if (f->modelling.pos.x > 0.15f) return true;
+				if (f->modelling.pos.x < -0.15f) return false;
+			}
+		}
+	}
+
+	// 2. Check ped_frontseat (Dummy 4 in GTA SA is the FRONT PASSENGER dummy):
+	// On standard LHD: passenger is on the RIGHT (x > +0.15f) -> LHD (return false).
+	// On RHD: passenger is on the LEFT (x < -0.15f) -> RHD (return true).
+	CVehicleModelInfo* modelInfo = nullptr;
+	auto* binding = CustomVehicleBindingManager::Instance().FindByVehicle(vehicle);
+	if (binding && binding->customModelId > 0) {
+		modelInfo = StreamingExtender::GetCustomModel(binding->customModelId);
+	}
+	if (!modelInfo && vehicle->m_nModelIndex >= 400 && vehicle->m_nModelIndex < 20000) {
+		modelInfo = reinterpret_cast<CVehicleModelInfo*>(CModelInfo::ms_modelInfoPtrs[vehicle->m_nModelIndex]);
+	}
+
+	if (modelInfo) {
+		CVector seatPos(0.0f, 0.0f, 0.0f);
+		if (modelInfo->GetOriginalCompPosition(seatPos, 4)) { // 4 = ped_frontseat (PASSENGER)
+			if (seatPos.x < -0.15f) return true;
+			if (seatPos.x > 0.15f) return false;
+		}
+		if (modelInfo->m_pVehicleStruct) {
+			float x = modelInfo->m_pVehicleStruct->m_avDummyPos[4].x;
+			if (x < -0.15f) return true;
+			if (x > 0.15f) return false;
+		}
+	}
+
+	if (vehicle->m_pRwClump) {
+		RwFrame* seatFrame = CClumpModelInfo::GetFrameFromId(vehicle->m_pRwClump, 4);
+		if (seatFrame) {
+			if (seatFrame->modelling.pos.x < -0.15f) return true;
+			if (seatFrame->modelling.pos.x > 0.15f) return false;
+		}
+	}
+
+	return false;
+}
+
+static bool __cdecl Hooked_ComputeBestDriverDoor(
+	CPed* pPed,
+	CVehicle* pVehicle,
+	CVector* pOutDoorPos,
+	int* pOutDoor)
+{
+	if (pVehicle && IsVehiclePointerValid(pVehicle)) {
+		if (IsVehicleRightHandDrive(pVehicle)) {
+			// On RHD vehicles, the driver door is CAR_DOOR_RF (8), NOT CAR_DOOR_LF (10/0)
+			if (pOutDoor) {
+				*pOutDoor = 8;
+			}
+			if (pOutDoorPos) {
+				auto GetDoorPosFunc = reinterpret_cast<CVector*(__cdecl*)(CVector*, CVehicle*, int)>(0x64E740);
+				GetDoorPosFunc(pOutDoorPos, pVehicle, 8);
+			}
+			return true;
+		}
+	}
+
+	if (g_origComputeBestDriverDoor) {
+		return g_origComputeBestDriverDoor(pPed, pVehicle, pOutDoorPos, pOutDoor);
+	}
+	return false;
+}
+
 static bool __cdecl Hooked_ComputeBestPassengerDoor(
 	CPed* pPed,
 	CVehicle* pVehicle,
@@ -1207,22 +1303,80 @@ static bool __cdecl Hooked_ComputeBestPassengerDoor(
 		if (pVehicle->m_nVehicleSubClass == VEHICLE_AUTOMOBILE || pVehicle->m_nVehicleSubClass == VEHICLE_MTRUCK || pVehicle->m_nVehicleSubClass == VEHICLE_QUAD) {
 			auto* car = reinterpret_cast<CAutomobile*>(pVehicle);
 			unsigned char numDoors = GetVehicleEffectiveNumDoors(car);
-			if (numDoors <= 2) {
-				// On 2-door vehicles, passenger door must ALWAYS be CAR_DOOR_RF (8)
-				if (pOutDoor && *pOutDoor != 8) {
-					ClientLog(LogLevel::Info, std::format("Hooked_ComputeBestPassengerDoor: forcing 2-door passenger door from {} to 8", *pOutDoor));
-					*pOutDoor = 8;
+			bool isRhd = IsVehicleRightHandDrive(car);
+
+			if (isRhd) {
+				// On RHD vehicles, the driver sits at door 8 (front right).
+				// Front passenger seat MUST be door 10 (front left / CAR_DOOR_LF)!
+				if (numDoors <= 2) {
+					if (pOutDoor) {
+						*pOutDoor = 10;
+					}
 					if (pOutDoorPos) {
 						auto GetDoorPosFunc = reinterpret_cast<CVector*(__cdecl*)(CVector*, CVehicle*, int)>(0x64E740);
-						GetDoorPosFunc(pOutDoorPos, car, 8);
+						GetDoorPosFunc(pOutDoorPos, car, 10);
 					}
 					res = true;
+				} else {
+					// 4-door RHD: if GTA SA picked door 8 (the driver's door!), redirect to door 10!
+					if (pOutDoor && *pOutDoor == 8) {
+						*pOutDoor = 10;
+						if (pOutDoorPos) {
+							auto GetDoorPosFunc = reinterpret_cast<CVector*(__cdecl*)(CVector*, CVehicle*, int)>(0x64E740);
+							GetDoorPosFunc(pOutDoorPos, car, 10);
+						}
+						res = true;
+					}
+				}
+			} else {
+				// Standard LHD vehicles
+				if (numDoors <= 2) {
+					// On 2-door LHD vehicles, passenger door must ALWAYS be CAR_DOOR_RF (8)
+					if (pOutDoor && *pOutDoor != 8) {
+						ClientLog(LogLevel::Info, std::format("Hooked_ComputeBestPassengerDoor: forcing 2-door passenger door from {} to 8", *pOutDoor));
+						*pOutDoor = 8;
+						if (pOutDoorPos) {
+							auto GetDoorPosFunc = reinterpret_cast<CVector*(__cdecl*)(CVector*, CVehicle*, int)>(0x64E740);
+							GetDoorPosFunc(pOutDoorPos, car, 8);
+						}
+						res = true;
+					}
 				}
 			}
 		}
 	}
 
 	return res;
+}
+
+static CTaskComplexLeaveCar* __fastcall Hooked_CTaskComplexLeaveCar(
+	CTaskComplexLeaveCar* thisTask,
+	void* edx,
+	CVehicle* pTargetVehicle,
+	int nTargetDoor,
+	int nDelayTime,
+	bool bSensibleLeaveCar,
+	bool bForceGetOut)
+{
+	if (pTargetVehicle && IsVehiclePointerValid(pTargetVehicle)) {
+		bool isRhd = IsVehicleRightHandDrive(pTargetVehicle);
+		if (nTargetDoor == 0 || nTargetDoor == 10) {
+			// Driver exit
+			if (isRhd) {
+				nTargetDoor = 8; // RHD driver exits via front right door
+			} else {
+				nTargetDoor = 10; // Normalize 0 to 10 for clean jump table hit in GTA SA
+			}
+		} else if (nTargetDoor == 8 && isRhd) {
+			// Front passenger on RHD exits via front left door (10)
+			nTargetDoor = 10;
+		}
+	}
+
+	if (g_origCTaskComplexLeaveCar) {
+		return g_origCTaskComplexLeaveCar(thisTask, edx, pTargetVehicle, nTargetDoor, nDelayTime, bSensibleLeaveCar, bForceGetOut);
+	}
+	return thisTask;
 }
 
 static bool __cdecl Hooked_CanDoorBeOpened(CVehicle* vehicle, int targetDoor)
@@ -1233,21 +1387,25 @@ static bool __cdecl Hooked_CanDoorBeOpened(CVehicle* vehicle, int targetDoor)
 			int doorNode = -1;
 			eDoors eDoor = DOOR_FRONT_LEFT;
 			switch (targetDoor) {
-			case 8:
-				doorNode = CAR_DOOR_RF;
-				eDoor = DOOR_FRONT_RIGHT;
-				break;
-			case 9:
-				doorNode = CAR_DOOR_RR;
-				eDoor = DOOR_REAR_RIGHT;
-				break;
+			case 0:
 			case 10:
 				doorNode = CAR_DOOR_LF;
 				eDoor = DOOR_FRONT_LEFT;
 				break;
+			case 1:
+			case 8:
+				doorNode = CAR_DOOR_RF;
+				eDoor = DOOR_FRONT_RIGHT;
+				break;
+			case 2:
 			case 11:
 				doorNode = CAR_DOOR_LR;
 				eDoor = DOOR_REAR_LEFT;
+				break;
+			case 3:
+			case 9:
+				doorNode = CAR_DOOR_RR;
+				eDoor = DOOR_REAR_RIGHT;
 				break;
 			default:
 				break;
@@ -1255,17 +1413,28 @@ static bool __cdecl Hooked_CanDoorBeOpened(CVehicle* vehicle, int targetDoor)
 
 			if (doorNode >= 0 && doorNode < CAR_NUM_NODES) {
 				if (car->m_aCarNodes[doorNode]) {
-					// If the door physically exists on the model and is closed, it can and MUST be opened!
-					if (std::fabs(car->m_doors[eDoor].m_fAngle) < 0.1f) {
-						return true;
+					// Check damage status (DAMSTATE_NOTPRESENT = 3)
+					if (car->m_damageManager.GetDoorStatus(eDoor) != DAMSTATE_NOTPRESENT) {
+						// Door exists and is not detached!
+						// If not already fully open (> 0.7 rads), it can and must be opened!
+						if (std::fabs(car->m_doors[eDoor].m_fAngle) < 0.7f) {
+							return true;
+						}
 					}
 				}
 			}
 		}
 	}
 
+	// Normalize targetDoor before passing to original function (GTA SA expects 8..11)
+	int normDoor = targetDoor;
+	if (normDoor == 0) normDoor = 10;
+	else if (normDoor == 1) normDoor = 8;
+	else if (normDoor == 2) normDoor = 11;
+	else if (normDoor == 3) normDoor = 9;
+
 	if (g_origCanDoorBeOpened)
-		return g_origCanDoorBeOpened(vehicle, targetDoor);
+		return g_origCanDoorBeOpened(vehicle, normDoor);
 	return false;
 }
 
@@ -1276,11 +1445,49 @@ static CTask* __fastcall Hooked_EnterCar_CreateSubTaskForDoor(CTaskComplexEnterC
 		if (veh->m_nVehicleSubClass == VEHICLE_AUTOMOBILE || veh->m_nVehicleSubClass == VEHICLE_MTRUCK || veh->m_nVehicleSubClass == VEHICLE_QUAD) {
 			auto* car = reinterpret_cast<CAutomobile*>(veh);
 			unsigned char numDoors = GetVehicleEffectiveNumDoors(car);
-			if (numDoors <= 2 && !thisTask->m_bAsDriver) {
-				if (thisTask->m_nTargetDoor != 8) {
-					ClientLog(LogLevel::Info, std::format("Hooked_EnterCar_CreateSubTaskForDoor: overriding 2-door passenger m_nTargetDoor from {} to 8", thisTask->m_nTargetDoor));
+			bool isRhd = IsVehicleRightHandDrive(veh);
+
+			if (thisTask->m_bAsDriver) {
+				if (isRhd) {
 					thisTask->m_nTargetDoor = 8;
 					thisTask->m_nTargetSeat = 0;
+				} else {
+					if (thisTask->m_nTargetDoor == 0) {
+						thisTask->m_nTargetDoor = 10;
+					}
+					thisTask->m_nTargetSeat = 0;
+				}
+			} else {
+				// Passenger
+				if (numDoors <= 2) {
+					if (isRhd) {
+						thisTask->m_nTargetDoor = 10;
+						thisTask->m_nTargetSeat = 1;
+					} else {
+						thisTask->m_nTargetDoor = 8;
+						thisTask->m_nTargetSeat = 1;
+					}
+				} else {
+					// 4-door vehicle
+					if (isRhd) {
+						if (thisTask->m_nTargetDoor == 8 || thisTask->m_nTargetDoor == 1) {
+							thisTask->m_nTargetDoor = 10;
+							thisTask->m_nTargetSeat = 1;
+						}
+					} else {
+						// Standard LHD 4-door vehicle
+						if (thisTask->m_nTargetDoor == 1) thisTask->m_nTargetDoor = 8;
+						else if (thisTask->m_nTargetDoor == 2) thisTask->m_nTargetDoor = 11;
+						else if (thisTask->m_nTargetDoor == 3) thisTask->m_nTargetDoor = 9;
+
+						if (thisTask->m_nTargetDoor == 8) {
+							thisTask->m_nTargetSeat = 1;
+						} else if (thisTask->m_nTargetDoor == 11) {
+							thisTask->m_nTargetSeat = 2;
+						} else if (thisTask->m_nTargetDoor == 9) {
+							thisTask->m_nTargetSeat = 3;
+						}
+					}
 				}
 			}
 		}
@@ -1301,21 +1508,25 @@ static CTask* __fastcall Hooked_EnterCar_CreateSubTaskForDoor(CTaskComplexEnterC
 				int doorNode = -1;
 				eDoors eDoor = DOOR_FRONT_LEFT;
 				switch (thisTask->m_nTargetDoor) {
-				case 8:
-					doorNode = CAR_DOOR_RF;
-					eDoor = DOOR_FRONT_RIGHT;
-					break;
-				case 9:
-					doorNode = CAR_DOOR_RR;
-					eDoor = DOOR_REAR_RIGHT;
-					break;
+				case 0:
 				case 10:
 					doorNode = CAR_DOOR_LF;
 					eDoor = DOOR_FRONT_LEFT;
 					break;
+				case 1:
+				case 8:
+					doorNode = CAR_DOOR_RF;
+					eDoor = DOOR_FRONT_RIGHT;
+					break;
+				case 2:
 				case 11:
 					doorNode = CAR_DOOR_LR;
 					eDoor = DOOR_REAR_LEFT;
+					break;
+				case 3:
+				case 9:
+					doorNode = CAR_DOOR_RR;
+					eDoor = DOOR_REAR_RIGHT;
 					break;
 				default:
 					break;
@@ -1323,8 +1534,8 @@ static CTask* __fastcall Hooked_EnterCar_CreateSubTaskForDoor(CTaskComplexEnterC
 
 				if (doorNode >= 0 && doorNode < CAR_NUM_NODES && car->m_aCarNodes[doorNode]) {
 					float angle = car->m_doors[eDoor].m_fAngle;
-					if (std::fabs(angle) < 0.1f) {
-						ClientLog(LogLevel::Info, std::format("Hooked_EnterCar_CreateSubTaskForDoor: targetDoor {} (door {}) is closed (angle {:.2f}), forcing 0x322 instead of 0x327", thisTask->m_nTargetDoor, (int)eDoor, angle));
+					if (std::fabs(angle) < 0.6f && car->m_damageManager.GetDoorStatus(eDoor) != DAMSTATE_NOTPRESENT) {
+						ClientLog(LogLevel::Info, std::format("Hooked_EnterCar_CreateSubTaskForDoor: targetDoor {} (door {}) is present (angle {:.2f}), forcing 0x322 instead of 0x327", thisTask->m_nTargetDoor, (int)eDoor, angle));
 
 						// Free the 0x327 task via GTA SA's scalar deleting destructor (vtable[0])
 						auto dtor = reinterpret_cast<void(__thiscall*)(CTask*, int)>((*reinterpret_cast<uintptr_t**>(resultTask))[0]);
@@ -4543,6 +4754,30 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD dwReason, LPVOID lpReserved)
 			}
 		}
 
+		MH_STATUS bestDriverDoorStatus = MH_CreateHook(reinterpret_cast<void*>(0x6528F0), reinterpret_cast<void*>(&Hooked_ComputeBestDriverDoor), reinterpret_cast<void**>(&g_origComputeBestDriverDoor));
+		if (bestDriverDoorStatus == MH_OK) {
+			MH_STATUS enableStatus = MH_EnableHook(reinterpret_cast<void*>(0x6528F0));
+			if (enableStatus == MH_OK) {
+				ClientLog(LogLevel::Info, "ComputeBestDriverDoor (0x6528F0) hooked successfully via MinHook");
+			} else {
+				ClientLog(LogLevel::Error, std::format("Failed to enable ComputeBestDriverDoor hook: {}", MH_StatusToString(enableStatus)));
+			}
+		} else {
+			ClientLog(LogLevel::Error, std::format("Failed to hook ComputeBestDriverDoor (0x6528F0): {}", MH_StatusToString(bestDriverDoorStatus)));
+		}
+
+		MH_STATUS leaveCarStatus = MH_CreateHook(reinterpret_cast<void*>(0x63B8C0), reinterpret_cast<void*>(&Hooked_CTaskComplexLeaveCar), reinterpret_cast<void**>(&g_origCTaskComplexLeaveCar));
+		if (leaveCarStatus == MH_OK) {
+			MH_STATUS enableStatus = MH_EnableHook(reinterpret_cast<void*>(0x63B8C0));
+			if (enableStatus == MH_OK) {
+				ClientLog(LogLevel::Info, "CTaskComplexLeaveCar (0x63B8C0) hooked successfully via MinHook");
+			} else {
+				ClientLog(LogLevel::Error, std::format("Failed to enable CTaskComplexLeaveCar hook: {}", MH_StatusToString(enableStatus)));
+			}
+		} else {
+			ClientLog(LogLevel::Error, std::format("Failed to hook CTaskComplexLeaveCar (0x63B8C0): {}", MH_StatusToString(leaveCarStatus)));
+		}
+
 		MH_STATUS bestPassDoorStatus = MH_CreateHook(reinterpret_cast<void*>(0x650BB0), reinterpret_cast<void*>(&Hooked_ComputeBestPassengerDoor), reinterpret_cast<void**>(&g_origComputeBestPassengerDoor));
 		if (bestPassDoorStatus == MH_OK) {
 			MH_STATUS enableStatus = MH_EnableHook(reinterpret_cast<void*>(0x650BB0));
@@ -4893,6 +5128,18 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD dwReason, LPVOID lpReserved)
 			MH_DisableHook(reinterpret_cast<void*>(0x6A2330));
 			MH_RemoveHook(reinterpret_cast<void*>(0x6A2330));
 			g_origCAutomobile_IsDoorMissing = nullptr;
+		}
+
+		if (g_origComputeBestDriverDoor) {
+			MH_DisableHook(reinterpret_cast<void*>(0x6528F0));
+			MH_RemoveHook(reinterpret_cast<void*>(0x6528F0));
+			g_origComputeBestDriverDoor = nullptr;
+		}
+
+		if (g_origCTaskComplexLeaveCar) {
+			MH_DisableHook(reinterpret_cast<void*>(0x63B8C0));
+			MH_RemoveHook(reinterpret_cast<void*>(0x63B8C0));
+			g_origCTaskComplexLeaveCar = nullptr;
 		}
 
 		if (g_origComputeBestPassengerDoor) {
