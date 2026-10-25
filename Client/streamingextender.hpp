@@ -1090,8 +1090,12 @@ public:
 		if (!col)
 			return;
 		if (col->m_pColData) {
-			col->m_nFlags = 0; // Clear bit 2 (0x04) so ~CColModel() won't attempt to free sub-arrays or link list!
 			auto pFree = reinterpret_cast<void(__cdecl*)(void*)>(0x72F430);
+			if (!col->m_bIsSingleColDataAlloc) {
+				// Multiple allocations: free each sub-array (spheres, lines, boxes, vertices, triangles) safely via CCollisionData::RemoveCollisionVolumes
+				reinterpret_cast<void(__thiscall*)(CCollisionData*)>(0x40F070)(col->m_pColData);
+			}
+			col->m_nFlags = 0; // Clear bit 2 (0x04) so ~CColModel() won't attempt to free sub-arrays or link list!
 			pFree(col->m_pColData);
 			col->m_pColData = nullptr;
 		}

@@ -108,55 +108,52 @@ static void __fastcall Hooked_UpdateWheelMatrix(CAutomobile* thisCar, void* edx,
 	bool isCapable = (thisCar->m_nVehicleSubClass == VEHICLE_AUTOMOBILE || thisCar->m_nVehicleSubClass == VEHICLE_MTRUCK || thisCar->m_nVehicleSubClass == VEHICLE_QUAD);
 	bool isBoat = isCapable && ((thisCar->m_pHandlingData->m_nModelFlags & 0x8000000) != 0);
 
+	bool inWater = false;
 	if (isBoat) {
 		CVector pos = thisCar->GetPosition();
 		float waterZ = 0.0f;
-		bool inWater = thisCar->bTouchingWater || thisCar->bSubmergedInWater;
+		inWater = thisCar->bTouchingWater || thisCar->bSubmergedInWater;
 		if (!inWater && CWaterLevel::GetWaterLevelNoWaves(pos.x, pos.y, pos.z, &waterZ)) {
 			if (pos.z <= (waterZ + 1.2f)) {
 				inWater = true;
 			}
 		}
-
-		bool wasWaterCheat = *reinterpret_cast<bool*>(0x969152);
-
-		if (inWater) {
-			*reinterpret_cast<bool*>(0x969152) = true;
-
-			float savedComp[4];
-			for (int i = 0; i < 4; ++i) {
-				savedComp[i] = thisCar->m_fWheelsSuspensionCompressionPrev[i];
-				thisCar->m_fWheelsSuspensionCompressionPrev[i] = 0.5f; // < 1.0f ensures GTA SA (0x6AA74B) rotates wheel into boat mode
-			}
-
-			bool wasDrowning = thisCar->bIsDrowning;
-			thisCar->bIsDrowning = false;
-
-			auto savedFlags = thisCar->m_pHandlingData->m_nModelFlags;
-			thisCar->m_pHandlingData->m_nModelFlags = static_cast<eVehicleHandlingModelFlags>(
-				savedFlags & ~(0x00200000 | 0x00020000) // Clear solid axle flags so all wheels rotate
-			);
-
-			g_origUpdateWheelMatrix(thisCar, edx, nodeIndex, flags);
-
-			thisCar->m_pHandlingData->m_nModelFlags = savedFlags;
-			thisCar->bIsDrowning = wasDrowning;
-			for (int i = 0; i < 4; ++i) {
-				thisCar->m_fWheelsSuspensionCompressionPrev[i] = savedComp[i];
-			}
-			*reinterpret_cast<bool*>(0x969152) = wasWaterCheat;
-			return;
-		} else {
-			// On land, keep wheels vertical even if local player has water drive cheat active for physics
-			*reinterpret_cast<bool*>(0x969152) = false;
-			g_origUpdateWheelMatrix(thisCar, edx, nodeIndex, flags);
-			*reinterpret_cast<bool*>(0x969152) = wasWaterCheat;
-			return;
-		}
 	}
 
-	if (g_origUpdateWheelMatrix)
+	bool wasWaterCheat = *reinterpret_cast<bool*>(0x969152);
+
+	if (isBoat && inWater) {
+		*reinterpret_cast<bool*>(0x969152) = true;
+
+		float savedComp[4];
+		for (int i = 0; i < 4; ++i) {
+			savedComp[i] = thisCar->m_fWheelsSuspensionCompressionPrev[i];
+			thisCar->m_fWheelsSuspensionCompressionPrev[i] = 0.5f; // < 1.0f ensures GTA SA (0x6AA74B) rotates wheel into boat mode
+		}
+
+		bool wasDrowning = thisCar->bIsDrowning;
+		thisCar->bIsDrowning = false;
+
+		auto savedFlags = thisCar->m_pHandlingData->m_nModelFlags;
+		thisCar->m_pHandlingData->m_nModelFlags = static_cast<eVehicleHandlingModelFlags>(
+			savedFlags & ~(0x00200000 | 0x00020000) // Clear solid axle flags so all wheels rotate
+		);
+
 		g_origUpdateWheelMatrix(thisCar, edx, nodeIndex, flags);
+
+		thisCar->m_pHandlingData->m_nModelFlags = savedFlags;
+		thisCar->bIsDrowning = wasDrowning;
+		for (int i = 0; i < 4; ++i) {
+			thisCar->m_fWheelsSuspensionCompressionPrev[i] = savedComp[i];
+		}
+		*reinterpret_cast<bool*>(0x969152) = wasWaterCheat;
+	} else {
+		// On land, keep wheels strictly vertical: prevent GTA SA's 0x6AA724 from rotating wheels 45 degrees
+		*reinterpret_cast<bool*>(0x969152) = false;
+		if (g_origUpdateWheelMatrix)
+			g_origUpdateWheelMatrix(thisCar, edx, nodeIndex, flags);
+		*reinterpret_cast<bool*>(0x969152) = wasWaterCheat;
+	}
 
 	if (nodeIndex >= CAR_WHEEL_RF && nodeIndex <= CAR_WHEEL_LB && thisCar->m_aCarNodes[nodeIndex]) {
 		auto* binding = CustomVehicleBindingManager::Instance().FindByVehicle(thisCar);
@@ -3052,14 +3049,28 @@ private:
 						}
 					}
 					// Fallback: If no dedicated collision file (.col) was loaded for this custom model,
-					// share the base model's collision model. In GTA SA, base vehicles possess validated
-					// bounding boxes, collision spheres, and 4 functional suspension raycast lines.
+					// safely deep-clone the base vehicle's collision model into an independent CColModel.
 					CBaseModelInfo* visualBase = GetEngineModelInfo(static_cast<int>(pending->def.visualBaseModel));
-					if (!newModel->m_pColModel && visualBase && visualBase->m_pColModel) {
-						newModel->m_pColModel = visualBase->m_pColModel;
-						newModel->bDoWeOwnTheColModel = 0;
-						ClientLog(LogLevel::Info, std::format("Model {} using shared collision model from base {}", pending->def.customModelId, pending->def.visualBaseModel));
+					if (!newModel->m_pColModel) {
+						if (visualBase && visualBase->m_pColModel) {
+							CColModel* clonedCol = new CColModel();
+							if (clonedCol) {
+								clonedCol->AllocateData();
+								if (clonedCol->m_pColData) {
+									*clonedCol = *visualBase->m_pColModel; // Safe deep copy via CCollisionData::Copy (0x40F120)
+								} else {
+									clonedCol->m_boundBox = visualBase->m_pColModel->m_boundBox;
+									clonedCol->m_boundSphere = visualBase->m_pColModel->m_boundSphere;
+								}
+								newModel->m_pColModel = clonedCol;
+								newModel->bDoWeOwnTheColModel = 1;
+								*reinterpret_cast<uint8_t*>(reinterpret_cast<uintptr_t>(newModel) + 0x13) &= ~0x08;
+								ClientLog(LogLevel::Info, std::format("Model {} using cloned collision model from base {}", pending->def.customModelId, pending->def.visualBaseModel));
+							}
+						}
 					}
+
+
 				} else {
 					CTxdStore::PopCurrentTxd();
 					StreamingExtender::DestroyCustomModel(pending->def.customModelId);
@@ -4054,8 +4065,18 @@ static void OnGameProcess()
 			bool isBoat = isWaterCapable && ((curVehicle->m_pHandlingData->m_nModelFlags & 0x8000000) != 0);
 
 			if (isBoat) {
-				anyBoatVehicleNeedsWaterDrive = true;
-				if (curVehicle->bTouchingWater || curVehicle->bSubmergedInWater) {
+				bool inWater = curVehicle->bTouchingWater || curVehicle->bSubmergedInWater;
+				if (!inWater) {
+					CVector pos = curVehicle->GetPosition();
+					float waterZ = 0.0f;
+					if (CWaterLevel::GetWaterLevelNoWaves(pos.x, pos.y, pos.z, &waterZ)) {
+						if (pos.z <= (waterZ + 1.2f)) {
+							inWater = true;
+						}
+					}
+				}
+				if (inWater) {
+					anyBoatVehicleNeedsWaterDrive = true;
 					curVehicle->bEngineOn = true;
 					curVehicle->bIsDrowning = false;
 					curVehicle->bSubmergedInWater = false;
