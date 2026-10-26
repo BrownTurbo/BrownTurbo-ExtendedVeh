@@ -6,8 +6,8 @@ set(PLUGIN_NAME "brownturbo-extendedveh")
 set(PLUGIN_VERSION_MAJOR 0)
 set(PLUGIN_VERSION_MINOR 0)
 set(PLUGIN_VERSION_PATCH 3)
-set(PLUGIN_VERSION_BUILD 6)
-set(PLUGIN_PHASE "alpha")
+set(PLUGIN_VERSION_BUILD 7)
+set(PLUGIN_PHASE "beta")
 #==============================================================================#
 project(${PLUGIN_NAME} LANGUAGES C CXX VERSION ${PLUGIN_VERSION_MAJOR}.${PLUGIN_VERSION_MINOR}.${PLUGIN_VERSION_PATCH}.${PLUGIN_VERSION_BUILD})
 
