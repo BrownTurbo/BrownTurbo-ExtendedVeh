@@ -13,7 +13,7 @@
             ],
             "intelliSenseMode": "windows-msvc-x86",
             "configurationProvider": "ms-vscode.cmake-tools",
-            "compilerPath": "M:\\Installations\\Visual Studio 2026 Build Tools\\VC\\Tools\\MSVC\\14.50.35717\\bin\\Hostx64\\x86\\cl.exe",
+            "compilerPath": "M:\\Installations\\Visual Studio 2026 Build Tools\\VC\\Tools\\MSVC\\14.51.36231\\bin\\Hostx64\\x86\\cl.exe",
             "cStandard": "c23",
             "cppStandard": "c++26"
         }

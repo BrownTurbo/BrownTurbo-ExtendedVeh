@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.24 FATAL_ERROR)
 cmake_policy(SET CMP0115 NEW)
 set(CMAKE_POLICY_VERSION_MINIMUM "3.5" CACHE STRING "" FORCE)
+cmake_policy(SET CMP0091 NEW)
 #==============================================================================#
 set(PLUGIN_NAME "brownturbo-extendedveh")
 set(PLUGIN_VERSION_MAJOR 0)
@@ -11,7 +12,10 @@ set(PLUGIN_PHASE "beta")
 #==============================================================================#
 project(${PLUGIN_NAME} LANGUAGES C CXX VERSION ${PLUGIN_VERSION_MAJOR}.${PLUGIN_VERSION_MINOR}.${PLUGIN_VERSION_PATCH}.${PLUGIN_VERSION_BUILD})
 
-set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL" CACHE STRING "" FORCE)
+# Force Release CRT (/MD) across all configurations to remain compatible with GTA SA & SA-MP memory
+set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreadedDLL" CACHE STRING "" FORCE)
+add_compile_definitions($<$<CONFIG:Debug>:_ITERATOR_DEBUG_LEVEL=0>)
+set(CMAKE_MAP_IMPORTED_CONFIG_DEBUG Release RelWithDebInfo "")
 set(POLYHOOK_STATIC_RUNTIME OFF CACHE BOOL "" FORCE)
 set(FORCE_STATIC_CRT OFF CACHE BOOL "" FORCE)
 
@@ -214,7 +218,7 @@ function(force_dynamic_runtime_on_all_targets dir)
         get_target_property(target_type ${target} TYPE)
         if(NOT target_type STREQUAL "INTERFACE_LIBRARY")
             set_property(TARGET ${target} PROPERTY
-                MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL"
+                MSVC_RUNTIME_LIBRARY "MultiThreadedDLL"
             )
         endif()
     endforeach()
