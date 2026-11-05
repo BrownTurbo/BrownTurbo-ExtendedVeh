@@ -31,15 +31,15 @@
 #include "amx.h"
 #include "amxdbg.h"
 
-//#if PAWN_CELL_SIZE==16
-//  #define dbg_AlignCell(v) dbg_Align16(v)
-//#elif PAWN_CELL_SIZE==32
+#if PAWN_CELL_SIZE==16
+  #define dbg_AlignCell(v) dbg_Align16(v)
+#elif PAWN_CELL_SIZE==32
   #define dbg_AlignCell(v) dbg_Align32(v)
-//#elif PAWN_CELL_SIZE==64 && (defined _I64_MAX || defined HAVE_I64)
-//  #define dbg_AlignCell(v) dbg_Align64(v)
-//#else
-//  #error Unsupported cell size
-//#endif
+#elif PAWN_CELL_SIZE==64 && (defined _I64_MAX || defined HAVE_I64)
+  #define dbg_AlignCell(v) dbg_Align64(v)
+#else
+  #error Unsupported cell size
+#endif
 
 #if !defined NDEBUG
   static int check_endian(void)

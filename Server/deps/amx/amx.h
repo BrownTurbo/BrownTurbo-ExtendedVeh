@@ -406,8 +406,13 @@ typedef int64_t cell;
 #define NUMENTRIES(hdr, field, nextfield) \
   (unsigned)(((hdr)->nextfield - (hdr)->field) / (hdr)->defsize)
 
+#if defined __cplusplus
 #define GETENTRY(hdr, table, index) \
   (AMX_FUNCSTUB *)((unsigned char *)(hdr) + (unsigned)(hdr)->table + (unsigned)index * (hdr)->defsize)
+#else
+#define GETENTRY(hdr, table, index) \
+  (void *)((unsigned char *)(hdr) + (unsigned)(hdr)->table + (unsigned)index * (hdr)->defsize)
+#endif
 
 #define GETENTRYNAME(hdr, entry) \
   (USENAMETABLE(hdr) ? (char *)((unsigned char *)(hdr) + (unsigned)((AMX_FUNCSTUBNT *)(entry))->nameofs) : ((AMX_FUNCSTUB *)(entry))->name)
@@ -545,7 +550,7 @@ typedef int64_t cell;
   uint64_t *AMXAPI amx_Align64(uint64_t *v);
 #endif
   int AMXAPI amx_Allot(AMX *amx, int cells, cell *amx_addr, cell **phys_addr);
-  int AMXAPI amx_Callback(AMX *amx, cell index, cell *result, const cell *params);
+  int AMXAPI amx_Callback(AMX *amx, cell index, cell *result, cell *params);
   int AMXAPI amx_Cleanup(AMX *amx);
   int AMXAPI amx_Clone(AMX *amxClone, AMX *amxSource, void *data);
   int AMXAPI amx_Exec(AMX *amx, cell *retval, int index);

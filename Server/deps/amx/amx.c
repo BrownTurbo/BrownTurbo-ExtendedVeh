@@ -438,7 +438,7 @@ int AMXAPI amx_Flags(AMX *amx, uint16_t *flags)
 #endif /* AMX_FLAGS */
 
 #if defined AMX_DEFCALLBACK
-int AMXAPI amx_Callback(AMX *amx, cell index, cell *result, const cell *params)
+int AMXAPI amx_Callback(AMX *amx, cell index, cell *result, cell *params)
 {
 #if defined AMX_NATIVETABLE
   extern AMX_NATIVE const AMX_NATIVETABLE[];
@@ -982,7 +982,7 @@ int AMXAPI amx_Init(AMX *amx, void *program)
   amx->stk = amx->stp;
 #if defined AMX_DEFCALLBACK
   if (amx->callback == NULL)
-    amx->callback = amx_Callback;
+    amx->callback = (AMX_CALLBACK)amx_Callback;
 #endif
   /* to split the data segment off the code segment, the "data" field must
    * be set to a non-NULL value on initialization, before calling amx_Init()
