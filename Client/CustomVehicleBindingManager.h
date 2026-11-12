@@ -26,7 +26,6 @@ public:
 
 private:
 	CVehicleModelInfo* m_baseModel {};
-	RpClump* m_baseClump {};
 	CColModel* m_baseColModel {};
 	float m_baseWheelSizeFront {};
 	float m_baseWheelSizeRear {};

@@ -117,11 +117,9 @@ CustomWheelScope::CustomWheelScope(CVehicle* vehicle, CVehicleModelInfo* customM
 	if (!base || base == customModel)
 		return;
 	m_baseModel = base;
-	m_baseClump = base->m_pRwClump;
 	m_baseColModel = base->m_pColModel;
 	m_baseWheelSizeFront = base->m_fWheelSizeFront;
 	m_baseWheelSizeRear = base->m_fWheelSizeRear;
-	base->m_pRwClump = customModel->m_pRwClump;
 	if (customModel->m_pColModel)
 		base->m_pColModel = customModel->m_pColModel;
 	if (customModel->m_fWheelSizeFront > 0.1f)
@@ -134,10 +132,44 @@ CustomWheelScope::~CustomWheelScope()
 {
 	if (!m_baseModel)
 		return;
-	m_baseModel->m_pRwClump = m_baseClump;
 	m_baseModel->m_pColModel = m_baseColModel;
 	m_baseModel->m_fWheelSizeFront = m_baseWheelSizeFront;
 	m_baseModel->m_fWheelSizeRear = m_baseWheelSizeRear;
+}
+
+static bool GetModelSpaceFramePos(RpClump* clump, const char* name, CVector& out)
+{
+	RwFrame* frame = clump ? CClumpModelInfo::GetFrameFromName(clump, name) : nullptr;
+	if (!frame)
+		return false;
+	RwFrame* root = RpClumpGetFrame(clump);
+	out = CVector(0.0f, 0.0f, 0.0f);
+	for (RwFrame* f = frame; f && f != root; f = RwFrameGetParent(f)) {
+		out.x += f->modelling.pos.x;
+		out.y += f->modelling.pos.y;
+		out.z += f->modelling.pos.z;
+	}
+	return true;
+}
+
+static void AlignSuspensionLinesToCustomWheels(CVehicle* vehicle, CVehicleModelInfo* customModel)
+{
+	if (!vehicle || !customModel || !customModel->m_pRwClump || !customModel->m_pColModel)
+		return;
+	auto* base = reinterpret_cast<CVehicleModelInfo*>(CModelInfo::GetModelInfo(vehicle->m_nModelIndex));
+	CCollisionData* data = customModel->m_pColModel->m_pColData;
+	if (!base || base == customModel || !base->m_pRwClump || !data || !data->m_pLines || data->m_nNumLines < 4)
+		return;
+	static const char* const kWheelDummies[4] = { "wheel_lf_dummy", "wheel_lb_dummy", "wheel_rf_dummy", "wheel_rb_dummy" };
+	for (int i = 0; i < 4; ++i) {
+		CVector basePos;
+		CVector customPos;
+		if (!GetModelSpaceFramePos(base->m_pRwClump, kWheelDummies[i], basePos) || !GetModelSpaceFramePos(customModel->m_pRwClump, kWheelDummies[i], customPos))
+			continue;
+		CVector delta = customPos - basePos;
+		data->m_pLines[i].m_vecStart += delta;
+		data->m_pLines[i].m_vecEnd += delta;
+	}
 }
 
 static RpClump* CloneClumpPreservingOrder(RpClump* srcClump)
@@ -1450,8 +1482,11 @@ void CustomVehicleBindingManager::Process()
 					}
 
 					if (model) {
-						CustomWheelScope wheelScope(car, model);
-						car->SetupSuspensionLines();
+						{
+							CustomWheelScope wheelScope(car, model);
+							car->SetupSuspensionLines();
+						}
+						AlignSuspensionLinesToCustomWheels(car, model);
 						car->ResetSuspension();
 					}
 
