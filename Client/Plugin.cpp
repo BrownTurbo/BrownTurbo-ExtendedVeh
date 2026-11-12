@@ -12,6 +12,7 @@
 #include <game_sa/CHandlingDataMgr.h>
 #include <game_sa/CModelInfo.h>
 #include <game_sa/CPad.h>
+#include <game_sa/CPed.h>
 #include <game_sa/CPlayerPed.h>
 #include <game_sa/CShadows.h>
 #include <game_sa/CTaskComplexEnterCar.h>
@@ -1725,6 +1726,28 @@ static void __fastcall Hooked_CAutomobile_Fix(CAutomobile* thisCar, void* edx)
 }
 
 static void(__fastcall* g_origCAutomobile_PreRender)(CAutomobile* thisCar, void* edx) = nullptr;
+static void(__fastcall* g_origCPed_SetPedPositionInCar)(CPed* ped, void* edx) = nullptr;
+
+static void __fastcall Hooked_CPed_SetPedPositionInCar(CPed* ped, void* edx)
+{
+	CVehicleModelInfo* baseModel = nullptr;
+	decltype(baseModel->m_pVehicleStruct) baseStruct = nullptr;
+	CVehicle* vehicle = ped ? ped->m_pVehicle : nullptr;
+	if (vehicle && IsVehiclePointerValid(vehicle)) {
+		auto* binding = CustomVehicleBindingManager::Instance().FindByVehicle(vehicle);
+		CVehicleModelInfo* customModel = binding && binding->modelApplied ? StreamingExtender::GetCustomModel(binding->customModelId) : nullptr;
+		baseModel = reinterpret_cast<CVehicleModelInfo*>(CModelInfo::GetModelInfo(vehicle->m_nModelIndex));
+		if (customModel && customModel->m_pVehicleStruct && baseModel && baseModel != customModel) {
+			baseStruct = baseModel->m_pVehicleStruct;
+			baseModel->m_pVehicleStruct = customModel->m_pVehicleStruct;
+		} else {
+			baseModel = nullptr;
+		}
+	}
+	g_origCPed_SetPedPositionInCar(ped, edx);
+	if (baseModel)
+		baseModel->m_pVehicleStruct = baseStruct;
+}
 
 static void __fastcall Hooked_CAutomobile_PreRender(CAutomobile* thisCar, void* edx)
 {
@@ -4666,6 +4689,18 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD dwReason, LPVOID lpReserved)
 			ClientLog(LogLevel::Error, std::format("Failed to hook CVehicle::SetComponentVisibility (0x6D2700): {}", MH_StatusToString(scvStatus)));
 		}
 
+		MH_STATUS seatStatus = MH_CreateHook(reinterpret_cast<void*>(0x5DF910), reinterpret_cast<void*>(&Hooked_CPed_SetPedPositionInCar), reinterpret_cast<void**>(&g_origCPed_SetPedPositionInCar));
+		if (seatStatus == MH_OK) {
+			MH_STATUS enableStatus = MH_EnableHook(reinterpret_cast<void*>(0x5DF910));
+			if (enableStatus == MH_OK) {
+				ClientLog(LogLevel::Info, "CPed::SetPedPositionInCar (0x5DF910) hooked successfully via MinHook");
+			} else {
+				ClientLog(LogLevel::Error, std::format("Failed to enable CPed::SetPedPositionInCar hook: {}", MH_StatusToString(enableStatus)));
+			}
+		} else {
+			ClientLog(LogLevel::Error, std::format("Failed to hook CPed::SetPedPositionInCar (0x5DF910): {}", MH_StatusToString(seatStatus)));
+		}
+
 		MH_STATUS preRenderStatus = MH_CreateHook(reinterpret_cast<void*>(0x6AAB50), reinterpret_cast<void*>(&Hooked_CAutomobile_PreRender), reinterpret_cast<void**>(&g_origCAutomobile_PreRender));
 		if (preRenderStatus == MH_OK) {
 			MH_STATUS enableStatus = MH_EnableHook(reinterpret_cast<void*>(0x6AAB50));
@@ -5121,6 +5156,12 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD dwReason, LPVOID lpReserved)
 			MH_DisableHook(reinterpret_cast<void*>(0x6D2700));
 			MH_RemoveHook(reinterpret_cast<void*>(0x6D2700));
 			g_origSetComponentVisibility = nullptr;
+		}
+
+		if (g_origCPed_SetPedPositionInCar) {
+			MH_DisableHook(reinterpret_cast<void*>(0x5DF910));
+			MH_RemoveHook(reinterpret_cast<void*>(0x5DF910));
+			g_origCPed_SetPedPositionInCar = nullptr;
 		}
 
 		if (g_origCAutomobile_PreRender) {
