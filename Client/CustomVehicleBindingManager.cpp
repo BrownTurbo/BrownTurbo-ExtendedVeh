@@ -73,6 +73,16 @@ static void ApplyPlateTextPixelSize(RpMaterial* material, uint8_t pixelSize)
 static std::unordered_map<RpMaterial*, RwTexture*> s_originalMaterialTextures;
 static std::unordered_map<uint32_t, RwTexture*> s_modelBaseBodyTextures;
 
+static std::unordered_map<RpMaterial*, RwRGBA> s_originalMaterialColors;
+
+static const RwRGBA* GetOriginalMaterialColor(RpMaterial* mat)
+{
+	const RwRGBA* cur = RpMaterialGetColor(mat);
+	if (!cur)
+		return nullptr;
+	return &s_originalMaterialColors.try_emplace(mat, *cur).first->second;
+}
+
 static void PrecacheOriginalClumpMaterials(RpClump* clump)
 {
 	if (!clump)
@@ -82,6 +92,7 @@ static void PrecacheOriginalClumpMaterials(RpClump* clump)
 		RpGeometry* geom = RpAtomicGetGeometry(atomic);
 		if (geom) {
 			RpGeometryForAllMaterials(geom, [](RpMaterial* mat, void* data) -> RpMaterial* {
+				GetOriginalMaterialColor(mat);
 				if (s_originalMaterialTextures.find(mat) == s_originalMaterialTextures.end()) {
 					RwTexture* curTex = RpMaterialGetTexture(mat);
 					s_originalMaterialTextures[mat] = curTex;
@@ -410,7 +421,6 @@ void CustomVehicleBindingManager::Unbind(uint16_t vehicleId)
 				if (origClump) {
 					CVisibilityPlugins::SetupVehicleVariables(origClump);
 					origModel->SetVehicleColour(vehicle->m_nPrimaryColor, vehicle->m_nSecondaryColor, vehicle->m_nTertiaryColor, vehicle->m_nQuaternaryColor);
-					origModel->SetEditableMaterials(origClump); // non-static: must call on model instance
 
 					RpClump* savedClump = origModel->m_pRwClump;
 					origModel->m_pRwClump = origClump;
@@ -1005,7 +1015,6 @@ void CustomVehicleBindingManager::OnVehicleFixed(CVehicle* vehicle)
 
 			// 9. Re-apply vehicle materials & custom coatings (base colors, paintjob, window tint, wheel color, license plate)
 			customModel->SetVehicleColour(vehicle->m_nPrimaryColor, vehicle->m_nSecondaryColor, vehicle->m_nTertiaryColor, vehicle->m_nQuaternaryColor);
-			customModel->SetEditableMaterials(clump);
 			ApplyVehicleColors(vehicle, vehicle->m_nPrimaryColor, vehicle->m_nSecondaryColor, vehicle->m_nTertiaryColor, vehicle->m_nQuaternaryColor);
 
 			if (b.paintjobIndex >= 0) {
@@ -1141,7 +1150,6 @@ void CustomVehicleBindingManager::Process()
 				PrecacheOriginalClumpMaterials(newClump);
 				CVisibilityPlugins::SetupVehicleVariables(newClump);
 				model->SetVehicleColour(vehicle->m_nPrimaryColor, vehicle->m_nSecondaryColor, vehicle->m_nTertiaryColor, vehicle->m_nQuaternaryColor);
-				model->SetEditableMaterials(newClump); // non-static: must call on model instance
 
 				RpClump* savedClump = model->m_pRwClump;
 				model->m_pRwClump = newClump;
@@ -1588,7 +1596,6 @@ void CustomVehicleBindingManager::Process()
 					RpClump* clump = reinterpret_cast<RpClump*>(vehicle->m_pRwObject);
 					if (clump && model) {
 						model->SetVehicleColour(vehicle->m_nPrimaryColor, vehicle->m_nSecondaryColor, vehicle->m_nTertiaryColor, vehicle->m_nQuaternaryColor);
-						model->SetEditableMaterials(clump);
 						ApplyVehicleColors(vehicle, vehicle->m_nPrimaryColor, vehicle->m_nSecondaryColor, vehicle->m_nTertiaryColor, vehicle->m_nQuaternaryColor);
 						if (binding.hasPaintjob) {
 							ApplyPaintjobToVehicle(vehicle, binding.paintjobIndex);
@@ -3027,7 +3034,7 @@ void CustomVehicleBindingManager::ApplyVehicleColors(CVehicle* vehicle, uint8_t 
 			}
 
 			// Check standard GTA SA carcols color markers on materials
-			const RwRGBA* curCol = RpMaterialGetColor(mat);
+			const RwRGBA* curCol = GetOriginalMaterialColor(mat);
 			if (curCol) {
 				// Primary marker: (60, 255, 0)
 				if (std::abs(static_cast<int>(curCol->red) - 60) <= 15 && std::abs(static_cast<int>(curCol->green) - 255) <= 15 && std::abs(static_cast<int>(curCol->blue) - 0) <= 15) {
@@ -3113,7 +3120,7 @@ void CustomVehicleBindingManager::ApplyVehicleColors(CVehicle* vehicle, uint8_t 
 		// Fallback for models without markers: ONLY color white/neutral light body panels,
 		// NEVER touch dark materials (rubber, plastic, trim) or metal/chrome
 		for (RpMaterial* mat : ctx.untexturedOpaqueMaterials) {
-			const RwRGBA* c = RpMaterialGetColor(mat);
+			const RwRGBA* c = GetOriginalMaterialColor(mat);
 			if (c) {
 				bool isNeutral = std::abs(static_cast<int>(c->red) - static_cast<int>(c->green)) <= 10 && std::abs(static_cast<int>(c->green) - static_cast<int>(c->blue)) <= 10;
 				if (isNeutral && c->red >= 200) {
@@ -3235,7 +3242,6 @@ void CustomVehicleBindingManager::ApplyPaintjobToVehicle(CVehicle* vehicle, int 
 		binding->paintjobTexture = nullptr;
 		RestoreOriginalMaterials(vehicle);
 		customModel->SetVehicleColour(vehicle->m_nPrimaryColor, vehicle->m_nSecondaryColor, vehicle->m_nTertiaryColor, vehicle->m_nQuaternaryColor);
-		customModel->SetEditableMaterials(clump); // non-static: call on model instance
 		ApplyVehicleColors(vehicle, vehicle->m_nPrimaryColor, vehicle->m_nSecondaryColor, vehicle->m_nTertiaryColor, vehicle->m_nQuaternaryColor);
 		return;
 	}
@@ -3414,7 +3420,6 @@ void CustomVehicleBindingManager::ApplyPaintjobToVehicle(CVehicle* vehicle, int 
 
 	if (liveryTex) {
 		CVehicleModelInfo::ms_pRemapTexture = liveryTex;
-		customModel->SetEditableMaterials(clump); // non-static: call on model instance
 
 		struct PaintjobContext {
 			RwTexture* tex;
@@ -3455,7 +3460,6 @@ void CustomVehicleBindingManager::ApplyPaintjobToVehicle(CVehicle* vehicle, int 
 			&ctx);
 
 		customModel->SetVehicleColour(vehicle->m_nPrimaryColor, vehicle->m_nSecondaryColor, vehicle->m_nTertiaryColor, vehicle->m_nQuaternaryColor);
-		customModel->SetEditableMaterials(clump); // non-static: call on model instance
 	} else {
 		// Paintjob texture not found: restore original materials and avoid repeated searches
 		RestoreOriginalMaterials(vehicle);
