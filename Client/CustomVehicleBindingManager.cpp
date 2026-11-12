@@ -152,7 +152,7 @@ static bool GetModelSpaceFramePos(RpClump* clump, const char* name, CVector& out
 	return true;
 }
 
-static void AlignSuspensionLinesToCustomWheels(CVehicle* vehicle, CVehicleModelInfo* customModel)
+static void AlignSuspensionLinesToCustomWheels(CAutomobile* vehicle, CVehicleModelInfo* customModel)
 {
 	if (!vehicle || !customModel || !customModel->m_pRwClump || !customModel->m_pColModel)
 		return;
@@ -169,6 +169,10 @@ static void AlignSuspensionLinesToCustomWheels(CVehicle* vehicle, CVehicleModelI
 		CVector delta = customPos - basePos;
 		data->m_pLines[i].m_vecStart += delta;
 		data->m_pLines[i].m_vecEnd += delta;
+		if (i == 0)
+			vehicle->m_fFrontHeightAboveRoad -= delta.z;
+		else if (i == 3)
+			vehicle->m_fRearHeightAboveRoad -= delta.z;
 	}
 }
 
