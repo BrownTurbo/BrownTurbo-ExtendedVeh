@@ -181,17 +181,9 @@ static RpClump* CloneClumpPreservingOrder(RpClump* srcClump)
 	if (!srcClump)
 		return nullptr;
 
-	// RenderWare's RpClumpClone inserts cloned atomics at the head of the new clump's
-	// linked list, reversing their render order. Cloning twice restores the original
-	// atomic sequence so alpha blending (transparent glass, windows, lights) renders
-	// front-to-back without occluding interior geometries (verified: MTA:SA CRenderWareSA.cpp:401-404).
-	RpClump* temp = RpClumpClone(srcClump);
-	if (!temp)
-		return nullptr;
-
-	RpClump* clone = RpClumpClone(temp);
-	RpClumpDestroy(temp);
-	return clone;
+	// Clone once, like CVehicleModelInfo::CreateInstance: models are made for the game's atomic order,
+	// which decides whether glass or interior is drawn first.
+	return RpClumpClone(srcClump);
 }
 
 static bool IsExtraFrame(RwFrame* frame)
