@@ -34,6 +34,7 @@ jobs:
   build-linux:
     name: Linux x86 build
     runs-on: ubuntu-latest
+    container: debian:bookworm
     continue-on-error: false
     strategy:
       max-parallel: 2
@@ -45,26 +46,23 @@ jobs:
       VCPKG_ROOT: ${{ github.workspace }}/vcpkg
 
     steps:
+    - name: Install build tools (Debian 12, glibc 2.36)
+      run: |
+        dpkg --add-architecture i386
+        apt-get update
+        apt-get install -y --no-install-recommends \
+          git ca-certificates curl wget zip unzip tar pkg-config binutils cmake ninja-build make \
+          gcc g++ gcc-multilib g++-multilib libc6-dev-i386
+
     - uses: actions/checkout@v7
       with:
         clean: true
         fetch-depth: 0
 
     - name: Checkout submodules
-      run: git submodule update --init --recursive
-
-    - name: Preparing some system related...
       run: |
-        sudo dpkg --add-architecture i386;
-        sudo apt-get update;
-        sudo apt-get upgrade -y;
-        sudo add-apt-repository ppa:ubuntu-toolchain-r/test -y;
-        sudo apt-get install -y --fix-missing \
-          tar wget binutils cmake make \
-          gcc g++ libc6-dev-i386 libc6-dev gcc-multilib g++-multilib build-essential \
-          libcurl4:i386 libcurl4-openssl-dev:i386 ninja-build;
-        wget "https://github.com/conan-io/conan/releases/download/1.66.0/conan-ubuntu-64.deb"
-        sudo dpkg -i conan-ubuntu-64.deb
+        git config --global --add safe.directory "$GITHUB_WORKSPACE"
+        git submodule update --init --recursive
 
     - name: Preparing some...
       working-directory: ${{github.workspace}}
@@ -74,10 +72,18 @@ jobs:
         ./vcpkg/bootstrap-vcpkg.sh
 
     - name: Configure CMake Server (${{ github.ref }})
-      run: cmake -S Server -B ${{github.workspace}}/build/Server -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}} -G "Ninja" -DCMAKE_SYSTEM_PROCESSOR=i686 -DCMAKE_C_FLAGS="-m32" -DCMAKE_CXX_FLAGS="-m32" -DCMAKE_EXE_LINKER_FLAGS="-m32" -DCMAKE_SHARED_LINKER_FLAGS="-m32" -DCMAKE_TOOLCHAIN_FILE=${{github.workspace}}/vcpkg/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET="x86-linux"
+      run: cmake -S Server -B ${{github.workspace}}/build/Server -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}} -G "Ninja" -DCMAKE_SYSTEM_PROCESSOR=i686 -DCMAKE_C_FLAGS="-m32" -DCMAKE_CXX_FLAGS="-m32" -DCMAKE_EXE_LINKER_FLAGS="-m32" -DCMAKE_SHARED_LINKER_FLAGS="-m32 -static-libgcc -static-libstdc++" -DCMAKE_TOOLCHAIN_FILE=${{github.workspace}}/vcpkg/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET="x86-linux"
 
     - name: Build Server (${{ github.ref }})
       run: cmake --build ${{github.workspace}}/build/Server --config ${{env.BUILD_TYPE}} --parallel 4
+
+    - name: Check required glibc and libstdc++ versions
+      run: |
+        for so in $(find Server/bin build/Server -maxdepth 2 -name '*.so' 2>/dev/null); do
+          echo "$so"
+          objdump -T "$so" | grep -o 'GLIBC_[0-9.]*' | sort -uV | tail -1
+          if objdump -T "$so" | grep -q 'GLIBCXX_'; then echo "error: $so still needs the system libstdc++"; exit 1; fi
+        done
 
     - name: Upload Linux Server Artifact
       uses: actions/upload-artifact@v7
