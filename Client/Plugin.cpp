@@ -1734,10 +1734,12 @@ static void __fastcall Hooked_CAutomobile_PreRender(CAutomobile* thisCar, void* 
 		return;
 	}
 
-	if (g_origCAutomobile_PreRender)
-		g_origCAutomobile_PreRender(thisCar, edx);
-
 	auto* binding = CustomVehicleBindingManager::Instance().FindByVehicle(thisCar);
+	if (g_origCAutomobile_PreRender) {
+		CustomWheelScope wheelScope(thisCar, binding && binding->modelApplied ? StreamingExtender::GetCustomModel(binding->customModelId) : nullptr);
+		g_origCAutomobile_PreRender(thisCar, edx);
+	}
+
 	if (binding && binding->modelApplied && thisCar->m_pRwObject) {
 		if (binding->hasPopupHeadlights && binding->numPopupFrames > 0) {
 			bool isNight = (CClock::ms_nGameClockHours >= 20 || CClock::ms_nGameClockHours < 7);

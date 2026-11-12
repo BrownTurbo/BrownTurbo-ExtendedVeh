@@ -109,6 +109,37 @@ static void PrecacheOriginalClumpMaterials(RpClump* clump)
 		nullptr);
 }
 
+CustomWheelScope::CustomWheelScope(CVehicle* vehicle, CVehicleModelInfo* customModel)
+{
+	if (!vehicle || !customModel || !customModel->m_pRwClump)
+		return;
+	auto* base = reinterpret_cast<CVehicleModelInfo*>(CModelInfo::GetModelInfo(vehicle->m_nModelIndex));
+	if (!base || base == customModel)
+		return;
+	m_baseModel = base;
+	m_baseClump = base->m_pRwClump;
+	m_baseColModel = base->m_pColModel;
+	m_baseWheelSizeFront = base->m_fWheelSizeFront;
+	m_baseWheelSizeRear = base->m_fWheelSizeRear;
+	base->m_pRwClump = customModel->m_pRwClump;
+	if (customModel->m_pColModel)
+		base->m_pColModel = customModel->m_pColModel;
+	if (customModel->m_fWheelSizeFront > 0.1f)
+		base->m_fWheelSizeFront = customModel->m_fWheelSizeFront;
+	if (customModel->m_fWheelSizeRear > 0.1f)
+		base->m_fWheelSizeRear = customModel->m_fWheelSizeRear;
+}
+
+CustomWheelScope::~CustomWheelScope()
+{
+	if (!m_baseModel)
+		return;
+	m_baseModel->m_pRwClump = m_baseClump;
+	m_baseModel->m_pColModel = m_baseColModel;
+	m_baseModel->m_fWheelSizeFront = m_baseWheelSizeFront;
+	m_baseModel->m_fWheelSizeRear = m_baseWheelSizeRear;
+}
+
 static RpClump* CloneClumpPreservingOrder(RpClump* srcClump)
 {
 	if (!srcClump)
@@ -1418,18 +1449,9 @@ void CustomVehicleBindingManager::Process()
 						binding.hasChassisBasePos = true;
 					}
 
-					// Update suspension parameters for custom model
-					tHandlingData* handling = car->m_pHandlingData;
-					if (handling && model) {
-						float upper = handling->m_fSuspensionUpperLimit;
-						float lower = handling->m_fSuspensionLowerLimit;
-						for (int w = 0; w < 4; ++w) {
-							float wheelRadius = (w == 0 || w == 1) ? (model->m_fWheelSizeFront * 0.5f) : (model->m_fWheelSizeRear * 0.5f);
-							if (wheelRadius < 0.1f)
-								wheelRadius = 0.35f;
-							car->m_aSuspensionSpringLength[w] = upper - lower;
-							car->m_aSuspensionLineLength[w] = (upper - lower) + wheelRadius;
-						}
+					if (model) {
+						CustomWheelScope wheelScope(car, model);
+						car->SetupSuspensionLines();
 						car->ResetSuspension();
 					}
 
