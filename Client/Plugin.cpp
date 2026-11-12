@@ -3278,6 +3278,23 @@ private:
 							}
 						}
 					}
+					if (!newModel->m_pColModel && pending->dff.size() > 12) {
+						constexpr uint32_t kCollisionPluginId = 0x253F2FA;
+						for (size_t i = 0; i + 12 <= pending->dff.size(); ++i) {
+							uint32_t chunkId = 0;
+							uint32_t chunkSize = 0;
+							std::memcpy(&chunkId, pending->dff.data() + i, 4);
+							if (chunkId != kCollisionPluginId)
+								continue;
+							std::memcpy(&chunkSize, pending->dff.data() + i + 4, 4);
+							if (chunkSize < 32 || i + 12 + chunkSize > pending->dff.size() || std::memcmp(pending->dff.data() + i + 12, "COL", 3) != 0)
+								continue;
+							ExtendedVeh::Collision::CollisionLoader* colLoader = &ExtendedVeh::Collision::CollisionLoader::Instance();
+							if (colLoader->LoadCollisionFromMemory(pending->dff.data() + i + 12, chunkSize, newModel))
+								ClientLog(LogLevel::Info, std::format("Model {} using the collision embedded in its DFF", pending->def.customModelId));
+							break;
+						}
+					}
 					// Fallback: If no dedicated collision file (.col) was loaded for this custom model,
 					// safely deep-clone the base vehicle's collision model into an independent CColModel.
 					CBaseModelInfo* visualBase = GetEngineModelInfo(static_cast<int>(pending->def.visualBaseModel));
