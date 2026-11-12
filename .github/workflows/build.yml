@@ -43,7 +43,6 @@ jobs:
         build-type: [Debug, Release]
     env:
       BUILD_TYPE: ${{ matrix.build-type }}
-      VCPKG_ROOT: ${{ github.workspace }}/vcpkg
 
     steps:
     - name: Install build tools (Debian 12, glibc 2.36)
@@ -65,17 +64,19 @@ jobs:
         git submodule update --init --recursive
 
     - name: Preparing some...
-      working-directory: ${{github.workspace}}
       run: |
+        cd "$GITHUB_WORKSPACE"
         mkdir -p build
         git clone --depth 1 https://github.com/microsoft/vcpkg.git vcpkg
         ./vcpkg/bootstrap-vcpkg.sh
 
     - name: Configure CMake Server (${{ github.ref }})
-      run: cmake -S Server -B ${{github.workspace}}/build/Server -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}} -G "Ninja" -DCMAKE_SYSTEM_PROCESSOR=i686 -DCMAKE_C_FLAGS="-m32" -DCMAKE_CXX_FLAGS="-m32" -DCMAKE_EXE_LINKER_FLAGS="-m32" -DCMAKE_SHARED_LINKER_FLAGS="-m32 -static-libgcc -static-libstdc++" -DCMAKE_TOOLCHAIN_FILE=${{github.workspace}}/vcpkg/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET="x86-linux"
+      run: |
+        export VCPKG_ROOT="$GITHUB_WORKSPACE/vcpkg"
+        cmake -S Server -B $GITHUB_WORKSPACE/build/Server -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}} -G "Ninja" -DCMAKE_SYSTEM_PROCESSOR=i686 -DCMAKE_C_FLAGS="-m32" -DCMAKE_CXX_FLAGS="-m32" -DCMAKE_EXE_LINKER_FLAGS="-m32" -DCMAKE_SHARED_LINKER_FLAGS="-m32 -static-libgcc -static-libstdc++" -DCMAKE_TOOLCHAIN_FILE=$GITHUB_WORKSPACE/vcpkg/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET="x86-linux"
 
     - name: Build Server (${{ github.ref }})
-      run: cmake --build ${{github.workspace}}/build/Server --config ${{env.BUILD_TYPE}} --parallel 4
+      run: cmake --build $GITHUB_WORKSPACE/build/Server --config ${{env.BUILD_TYPE}} --parallel 4
 
     - name: Check required glibc and libstdc++ versions
       run: |
