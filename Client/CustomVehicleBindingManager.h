@@ -17,6 +17,20 @@ class CColModel;
 class CVehicleModelInfo;
 struct RwFrame;
 
+class CustomWheelScope {
+public:
+	CustomWheelScope(CVehicle* vehicle, CVehicleModelInfo* customModel);
+	~CustomWheelScope();
+	CustomWheelScope(const CustomWheelScope&) = delete;
+	CustomWheelScope& operator=(const CustomWheelScope&) = delete;
+
+private:
+	CVehicleModelInfo* m_baseModel {};
+	CColModel* m_baseColModel {};
+	float m_baseWheelSizeFront {};
+	float m_baseWheelSizeRear {};
+};
+
 class CustomVehicleBindingManager {
 public:
 	struct ModelOffsetConfig {
