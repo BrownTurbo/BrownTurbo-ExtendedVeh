@@ -966,16 +966,57 @@ static void __fastcall Hooked_SetComponentVisibility(CVehicle* thisVehicle, void
 }
 
 static bool s_bLoadingCustomVehicleDff = false;
-static RwStream*(__cdecl* g_origClumpCollisionRead)(RwStream* stream, unsigned int length, void* object, int offsetInObject) = nullptr;
+static RwPluginDataChunkReadCallBack g_origClumpCollisionRead = nullptr;
 
-static RwStream* __cdecl Hooked_ClumpCollisionRead(RwStream* stream, unsigned int length, void* object, int offsetInObject)
+static RwStream* __cdecl Hooked_ClumpCollisionRead(RwStream* stream, RwInt32 binaryLength, void* object, RwInt32 offsetInObject, RwInt32 sizeInObject)
 {
 	if (s_bLoadingCustomVehicleDff) {
-		RwStreamSkip(stream, length);
+		RwStreamSkip(stream, binaryLength);
 		return stream;
 	}
-	return g_origClumpCollisionRead ? g_origClumpCollisionRead(stream, length, object, offsetInObject) : stream;
+	auto origFn = g_origClumpCollisionRead ? g_origClumpCollisionRead : reinterpret_cast<RwPluginDataChunkReadCallBack>(0x41B1D0);
+	return origFn(stream, binaryLength, object, offsetInObject, sizeInObject);
 }
+
+static void HookClumpCollisionStream()
+{
+	if (g_origClumpCollisionRead)
+		return;
+
+	auto* clumpRegistry = reinterpret_cast<RwPluginRegistry*>(0x8D6264);
+	if (!clumpRegistry || !clumpRegistry->firstRegEntry)
+		return;
+
+	for (auto* entry = clumpRegistry->firstRegEntry; entry; entry = entry->nextRegEntry) {
+		if (entry->pluginID == 0x0253F2FA) { // rwID_COLLISION
+			if (entry->readCB != &Hooked_ClumpCollisionRead) {
+				g_origClumpCollisionRead = entry->readCB;
+				entry->readCB = &Hooked_ClumpCollisionRead;
+				ClientLog(LogLevel::Info, "Hooked ClumpCollisionRead cleanly via RwPluginRegistry");
+			}
+			break;
+		}
+	}
+}
+
+static void UnhookClumpCollisionStream()
+{
+	if (!g_origClumpCollisionRead)
+		return;
+
+	auto* clumpRegistry = reinterpret_cast<RwPluginRegistry*>(0x8D6264);
+	if (clumpRegistry && clumpRegistry->firstRegEntry) {
+		for (auto* entry = clumpRegistry->firstRegEntry; entry; entry = entry->nextRegEntry) {
+			if (entry->pluginID == 0x0253F2FA && entry->readCB == &Hooked_ClumpCollisionRead) {
+				entry->readCB = g_origClumpCollisionRead;
+				break;
+			}
+		}
+	}
+	g_origClumpCollisionRead = nullptr;
+}
+
+
 
 static void(__fastcall* g_origBouncingPanel_ProcessPanel)(CBouncingPanel* thisPanel, void* edx, CVehicle* vehicle, RwFrame* frame, CVector arg2, CVector arg3, float arg4, float arg5) = nullptr;
 
@@ -3226,6 +3267,7 @@ private:
 				// If ds:[0x009689E0] is null, it crashes at 0x4C4BD2 (inside SetColModel)
 				// or at 0x41B2C7. Setting it here mirrors GTA SA CStreaming::ConvertModelToLoaded (0x536798).
 				s_bLoadingCustomVehicleDff = true;
+				HookClumpCollisionStream();
 				auto SetCollisionModel = reinterpret_cast<void(__cdecl*)(CBaseModelInfo*)>(0x0041B350);
 				SetCollisionModel(newModel);
 				*reinterpret_cast<CBaseModelInfo**>(0x009689E0) = newModel;
@@ -3408,6 +3450,7 @@ public:
 				fs::create_directories(GetSampCacheRoot());
 				AudioExtender::InstallHooks();
 				StreamingExtender::InstallHooks();
+				HookClumpCollisionStream();
 				TransferConfig::Instance().Load();
 				ModelCache::Instance().Sweep();
 				m_runtimeInitialized = true;
@@ -3420,6 +3463,7 @@ public:
 			AudioExtender::RestoreHooks();
 			StreamingExtender::RestoreHooks();
 			StreamingExtender::ClearAllCustomModels();
+			UnhookClumpCollisionStream();
 			m_runtimeInitialized = false;
 		});
 
@@ -4920,18 +4964,6 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD dwReason, LPVOID lpReserved)
 			ClientLog(LogLevel::Error, std::format("Failed to hook CBouncingPanel::ProcessPanel (0x6F49A0): {}", MH_StatusToString(bpStatus)));
 		}
 
-		MH_STATUS dffColStatus = MH_CreateHook(reinterpret_cast<void*>(0x41B1D0), reinterpret_cast<void*>(&Hooked_ClumpCollisionRead), reinterpret_cast<void**>(&g_origClumpCollisionRead));
-		if (dffColStatus == MH_OK) {
-			MH_STATUS enableStatus = MH_EnableHook(reinterpret_cast<void*>(0x41B1D0));
-			if (enableStatus == MH_OK) {
-				ClientLog(LogLevel::Info, "ClumpCollisionRead (0x41B1D0) hooked successfully via MinHook");
-			} else {
-				ClientLog(LogLevel::Error, std::format("Failed to enable ClumpCollisionRead hook: {}", MH_StatusToString(enableStatus)));
-			}
-		} else {
-			ClientLog(LogLevel::Error, std::format("Failed to hook ClumpCollisionRead (0x41B1D0): {}", MH_StatusToString(dffColStatus)));
-		}
-
 		MH_STATUS exhStatus = MH_CreateHook(reinterpret_cast<void*>(0x6DE240), reinterpret_cast<void*>(&Hooked_AddExhaustParticles), reinterpret_cast<void**>(&g_origAddExhaustParticles));
 		if (exhStatus == MH_OK) {
 			MH_STATUS enableStatus = MH_EnableHook(reinterpret_cast<void*>(0x6DE240));
@@ -5248,12 +5280,6 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD dwReason, LPVOID lpReserved)
 			g_origCVehicle_ProcessDelayedExplosion = nullptr;
 		}
 
-		if (g_origClumpCollisionRead) {
-			MH_DisableHook(reinterpret_cast<void*>(0x41B1D0));
-			MH_RemoveHook(reinterpret_cast<void*>(0x41B1D0));
-			g_origClumpCollisionRead = nullptr;
-		}
-
 		if (g_origAddExhaustParticles) {
 			MH_DisableHook(reinterpret_cast<void*>(0x6DE240));
 			MH_RemoveHook(reinterpret_cast<void*>(0x6DE240));
@@ -5331,6 +5357,8 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD dwReason, LPVOID lpReserved)
 			MH_RemoveHook(reinterpret_cast<void*>(0x6F49A0));
 			g_origBouncingPanel_ProcessPanel = nullptr;
 		}
+
+		UnhookClumpCollisionStream();
 
 		if (g_origRsMouseSetPos) {
 			MH_DisableHook(reinterpret_cast<void*>(0x6194A0));
