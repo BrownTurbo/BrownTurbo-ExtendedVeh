@@ -693,7 +693,7 @@ bool ModelConfigParser::ParseString(const std::string& content, ModelConfig& out
 					outConfig.handlingMods[attrib] = mod;
 				};
 
-				if (lowerKey == "mass")
+				if (lowerKey == "mass" || lowerKey == "fmass")
 				{
 					bool ok = false;
 					float f = ParseFloat(val, &ok);
@@ -707,7 +707,7 @@ bool ModelConfigParser::ParseString(const std::string& content, ModelConfig& out
 						logWarn("Invalid mass '%s' (valid range 1.0..50000.0 kg). Retaining base vehicle mass (%.1f kg)", val.c_str(), outConfig.handlingData.m_fMass);
 					}
 				}
-				else if (lowerKey == "turnmass")
+				else if (lowerKey == "turnmass" || lowerKey == "fturnmass")
 				{
 					bool ok = false;
 					float f = ParseFloat(val, &ok);
@@ -721,7 +721,7 @@ bool ModelConfigParser::ParseString(const std::string& content, ModelConfig& out
 						logWarn("Invalid turnMass '%s' (valid range 0.0..50000.0 kg). Retaining base vehicle turnMass (%.1f kg)", val.c_str(), outConfig.handlingData.m_fTurnMass);
 					}
 				}
-				else if (lowerKey == "dragmult" || lowerKey == "dragmultiplier")
+				else if (lowerKey == "dragmult" || lowerKey == "dragmultiplier" || lowerKey == "fdragmult" || lowerKey == "fdragmultiplier")
 				{
 					bool ok = false;
 					float f = ParseFloat(val, &ok);
@@ -735,7 +735,9 @@ bool ModelConfigParser::ParseString(const std::string& content, ModelConfig& out
 						logWarn("Invalid dragMultiplier '%s' (valid range -200.0..200.0)", val.c_str());
 					}
 				}
-				else if (lowerKey == "centreofmassx" || lowerKey == "centerofmassx" || lowerKey == "comx")
+				else if (lowerKey == "centreofmassx" || lowerKey == "centerofmassx" || lowerKey == "comx" ||
+					lowerKey == "fcentreofmass_x" || lowerKey == "fcenterofmass_x" || lowerKey == "centreofmass_x" || lowerKey == "centerofmass_x" ||
+					lowerKey == "fcentreofmassx" || lowerKey == "fcenterofmassx")
 				{
 					bool ok = false;
 					float f = ParseFloat(val, &ok);
@@ -749,7 +751,9 @@ bool ModelConfigParser::ParseString(const std::string& content, ModelConfig& out
 						logWarn("Invalid centreOfMassX '%s' (valid range -10.0..10.0)", val.c_str());
 					}
 				}
-				else if (lowerKey == "centreofmassy" || lowerKey == "centerofmassy" || lowerKey == "comy")
+				else if (lowerKey == "centreofmassy" || lowerKey == "centerofmassy" || lowerKey == "comy" ||
+					lowerKey == "fcentreofmass_y" || lowerKey == "fcenterofmass_y" || lowerKey == "centreofmass_y" || lowerKey == "centerofmass_y" ||
+					lowerKey == "fcentreofmassy" || lowerKey == "fcenterofmassy")
 				{
 					bool ok = false;
 					float f = ParseFloat(val, &ok);
@@ -763,7 +767,9 @@ bool ModelConfigParser::ParseString(const std::string& content, ModelConfig& out
 						logWarn("Invalid centreOfMassY '%s' (valid range -10.0..10.0)", val.c_str());
 					}
 				}
-				else if (lowerKey == "centreofmassz" || lowerKey == "centerofmassz" || lowerKey == "comz")
+				else if (lowerKey == "centreofmassz" || lowerKey == "centerofmassz" || lowerKey == "comz" ||
+					lowerKey == "fcentreofmass_z" || lowerKey == "fcenterofmass_z" || lowerKey == "centreofmass_z" || lowerKey == "centerofmass_z" ||
+					lowerKey == "fcentreofmassz" || lowerKey == "fcenterofmassz")
 				{
 					bool ok = false;
 					float f = ParseFloat(val, &ok);
@@ -777,7 +783,7 @@ bool ModelConfigParser::ParseString(const std::string& content, ModelConfig& out
 						logWarn("Invalid centreOfMassZ '%s' (valid range -10.0..10.0)", val.c_str());
 					}
 				}
-				else if (lowerKey == "percentsubmerged" || lowerKey == "submerged")
+				else if (lowerKey == "percentsubmerged" || lowerKey == "submerged" || lowerKey == "npercentsubmerged")
 				{
 					bool ok = false;
 					uint32_t u = ParseUInt(val, &ok);
@@ -791,7 +797,7 @@ bool ModelConfigParser::ParseString(const std::string& content, ModelConfig& out
 						logWarn("Invalid percentSubmerged '%s' (valid range 1..255)", val.c_str());
 					}
 				}
-				else if (lowerKey == "tractionmultiplier" || lowerKey == "tractionmult")
+				else if (lowerKey == "tractionmultiplier" || lowerKey == "tractionmult" || lowerKey == "ftractionmultiplier" || lowerKey == "ftractionmult")
 				{
 					bool ok = false;
 					float f = ParseFloat(val, &ok);
@@ -805,7 +811,7 @@ bool ModelConfigParser::ParseString(const std::string& content, ModelConfig& out
 						logWarn("Invalid tractionMultiplier '%s' (valid range -100.0..100.0)", val.c_str());
 					}
 				}
-				else if (lowerKey == "tractionloss")
+				else if (lowerKey == "tractionloss" || lowerKey == "ftractionloss")
 				{
 					bool ok = false;
 					float f = ParseFloat(val, &ok);
@@ -819,7 +825,7 @@ bool ModelConfigParser::ParseString(const std::string& content, ModelConfig& out
 						logWarn("Invalid tractionLoss '%s' (valid range 0.0..100.0)", val.c_str());
 					}
 				}
-				else if (lowerKey == "tractionbias")
+				else if (lowerKey == "tractionbias" || lowerKey == "ftractionbias")
 				{
 					bool ok = false;
 					float f = ParseFloat(val, &ok);
@@ -833,7 +839,8 @@ bool ModelConfigParser::ParseString(const std::string& content, ModelConfig& out
 						logWarn("Invalid tractionBias '%s' (valid range 0.0..1.0)", val.c_str());
 					}
 				}
-				else if (lowerKey == "numberofgears" || lowerKey == "gears")
+				else if (lowerKey == "numberofgears" || lowerKey == "gears" ||
+					lowerKey == "transmissiondata_nnumberofgears" || lowerKey == "transmissiondata_numberofgears" || lowerKey == "nnumberofgears")
 				{
 					bool ok = false;
 					uint32_t u = ParseUInt(val, &ok);
@@ -847,7 +854,8 @@ bool ModelConfigParser::ParseString(const std::string& content, ModelConfig& out
 						logWarn("Invalid numberOfGears '%s' (valid range 1..6). Retaining base vehicle gears (%u)", val.c_str(), outConfig.handlingData.m_transmissionData.m_nNumberOfGears);
 					}
 				}
-				else if (lowerKey == "maxvelocity" || lowerKey == "topspeed")
+				else if (lowerKey == "maxvelocity" || lowerKey == "topspeed" ||
+					lowerKey == "transmissiondata_fmaxvelocity" || lowerKey == "transmissiondata_maxvelocity" || lowerKey == "fmaxvelocity")
 				{
 					bool ok = false;
 					float f = ParseFloat(val, &ok);
@@ -861,7 +869,8 @@ bool ModelConfigParser::ParseString(const std::string& content, ModelConfig& out
 						logWarn("Invalid maxVelocity '%s' (valid range 0.1..10000.0)", val.c_str());
 					}
 				}
-				else if (lowerKey == "engineacceleration" || lowerKey == "acceleration")
+				else if (lowerKey == "engineacceleration" || lowerKey == "acceleration" ||
+					lowerKey == "transmissiondata_fengineacceleration" || lowerKey == "transmissiondata_engineacceleration" || lowerKey == "fengineacceleration")
 				{
 					bool ok = false;
 					float f = ParseFloat(val, &ok);
@@ -875,7 +884,8 @@ bool ModelConfigParser::ParseString(const std::string& content, ModelConfig& out
 						logWarn("Invalid engineAcceleration '%s' (valid range 0.0..10000.0)", val.c_str());
 					}
 				}
-				else if (lowerKey == "engineinertia" || lowerKey == "inertia")
+				else if (lowerKey == "engineinertia" || lowerKey == "inertia" ||
+					lowerKey == "transmissiondata_fengineinertia" || lowerKey == "transmissiondata_engineinertia" || lowerKey == "fengineinertia")
 				{
 					bool ok = false;
 					float f = ParseFloat(val, &ok);
@@ -889,7 +899,8 @@ bool ModelConfigParser::ParseString(const std::string& content, ModelConfig& out
 						logWarn("Invalid engineInertia '%s' (valid range -1000.0..1000.0, non-zero)", val.c_str());
 					}
 				}
-				else if (lowerKey == "drivetype")
+				else if (lowerKey == "drivetype" ||
+					lowerKey == "transmissiondata_ndrivetype" || lowerKey == "transmissiondata_drivetype" || lowerKey == "ndrivetype")
 				{
 					char dt = val.empty() ? '?' : static_cast<char>(std::toupper(static_cast<unsigned char>(val[0])));
 					if (IsValidHandlingValue(HANDL_TR_NDRIVETYPE, static_cast<uint8_t>(dt)))
@@ -902,7 +913,8 @@ bool ModelConfigParser::ParseString(const std::string& content, ModelConfig& out
 						logWarn("Invalid driveType '%s' (expected 'F', 'R', or '4'). Retaining base vehicle driveType ('%c')", val.c_str(), outConfig.handlingData.m_transmissionData.m_nDriveType);
 					}
 				}
-				else if (lowerKey == "enginetype")
+				else if (lowerKey == "enginetype" ||
+					lowerKey == "transmissiondata_nenginetype" || lowerKey == "transmissiondata_enginetype" || lowerKey == "nenginetype")
 				{
 					char et = val.empty() ? '?' : static_cast<char>(std::toupper(static_cast<unsigned char>(val[0])));
 					if (IsValidHandlingValue(HANDL_TR_NENGINETYPE, static_cast<uint8_t>(et)))
@@ -915,7 +927,7 @@ bool ModelConfigParser::ParseString(const std::string& content, ModelConfig& out
 						logWarn("Invalid engineType '%s' (expected 'P' [petrol], 'D' [diesel], or 'E' [electric]). Retaining base vehicle engineType ('%c')", val.c_str(), outConfig.handlingData.m_transmissionData.m_nEngineType);
 					}
 				}
-				else if (lowerKey == "brakedeceleration")
+				else if (lowerKey == "brakedeceleration" || lowerKey == "fbrakedeceleration" || lowerKey == "fbrakedecel")
 				{
 					bool ok = false;
 					float f = ParseFloat(val, &ok);
@@ -929,7 +941,7 @@ bool ModelConfigParser::ParseString(const std::string& content, ModelConfig& out
 						logWarn("Invalid brakeDeceleration '%s' (valid range 0.1..10000.0)", val.c_str());
 					}
 				}
-				else if (lowerKey == "brakebias")
+				else if (lowerKey == "brakebias" || lowerKey == "fbrakebias")
 				{
 					bool ok = false;
 					float f = ParseFloat(val, &ok);
@@ -943,7 +955,7 @@ bool ModelConfigParser::ParseString(const std::string& content, ModelConfig& out
 						logWarn("Invalid brakeBias '%s' (valid range 0.0..1.0)", val.c_str());
 					}
 				}
-				else if (lowerKey == "abs")
+				else if (lowerKey == "abs" || lowerKey == "babs")
 				{
 					bool ok = false;
 					bool b = ParseBool(val, &ok);
@@ -957,7 +969,7 @@ bool ModelConfigParser::ParseString(const std::string& content, ModelConfig& out
 						logWarn("Invalid abs '%s' (expected true/false or 1/0)", val.c_str());
 					}
 				}
-				else if (lowerKey == "steeringlock")
+				else if (lowerKey == "steeringlock" || lowerKey == "fsteeringlock")
 				{
 					bool ok = false;
 					float f = ParseFloat(val, &ok);
@@ -971,7 +983,7 @@ bool ModelConfigParser::ParseString(const std::string& content, ModelConfig& out
 						logWarn("Invalid steeringLock '%s' (valid range 0.0..360.0 degrees)", val.c_str());
 					}
 				}
-				else if (lowerKey == "suspensionforcelevel")
+				else if (lowerKey == "suspensionforcelevel" || lowerKey == "fsuspensionforcelevel" || lowerKey == "fsuspforcelevel")
 				{
 					bool ok = false;
 					float f = ParseFloat(val, &ok);
@@ -985,7 +997,7 @@ bool ModelConfigParser::ParseString(const std::string& content, ModelConfig& out
 						logWarn("Invalid suspensionForceLevel '%s' (valid range 0.0..600.0)", val.c_str());
 					}
 				}
-				else if (lowerKey == "suspensiondampinglevel")
+				else if (lowerKey == "suspensiondampinglevel" || lowerKey == "fsuspensiondampinglevel" || lowerKey == "fsuspdampinglevel")
 				{
 					bool ok = false;
 					float f = ParseFloat(val, &ok);
@@ -999,7 +1011,7 @@ bool ModelConfigParser::ParseString(const std::string& content, ModelConfig& out
 						logWarn("Invalid suspensionDampingLevel '%s' (valid range 0.0..600.0)", val.c_str());
 					}
 				}
-				else if (lowerKey == "suspensionhighspdcomdamp")
+				else if (lowerKey == "suspensionhighspdcomdamp" || lowerKey == "fsuspensionhighspdcomdamp")
 				{
 					bool ok = false;
 					float f = ParseFloat(val, &ok);
@@ -1013,7 +1025,7 @@ bool ModelConfigParser::ParseString(const std::string& content, ModelConfig& out
 						logWarn("Invalid suspensionHighSpdComDamp '%s' (valid range 0.0..600.0)", val.c_str());
 					}
 				}
-				else if (lowerKey == "suspensionupperlimit")
+				else if (lowerKey == "suspensionupperlimit" || lowerKey == "fsuspensionupperlimit" || lowerKey == "fsuspupperlimit")
 				{
 					bool ok = false;
 					float f = ParseFloat(val, &ok);
@@ -1027,7 +1039,7 @@ bool ModelConfigParser::ParseString(const std::string& content, ModelConfig& out
 						logWarn("Invalid suspensionUpperLimit '%s' (valid range -50.0..50.0)", val.c_str());
 					}
 				}
-				else if (lowerKey == "suspensionlowerlimit")
+				else if (lowerKey == "suspensionlowerlimit" || lowerKey == "fsuspensionlowerlimit" || lowerKey == "fsusplowerlimit")
 				{
 					bool ok = false;
 					float f = ParseFloat(val, &ok);
@@ -1041,7 +1053,7 @@ bool ModelConfigParser::ParseString(const std::string& content, ModelConfig& out
 						logWarn("Invalid suspensionLowerLimit '%s' (valid range -50.0..50.0)", val.c_str());
 					}
 				}
-				else if (lowerKey == "suspensionbias")
+				else if (lowerKey == "suspensionbias" || lowerKey == "fsuspensionbias" || lowerKey == "fsuspensionbiasbetweenfrontandrear")
 				{
 					bool ok = false;
 					float f = ParseFloat(val, &ok);
@@ -1055,7 +1067,7 @@ bool ModelConfigParser::ParseString(const std::string& content, ModelConfig& out
 						logWarn("Invalid suspensionBias '%s' (valid range 0.0..1.0)", val.c_str());
 					}
 				}
-				else if (lowerKey == "suspensionantidivemultiplier")
+				else if (lowerKey == "suspensionantidivemultiplier" || lowerKey == "suspensionmult" || lowerKey == "fsuspensionmult" || lowerKey == "fsuspensionantidivemultiplier")
 				{
 					bool ok = false;
 					float f = ParseFloat(val, &ok);
@@ -1069,7 +1081,7 @@ bool ModelConfigParser::ParseString(const std::string& content, ModelConfig& out
 						logWarn("Invalid suspensionAntiDiveMultiplier '%s' (valid range 0.0..30.0)", val.c_str());
 					}
 				}
-				else if (lowerKey == "seatoffsetdistance")
+				else if (lowerKey == "seatoffsetdistance" || lowerKey == "fseatoffsetdistance" || lowerKey == "fseatoffset")
 				{
 					bool ok = false;
 					float f = ParseFloat(val, &ok);
@@ -1083,7 +1095,7 @@ bool ModelConfigParser::ParseString(const std::string& content, ModelConfig& out
 						logWarn("Invalid seatOffsetDistance '%s' (valid range -20.0..20.0)", val.c_str());
 					}
 				}
-				else if (lowerKey == "collisiondamagemultiplier")
+				else if (lowerKey == "collisiondamagemultiplier" || lowerKey == "collisiondamagemult" || lowerKey == "fcollisiondamagemultiplier" || lowerKey == "fcollisiondamagemult")
 				{
 					bool ok = false;
 					float f = ParseFloat(val, &ok);
@@ -1097,7 +1109,7 @@ bool ModelConfigParser::ParseString(const std::string& content, ModelConfig& out
 						logWarn("Invalid collisionDamageMultiplier '%s' (valid range 0.0..10.0)", val.c_str());
 					}
 				}
-				else if (lowerKey == "monetaryvalue")
+				else if (lowerKey == "monetaryvalue" || lowerKey == "nmonetaryvalue")
 				{
 					bool ok = false;
 					uint32_t u = ParseUInt(val, &ok);
@@ -1111,7 +1123,7 @@ bool ModelConfigParser::ParseString(const std::string& content, ModelConfig& out
 						logWarn("Invalid monetaryValue '%s'", val.c_str());
 					}
 				}
-				else if (lowerKey == "modelflags")
+				else if (lowerKey == "modelflags" || lowerKey == "nmodelflags")
 				{
 					bool ok = false;
 					uint32_t u = ParseUInt(val, &ok);
@@ -1125,7 +1137,7 @@ bool ModelConfigParser::ParseString(const std::string& content, ModelConfig& out
 						logWarn("Invalid modelFlags '%s'", val.c_str());
 					}
 				}
-				else if (lowerKey == "handlingflags")
+				else if (lowerKey == "handlingflags" || lowerKey == "nhandlingflags")
 				{
 					bool ok = false;
 					uint32_t u = ParseUInt(val, &ok);
@@ -1139,7 +1151,7 @@ bool ModelConfigParser::ParseString(const std::string& content, ModelConfig& out
 						logWarn("Invalid handlingFlags '%s'", val.c_str());
 					}
 				}
-				else if (lowerKey == "frontlights" || lowerKey == "frontlight")
+				else if (lowerKey == "frontlights" || lowerKey == "frontlight" || lowerKey == "nfrontlights" || lowerKey == "nfrontlight")
 				{
 					bool ok = false;
 					uint32_t u = ParseUInt(val, &ok);
@@ -1153,7 +1165,7 @@ bool ModelConfigParser::ParseString(const std::string& content, ModelConfig& out
 						logWarn("Invalid frontLights '%s' (expected 0..3: 0=long, 1=small, 2=big, 3=tall)", val.c_str());
 					}
 				}
-				else if (lowerKey == "rearlights" || lowerKey == "rearlight")
+				else if (lowerKey == "rearlights" || lowerKey == "rearlight" || lowerKey == "nrearlights" || lowerKey == "nrearlight")
 				{
 					bool ok = false;
 					uint32_t u = ParseUInt(val, &ok);
@@ -1167,7 +1179,7 @@ bool ModelConfigParser::ParseString(const std::string& content, ModelConfig& out
 						logWarn("Invalid rearLights '%s' (expected 0..3: 0=long, 1=small, 2=big, 3=tall)", val.c_str());
 					}
 				}
-				else if (lowerKey == "animgroup")
+				else if (lowerKey == "animgroup" || lowerKey == "nanimgroup" || lowerKey == "nvehicleanimgroup" || lowerKey == "vehicleanimgroup")
 				{
 					bool ok = false;
 					uint32_t u = ParseUInt(val, &ok);

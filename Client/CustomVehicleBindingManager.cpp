@@ -283,7 +283,9 @@ CColModel* CustomVehicleBindingManager::GetCollisionForVehicle(CVehicle* vehicle
 	if (it == s_fastVehicleColMap.end())
 		return nullptr;
 	CColModel* col = it->second;
-	if (col && col->m_pColData && col->m_pColData->m_pLines && col->m_pColData->m_nNumLines >= 4) {
+	// GTA temporarily sets the line count to zero during collision processing.
+	// A registered vehicle must keep the same COL while those tests run.
+	if (col && col->m_pColData/* && col->m_pColData->m_pLines && col->m_pColData->m_nNumLines >= 4*/) {
 		return col;
 	}
 	return nullptr;

@@ -253,8 +253,8 @@ bool CollisionLoader::ReadModelName(
 		23);
 
 	for (std::size_t i = 0;
-		 i < NAME_LENGTH;
-		 ++i) {
+		i < NAME_LENGTH;
+		++i) {
 		const auto c = p[i];
 
 		if (!IsValidModelNameByte(c))
@@ -303,8 +303,8 @@ bool CollisionLoader::IsZeroTail(
 		return true;
 
 	for (std::size_t i = 0;
-		 i < size;
-		 ++i) {
+		i < size;
+		++i) {
 		if (data[i] != 0)
 			return false;
 	}

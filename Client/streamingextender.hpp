@@ -723,8 +723,11 @@ public:
 				}
 			}
 
-			// Fallback ONLY when the DFF genuinely has NO wheel geometry anywhere and wheelModelId <= 0:
-			if (!masterWheelAtomic && pInfo->m_nWheelModelIndex <= 0) {
+			// Fallback ONLY when the DFF genuinely has NO wheel geometry anywhere and wheelModelId <= 0.
+			// Bikes and BMXs keep their own wheel_front / wheel_rear meshes and never have wheel_rf_dummy:
+			// a car wheel model there replaced the bike's wheels with giant car rims.
+			const bool twoWheeler = pInfo->m_nVehicleType == VEHICLE_BIKE || pInfo->m_nVehicleType == VEHICLE_BMX || CClumpModelInfo::GetFrameFromName(pClump, "wheel_front") != nullptr || CClumpModelInfo::GetFrameFromName(pClump, "wheel_rear") != nullptr;
+			if (!masterWheelAtomic && pInfo->m_nWheelModelIndex <= 0 && !twoWheeler) {
 				int fallbackWheel = 1080;
 				if (pBaseInfo && pBaseInfo->m_nWheelModelIndex > 0) {
 					fallbackWheel = pBaseInfo->m_nWheelModelIndex;

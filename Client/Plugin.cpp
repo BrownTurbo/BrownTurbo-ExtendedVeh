@@ -970,7 +970,9 @@ static RwPluginDataChunkReadCallBack g_origClumpCollisionRead = nullptr;
 
 static RwStream* __cdecl Hooked_ClumpCollisionRead(RwStream* stream, RwInt32 binaryLength, void* object, RwInt32 offsetInObject, RwInt32 sizeInObject)
 {
-	if (s_bLoadingCustomVehicleDff) {
+	// Skip collision chunk if loading a custom vehicle DFF,
+	// or if SA-MP has temporarily written RET (0xC3) to 0x41B1D0 to disable collision loading
+	if (s_bLoadingCustomVehicleDff || *reinterpret_cast<const uint8_t*>(0x41B1D0) == 0xC3) {
 		RwStreamSkip(stream, binaryLength);
 		return stream;
 	}
@@ -1015,8 +1017,6 @@ static void UnhookClumpCollisionStream()
 	}
 	g_origClumpCollisionRead = nullptr;
 }
-
-
 
 static void(__fastcall* g_origBouncingPanel_ProcessPanel)(CBouncingPanel* thisPanel, void* edx, CVehicle* vehicle, RwFrame* frame, CVector arg2, CVector arg3, float arg4, float arg5) = nullptr;
 
@@ -2677,8 +2677,12 @@ static GetColModelFn g_origGetColModel = nullptr;
 static CColModel* __fastcall Hooked_GetColModel(CEntity* thisPtr, void* /*edx*/)
 {
 	if (thisPtr && thisPtr->m_nType == ENTITY_TYPE_VEHICLE) {
-		CColModel* customCol = CustomVehicleBindingManager::GetCollisionForVehicle(reinterpret_cast<CVehicle*>(thisPtr));
-		if (customCol && customCol->m_pColData && customCol->m_pColData->m_pLines && customCol->m_pColData->m_nNumLines >= 4) {
+		auto* vehicle = reinterpret_cast<CVehicle*>(thisPtr);
+		// Preserve GTA's per-vehicle collision (hydraulics/moving components).
+		if (static_cast<signed char>(vehicle->m_nSpecialColModel) > -1)
+			return g_origGetColModel ? g_origGetColModel(thisPtr) : nullptr;
+		CColModel* customCol = CustomVehicleBindingManager::GetCollisionForVehicle(vehicle);
+		if (customCol) {
 			return customCol;
 		}
 	}
@@ -2738,6 +2742,108 @@ namespace fs = std::filesystem;
 using namespace plugin;
 
 ExtendedVeh::Collision::CollisionLoader* colLoader = &ExtendedVeh::Collision::CollisionLoader::Instance();
+
+// A TXD with a damaged or non-PC texture (e.g. a mobile s3tc_mobile raster pasted into a PC TXD, or a texture whose
+// mip sizes run past its own chunk) made CTxdStore::LoadTxd read garbage and crash the game. Keep only the textures
+// GTA can read (D3D8/D3D9 platform, every mip level inside its chunk) and rebuild the dictionary around them.
+// Returns the number of textures dropped (0: the data is left exactly as it was).
+static int SanitizeTxd(std::vector<uint8_t>& data, std::string& dropped)
+{
+	auto rd32 = [&](size_t at) {
+		uint32_t v = 0;
+		std::memcpy(&v, data.data() + at, 4);
+		return v;
+	};
+	if (data.size() < 28 || rd32(0) != 0x16 || rd32(12) != 0x01)
+		return 0;
+	const uint32_t version = rd32(8);
+	const size_t structEnd = 24 + static_cast<size_t>(rd32(16));
+	if (structEnd + 0 > data.size() || rd32(16) < 4)
+		return 0;
+	uint16_t device = 0;
+	std::memcpy(&device, data.data() + 26, 2);
+
+	std::vector<std::pair<size_t, size_t>> good; // offset, total length of each valid texture native chunk
+	int bad = 0;
+	size_t p = structEnd;
+	while (p + 12 <= data.size()) {
+		const uint32_t type = rd32(p), size = rd32(p + 4);
+		const size_t end = p + 12 + static_cast<size_t>(size);
+		if (type != 0x15) {
+			if (type == 0x03 && end <= data.size()) {
+				p = end;
+				continue;
+			} // dictionary extension
+			break; // garbage: stop here
+		}
+		bool ok = end <= data.size() && size >= 12 + 88;
+		std::string name;
+		if (ok) {
+			const size_t b = p + 12, q = b + 12;
+			const size_t texEnd = q + static_cast<size_t>(rd32(b + 4));
+			const uint32_t platform = rd32(q);
+			name.assign(reinterpret_cast<const char*>(data.data() + q + 8), strnlen(reinterpret_cast<const char*>(data.data() + q + 8), 32));
+			ok = rd32(b) == 0x01 && texEnd <= end && (platform == 8 || platform == 9);
+			if (ok) {
+				const uint32_t rasterFormat = rd32(q + 72);
+				const uint8_t levels = data[q + 85];
+				size_t o = q + 88;
+				if (rasterFormat & 0x2000)
+					o += 256 * 4; // PAL8 palette
+				else if (rasterFormat & 0x4000)
+					o += 32 * 4; // PAL4 palette (stored as 32 entries)
+				ok = levels > 0 && o <= texEnd;
+				for (uint8_t level = 0; ok && level < levels; ++level) {
+					if (o + 4 > texEnd) {
+						ok = false;
+						break;
+					}
+					o += 4 + static_cast<size_t>(rd32(o));
+					ok = o <= texEnd;
+				}
+			}
+		}
+		if (ok) {
+			good.emplace_back(p, end - p);
+		} else {
+			++bad;
+			dropped += (dropped.empty() ? "" : ", ") + (name.empty() ? std::string("?") : name);
+		}
+		if (end > data.size())
+			break;
+		p = end;
+	}
+	if (!bad)
+		return 0;
+
+	std::vector<uint8_t> out;
+	auto put32 = [&](uint32_t v) {
+		const auto* b = reinterpret_cast<const uint8_t*>(&v);
+		out.insert(out.end(), b, b + 4);
+	};
+	size_t body = 12 + 4;
+	for (auto& g : good)
+		body += g.second;
+	body += 12;
+	put32(0x16);
+	put32(static_cast<uint32_t>(body));
+	put32(version);
+	put32(0x01);
+	put32(4);
+	put32(version);
+	const uint16_t count = static_cast<uint16_t>(good.size());
+	out.push_back(static_cast<uint8_t>(count & 0xff));
+	out.push_back(static_cast<uint8_t>(count >> 8));
+	out.push_back(static_cast<uint8_t>(device & 0xff));
+	out.push_back(static_cast<uint8_t>(device >> 8));
+	for (auto& g : good)
+		out.insert(out.end(), data.begin() + g.first, data.begin() + g.first + g.second);
+	put32(0x03);
+	put32(0);
+	put32(version);
+	data.swap(out);
+	return bad;
+}
 
 static RpClump* SafeRpClumpStreamRead(RwStream* stream, uint32_t* outExceptionCode)
 {
@@ -3229,6 +3335,11 @@ private:
 
 		newModel->m_nTxdIndex = txdSlot;
 
+		{
+			std::string dropped;
+			if (const int bad = SanitizeTxd(pending->txd, dropped))
+				ClientLog(LogLevel::Warning, std::format("TXD for model {}: skipped {} unreadable texture(s): {}", pending->def.customModelId, bad, dropped));
+		}
 		RwMemory txdMem { pending->txd.data(), static_cast<RwUInt32>(pending->txd.size()) };
 		RwStream* txdStream = RwStreamOpen(rwSTREAMMEMORY, rwSTREAMREAD, &txdMem);
 
