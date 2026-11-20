@@ -3582,8 +3582,7 @@ public:
 
 		s_pInstance = this;
 		StreamingExtender::SetDestructionCallback([](uint32_t modelId) {
-			if (s_pInstance)
-				s_pInstance->PushDestructionCommand(modelId);
+			s_pInstance->PushDestructionCommand(modelId);
 		});
 	}
 
