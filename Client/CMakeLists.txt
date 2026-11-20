@@ -6,9 +6,9 @@ cmake_policy(SET CMP0091 NEW)
 set(PLUGIN_NAME "brownturbo-extendedveh")
 set(PLUGIN_VERSION_MAJOR 0)
 set(PLUGIN_VERSION_MINOR 0)
-set(PLUGIN_VERSION_PATCH 3)
-set(PLUGIN_VERSION_BUILD 7)
-set(PLUGIN_PHASE "beta")
+set(PLUGIN_VERSION_PATCH 4)
+set(PLUGIN_VERSION_BUILD 3)
+set(PLUGIN_PHASE "alpha")
 #==============================================================================#
 project(${PLUGIN_NAME} LANGUAGES C CXX VERSION ${PLUGIN_VERSION_MAJOR}.${PLUGIN_VERSION_MINOR}.${PLUGIN_VERSION_PATCH}.${PLUGIN_VERSION_BUILD})
 
