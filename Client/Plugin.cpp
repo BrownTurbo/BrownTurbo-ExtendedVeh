@@ -2859,6 +2859,8 @@ static RpClump* SafeRpClumpStreamRead(RwStream* stream, uint32_t* outExceptionCo
 
 class CustomVehiclesASI {
 private:
+	static inline CustomVehiclesASI* s_pInstance = nullptr;
+
 	enum class AssetState {
 		Pending,
 		Ready,
@@ -3578,8 +3580,10 @@ public:
 			m_runtimeInitialized = false;
 		});
 
+		s_pInstance = this;
 		StreamingExtender::SetDestructionCallback([](uint32_t modelId) {
-			_customVehInstance.PushDestructionCommand(modelId);
+			if (s_pInstance)
+				s_pInstance->PushDestructionCommand(modelId);
 		});
 	}
 
